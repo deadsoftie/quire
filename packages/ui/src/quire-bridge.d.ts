@@ -29,7 +29,14 @@ declare global {
         page: number,
         x: number,
         y: number,
-      ) => Promise<{ line: number; confidence: SyncConfidence } | null>;
+      ) => Promise<{
+        line: number;
+        confidence: SyncConfidence;
+        /** Present when the click landed in a different file than the one
+         * currently open (e.g. a different chapter) -- the editor should
+         * switch to showing this content before jumping to `line`. */
+        switchedFile?: { relativePath: string; text: string };
+      } | null>;
       complete: (text: string, line: number, character: number) => Promise<CompletionItem[]>;
     };
   }

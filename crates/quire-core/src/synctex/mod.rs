@@ -219,6 +219,21 @@ impl SyncTex {
         let raw = self.raw_input_path(tag)?;
         Some(normalize_input_path(raw, search_dir))
     }
+
+    /// The inverse of [`Self::resolve_path`]: given a file (e.g. the
+    /// shadow-dir copy of whichever file the editor currently has open),
+    /// find its tag. Needed because a project's actual content almost
+    /// always lives in `\input`/`\subfile`d files, not the root document
+    /// itself, and each gets its own tag -- there's no single fixed "the"
+    /// tag once a project has more than one file.
+    pub fn tag_for_path(&self, target: &Path, search_dir: &Path) -> Option<u32> {
+        let target = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+        self.files.keys().find_map(|&tag| {
+            let resolved = self.resolve_path(tag, search_dir)?;
+            let resolved = resolved.canonicalize().unwrap_or(resolved);
+            (resolved == target).then_some(tag)
+        })
+    }
 }
 
 fn normalize_input_path(raw: &str, search_dir: &Path) -> PathBuf {
@@ -334,5 +349,31 @@ mod tests {
         .unwrap();
         let parsed = SyncTex::parse_str(&text);
         assert_eq!(parsed.raw_input_path(1), Some("texput"));
+    }
+
+    #[test]
+    fn tag_for_path_finds_the_tag_matching_a_real_subfiled_chapter() {
+        let dir = std::env::temp_dir().join(format!(
+            "quire-synctex-tagpath-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("chapter1.tex"), "content").unwrap();
+        let chapter_abs = dir.join("chapter1.tex").canonicalize().unwrap();
+
+        // Mirrors real Tectonic output: the root is tag 1 (bare "texput",
+        // the extension quirk), a subfiled chapter is a real tag with its
+        // full absolute path, as confirmed against a real multi-file
+        // compile during the 0.9 gate test.
+        let text = format!(
+            "SyncTeX Version:1\nInput:1:texput\nInput:7:{}\nOutput:pdf\nContent:\nPostamble:\n",
+            chapter_abs.display()
+        );
+        let parsed = SyncTex::parse_str(&text);
+
+        assert_eq!(parsed.tag_for_path(&dir.join("chapter1.tex"), &dir), Some(7));
+        assert_eq!(parsed.tag_for_path(&dir.join("nonexistent.tex"), &dir), None);
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

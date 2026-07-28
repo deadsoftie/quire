@@ -29,6 +29,7 @@ export function App() {
   const [projectLabel, setProjectLabel] = useState<string | null>(null);
   const [docVersion, setDocVersion] = useState(0);
   const [highlightRects, setHighlightRects] = useState<SyncRect[] | null>(null);
+  const [pendingJumpLine, setPendingJumpLine] = useState<number | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
   const forwardSyncDebounceRef = useRef<number | undefined>(undefined);
   const editorRef = useRef<EditorHandle>(null);
@@ -78,15 +79,34 @@ export function App() {
   }, []);
 
   // Inverse sync: click in the PDF -> editor jumps to and selects the
-  // corresponding source line. Clicks that resolve to a file other than
-  // the one currently open (e.g. a \input'd chapter) are silently
-  // ignored -- there's no multi-file tab UI yet to jump to (see main.js).
+  // corresponding source line. When the click resolves to a different
+  // file than the one currently open (e.g. a different chapter), main.js
+  // returns its content and the editor switches to show it -- the jump
+  // has to wait until *that* remount happens (see the effect below),
+  // since editorRef briefly points at nothing/the old instance otherwise.
   const onInverseSync = useCallback((page: number, x: number, y: number) => {
     window.quire.inverseSync(page, x, y).then((result) => {
       if (!result) return;
-      editorRef.current?.jumpToLine(result.line);
+
+      if (result.switchedFile) {
+        setInitialDoc(result.switchedFile.text);
+        setProjectLabel(result.switchedFile.relativePath);
+        setDocVersion((v) => v + 1);
+        setHighlightRects(null);
+        setPendingJumpLine(result.line);
+      } else {
+        editorRef.current?.jumpToLine(result.line);
+      }
     });
   }, []);
+
+  // Applies a jump queued by a file switch once the new Editor (remounted
+  // via the bumped docVersion key) has actually mounted.
+  useEffect(() => {
+    if (pendingJumpLine === null) return;
+    editorRef.current?.jumpToLine(pendingJumpLine);
+    setPendingJumpLine(null);
+  }, [docVersion, pendingJumpLine]);
 
   useEffect(() => {
     runCompile(INITIAL_SOURCE);

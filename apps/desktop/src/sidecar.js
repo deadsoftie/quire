@@ -99,12 +99,19 @@ class SidecarClient {
 
   // Stateless, independent of compile()'s cancellation: each call spawns
   // its own short-lived process and parses the given synctex blob fresh.
-  forwardSync(synctexBase64, tag, line) {
-    return runOnce("forwardSync", { synctexBase64, tag, line }).promise;
+  //
+  // `path`+`searchDir` resolve against whichever file is actually open
+  // (a project's real content almost always lives in \input/\subfile'd
+  // files, not the root document -- each gets its own synctex tag, so
+  // there's no single fixed tag once a project has more than one file).
+  // Omit them (or pass `tag` directly) for the no-project-open case,
+  // where the buffer is always Tectonic's primary input, tag 1.
+  forwardSync(synctexBase64, { tag, path, searchDir, line }) {
+    return runOnce("forwardSync", { synctexBase64, tag, path, searchDir, line }).promise;
   }
 
-  inverseSync(synctexBase64, page, x, y) {
-    return runOnce("inverseSync", { synctexBase64, page, x, y }).promise;
+  inverseSync(synctexBase64, page, x, y, searchDir) {
+    return runOnce("inverseSync", { synctexBase64, page, x, y, searchDir }).promise;
   }
 }
 
