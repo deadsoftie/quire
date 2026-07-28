@@ -23,6 +23,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@codemirror/view':
+        specifier: ^6.0.0
+        version: 6.43.6
       codemirror:
         specifier: ^6.0.1
         version: 6.0.2

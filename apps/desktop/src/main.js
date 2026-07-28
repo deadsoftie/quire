@@ -1,7 +1,10 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("node:path");
+const { SidecarClient } = require("./sidecar");
 
 const DEV_SERVER_URL = "http://localhost:5173";
+
+let sidecar;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -18,7 +21,13 @@ function createWindow() {
   win.loadURL(DEV_SERVER_URL);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  sidecar = new SidecarClient();
+
+  ipcMain.handle("compile", (_event, source) => sidecar.compile(source));
+
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

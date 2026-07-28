@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
+    "@codemirror/view": "^6.0.0",
     "codemirror": "^6.0.1",
     "pdfjs-dist": "^4.6.82",
     "react": "^18.3.1",

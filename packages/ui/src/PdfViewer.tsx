@@ -4,14 +4,16 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-export function PdfViewer({ src }: { src: string }) {
+export function PdfViewer({ data }: { data: Uint8Array | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    if (!data) return;
+    const pdfData = data;
     let cancelled = false;
 
     async function render() {
-      const doc = await pdfjsLib.getDocument(src).promise;
+      const doc = await pdfjsLib.getDocument({ data: pdfData }).promise;
       const page = await doc.getPage(1);
       const viewport = page.getViewport({ scale: 1.5 });
 
@@ -29,7 +31,7 @@ export function PdfViewer({ src }: { src: string }) {
     return () => {
       cancelled = true;
     };
-  }, [src]);
+  }, [data]);
 
   return <canvas ref={canvasRef} style={{ display: "block", margin: "0 auto" }} />;
 }

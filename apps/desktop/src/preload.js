@@ -1,1 +1,5 @@
-// M0 spike: no privileged APIs exposed yet. The sidecar bridge (0.3) lands here.
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("quire", {
+  compile: (source) => ipcRenderer.invoke("compile", source),
+});
