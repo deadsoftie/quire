@@ -1,0 +1,4 @@
+# tectonic (quire-core) links against ICU natively; icu4c is keg-only in
+# Homebrew, so its .pc files aren't on the default pkg-config search path.
+[env]
+PKG_CONFIG_PATH = "/opt/homebrew/opt/icu4c@78/lib/pkgconfig"
