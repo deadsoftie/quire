@@ -4,7 +4,13 @@ import { EditorView, basicSetup } from "codemirror";
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-export function Editor({ onChange }: { onChange: (text: string) => void }) {
+export function Editor({
+  initialDoc,
+  onChange,
+}: {
+  initialDoc: string;
+  onChange: (text: string) => void;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -13,7 +19,7 @@ export function Editor({ onChange }: { onChange: (text: string) => void }) {
     if (!hostRef.current) return;
 
     const view = new EditorView({
-      doc: INITIAL_SOURCE,
+      doc: initialDoc,
       extensions: [
         basicSetup,
         EditorView.updateListener.of((update) => {
@@ -26,6 +32,9 @@ export function Editor({ onChange }: { onChange: (text: string) => void }) {
     });
 
     return () => view.destroy();
+    // initialDoc is only used to seed the view on mount; the caller
+    // remounts (via `key`) when it wants a different starting doc.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <div ref={hostRef} style={{ height: "100%" }} />;

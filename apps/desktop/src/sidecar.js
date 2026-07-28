@@ -17,7 +17,11 @@ class SidecarClient {
     this.current = null;
   }
 
-  compile(source) {
+  // `cwd`, when given, is the shadow build dir to compile from -- Tectonic
+  // resolves \input/\includegraphics against the process's actual working
+  // directory, so this is all that's needed for multi-file projects to
+  // work. See apps/desktop/src/project.js.
+  compile(source, cwd) {
     if (this.current) {
       this.current.cancelled = true;
       this.current.proc.kill("SIGKILL");
@@ -25,7 +29,7 @@ class SidecarClient {
     }
 
     const id = this.nextId++;
-    const proc = spawn(SIDECAR_PATH, [], { stdio: ["pipe", "pipe", "inherit"] });
+    const proc = spawn(SIDECAR_PATH, [], { cwd, stdio: ["pipe", "pipe", "inherit"] });
     const state = { proc, cancelled: false };
     this.current = state;
 

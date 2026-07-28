@@ -22,6 +22,9 @@ export function App() {
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "compiling">("idle");
+  const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
+  const [projectLabel, setProjectLabel] = useState<string | null>(null);
+  const [docVersion, setDocVersion] = useState(0);
   const debounceRef = useRef<number | undefined>(undefined);
 
   // Sending a new compile request kills whatever the sidecar is still
@@ -55,16 +58,44 @@ export function App() {
 
   useEffect(() => {
     runCompile(INITIAL_SOURCE);
+    // Only the very first mount uses the placeholder doc; openProject()
+    // drives subsequent compiles directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openProject = useCallback(async () => {
+    const result = await window.quire.openProject().catch((err) => {
+      setError(String(err?.message ?? err));
+      return null;
+    });
+    if (!result) return;
+
+    setInitialDoc(result.initialText);
+    setProjectLabel(result.rootRelativePath);
+    setDocVersion((v) => v + 1);
+    runCompile(result.initialText);
   }, [runCompile]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh" }}>
-      <div style={{ padding: "4px 8px", fontFamily: "sans-serif", fontSize: 12, color: "#888" }}>
-        {status === "compiling" ? "compiling…" : ""}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "4px 8px",
+          fontFamily: "sans-serif",
+          fontSize: 12,
+          color: "#888",
+        }}
+      >
+        <button onClick={openProject}>Open Project…</button>
+        <span>{projectLabel ?? "(no project open -- editing a throwaway placeholder)"}</span>
+        <span>{status === "compiling" ? "compiling…" : ""}</span>
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div style={paneStyle}>
-          <Editor onChange={scheduleCompile} />
+          <Editor key={docVersion} initialDoc={initialDoc} onChange={scheduleCompile} />
         </div>
         <div style={{ width: 1, background: "#888" }} />
         <div style={paneStyle}>
