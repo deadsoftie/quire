@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 tectonic = "0.17"
+flate2 = "1"
 
 [dev-dependencies]

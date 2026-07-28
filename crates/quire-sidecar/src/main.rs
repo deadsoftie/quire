@@ -65,16 +65,20 @@ fn handle_compile(id: Value, params: Value) -> Value {
         }
     };
 
-    match quire_core::compile_latex_to_pdf(&params.source) {
-        Ok(pdf) => json!({
+    match quire_core::compile_latex(&params.source) {
+        Ok(output) => json!({
             "jsonrpc": "2.0",
             "id": id,
-            "result": { "pdfBase64": STANDARD.encode(pdf) }
+            "result": { "pdfBase64": STANDARD.encode(output.pdf) }
         }),
         Err(e) => json!({
             "jsonrpc": "2.0",
             "id": id,
-            "error": { "code": -32000, "message": e.to_string() }
+            "error": {
+                "code": -32000,
+                "message": e.message,
+                "data": { "log": e.log },
+            }
         }),
     }
 }

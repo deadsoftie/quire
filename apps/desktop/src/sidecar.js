@@ -52,8 +52,13 @@ class SidecarClient {
           return;
         }
 
-        if (response.error) reject(new Error(response.error.message));
-        else resolve(response.result);
+        if (response.error) {
+          const log = response.error.data?.log;
+          const message = log ? `${response.error.message}\n\n${log}` : response.error.message;
+          reject(new Error(message));
+        } else {
+          resolve(response.result);
+        }
       });
 
       proc.on("error", (err) => {
