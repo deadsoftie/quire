@@ -1,0 +1,12 @@
+{
+  "name": "quire",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently -k -s first \"pnpm --filter @quire/ui dev\" \"wait-on http://localhost:5173 && pnpm --filter @quire/desktop dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "wait-on": "^8.0.0"
+  }
+}

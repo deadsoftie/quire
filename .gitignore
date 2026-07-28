@@ -1,3 +1,6 @@
 /target
 node_modules/
 .quire/
+dist/
+.DS_Store
+pnpm-debug.log*
