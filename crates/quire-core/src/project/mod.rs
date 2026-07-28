@@ -2,6 +2,14 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod root;
+pub use root::{detect_root, RootConfidence, RootDetectionResult};
+
+/// Directory names skipped when walking a project (build artifacts, VCS
+/// metadata, our own shadow dir) -- shared between the file graph and
+/// root detection's directory walk.
+pub(crate) const SKIP_NAMES: &[&str] = &[".git", ".quire", "node_modules"];
+
 /// Which command produced a reference. `Subfile` isn't in task 1.1's
 /// literal wording (only `\input`/`\include`/`\includegraphics` are), but
 /// it behaves identically for graph purposes and is extremely common in
