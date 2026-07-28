@@ -115,6 +115,21 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // An external edit (another editor, `git pull`, ...) triggered a
+  // recompile in main.js -- task 1.3. Unlike runCompile, nothing here
+  // called window.quire.compile ourselves; main pushed this unprompted,
+  // so just mirror its result into the same state runCompile updates.
+  useEffect(() => {
+    return window.quire.onExternalRecompile((result) => {
+      if ("error" in result) {
+        setError(result.error);
+      } else {
+        setError(null);
+        setPdfData(base64ToBytes(result.pdfBase64));
+      }
+    });
+  }, []);
+
   const openProject = useCallback(async () => {
     const result = await window.quire.openProject().catch((err) => {
       setError(String(err?.message ?? err));

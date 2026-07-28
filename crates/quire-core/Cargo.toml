@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 tectonic = "0.17"
 flate2 = "1"
+notify = "8.2.0"
 
 [dev-dependencies]

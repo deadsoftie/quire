@@ -5,9 +5,12 @@ use std::path::{Path, PathBuf};
 mod root;
 pub use root::{detect_root, RootConfidence, RootDetectionResult};
 
+mod watcher;
+pub use watcher::FileWatcher;
+
 /// Directory names skipped when walking a project (build artifacts, VCS
-/// metadata, our own shadow dir) -- shared between the file graph and
-/// root detection's directory walk.
+/// metadata, our own shadow dir) -- shared between the file graph, root
+/// detection's directory walk, and the file watcher's exclusions.
 pub(crate) const SKIP_NAMES: &[&str] = &[".git", ".quire", "node_modules"];
 
 /// Which command produced a reference. `Subfile` isn't in task 1.1's

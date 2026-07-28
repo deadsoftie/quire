@@ -4,6 +4,7 @@ const path = require("node:path");
 const { SidecarClient } = require("./sidecar");
 const { findRootTexFile, mirrorProjectToShadow } = require("./project");
 const { CompletionClient } = require("./completion");
+const { ProjectWatcher } = require("./watcher");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 
@@ -16,6 +17,7 @@ const DEV_SERVER_URL = "http://localhost:5173";
 const PLACEHOLDER_TAG = 1;
 
 let sidecar;
+let mainWindow;
 // { projectRoot, shadowDir, rootRelativePath, openRelativePath } | null.
 // rootRelativePath is the compile entry point (what Tectonic's primary
 // buffer represents); openRelativePath is whichever file the editor is
@@ -27,9 +29,10 @@ let currentProject = null;
 // hasn't been one yet. Queried fresh per forwardSync/inverseSync call --
 // see apps/desktop/src/sidecar.js.
 let lastSynctexBase64 = null;
+let projectWatcher = null;
 
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
@@ -40,7 +43,62 @@ function createWindow() {
     },
   });
 
-  win.loadURL(DEV_SERVER_URL);
+  mainWindow.loadURL(DEV_SERVER_URL);
+}
+
+// Recompiles from whatever's currently in the root's shadow copy and
+// pushes the result to the renderer. Used for changes that originate
+// *outside* the app (task 1.3) -- unlike edits typed into our own
+// editor, there's no `compile(source)` IPC call driving this, so main
+// has to both trigger the compile and deliver the result itself.
+async function recompileFromShadow() {
+  if (!currentProject || !mainWindow) return;
+
+  const primaryText = fs.readFileSync(
+    path.join(currentProject.shadowDir, currentProject.rootRelativePath),
+    "utf8",
+  );
+
+  try {
+    const result = await sidecar.compile(primaryText, currentProject.shadowDir);
+    lastSynctexBase64 = result.synctexBase64 ?? null;
+    mainWindow.webContents.send("externalRecompile", { pdfBase64: result.pdfBase64 });
+  } catch (err) {
+    mainWindow.webContents.send("externalRecompile", { error: String(err?.message ?? err) });
+  }
+}
+
+// Handles a debounced batch of paths that changed *outside* the app
+// (external editor, `git pull`, etc. -- task 1.3's acceptance case).
+// Changes to whichever file the editor currently has open are skipped:
+// the in-memory buffer is the source of truth for that one file while
+// it's being actively edited, and overwriting its shadow copy from disk
+// here could silently clobber unsaved work the user is mid-typing.
+function handleExternalChanges(changedAbsPaths) {
+  if (!currentProject) return;
+
+  const openAbsPath = path.resolve(currentProject.projectRoot, currentProject.openRelativePath);
+  let anyRelevant = false;
+
+  for (const absPath of changedAbsPaths) {
+    if (path.resolve(absPath) === openAbsPath) continue;
+
+    const relativePath = path.relative(currentProject.projectRoot, absPath);
+    const shadowTarget = path.join(currentProject.shadowDir, relativePath);
+
+    try {
+      fs.mkdirSync(path.dirname(shadowTarget), { recursive: true });
+      fs.copyFileSync(absPath, shadowTarget);
+      anyRelevant = true;
+    } catch {
+      // e.g. the file was deleted/renamed out from under us -- not fatal,
+      // just skip mirroring it this round.
+    }
+  }
+
+  if (anyRelevant) {
+    recompileFromShadow();
+  }
 }
 
 let completion;
@@ -65,6 +123,9 @@ app.whenReady().then(() => {
 
     currentProject = { projectRoot, shadowDir, rootRelativePath, openRelativePath: rootRelativePath };
     lastSynctexBase64 = null;
+
+    projectWatcher?.stop();
+    projectWatcher = new ProjectWatcher(projectRoot, handleExternalChanges);
 
     return { rootRelativePath, initialText };
   });
@@ -185,6 +246,7 @@ app.on("window-all-closed", () => {
 
 app.on("will-quit", () => {
   completion?.stop();
+  projectWatcher?.stop();
 });
 
 app.on("activate", () => {

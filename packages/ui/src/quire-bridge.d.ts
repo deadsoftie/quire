@@ -38,6 +38,11 @@ declare global {
         switchedFile?: { relativePath: string; text: string };
       } | null>;
       complete: (text: string, line: number, character: number) => Promise<CompletionItem[]>;
+      /** Pushed unprompted when an external edit (another editor, `git
+       * pull`, ...) triggers a recompile. Returns an unsubscribe function. */
+      onExternalRecompile: (
+        callback: (result: { pdfBase64: string } | { error: string }) => void,
+      ) => () => void;
     };
   }
 }
