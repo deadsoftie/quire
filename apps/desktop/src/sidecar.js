@@ -7,13 +7,75 @@ const readline = require("node:readline");
 // later-phase concern (see M4).
 const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
 
+// Spawns one sidecar process, sends one JSON-RPC request, resolves with
+// its result (or rejects on error/unexpected exit). `onKill` is called if
+// the caller cancels via the returned `cancel()` function -- used by
+// SidecarClient.compile() for real cancellation; forwardSync/inverseSync
+// don't need it, they're cheap, stateless, and never cancelled.
+function runOnce(method, params, cwd) {
+  const proc = spawn(SIDECAR_PATH, [], { cwd, stdio: ["pipe", "pipe", "inherit"] });
+  let cancelled = false;
+
+  const promise = new Promise((resolve, reject) => {
+    let settled = false;
+
+    const rl = readline.createInterface({ input: proc.stdout });
+
+    rl.on("line", (line) => {
+      if (settled || !line.trim()) return;
+      settled = true;
+      rl.close();
+
+      let response;
+      try {
+        response = JSON.parse(line);
+      } catch (err) {
+        reject(new Error(`bad sidecar response: ${err.message}`));
+        return;
+      }
+
+      if (response.error) {
+        const log = response.error.data?.log;
+        const message = log ? `${response.error.message}\n\n${log}` : response.error.message;
+        reject(new Error(message));
+      } else {
+        resolve(response.result);
+      }
+    });
+
+    proc.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      if (!cancelled) reject(err);
+      // else: killed deliberately. Leave this promise permanently pending
+      // -- nothing should ever act on a cancelled request's result.
+    });
+
+    proc.on("exit", () => {
+      if (settled) return;
+      settled = true;
+      if (!cancelled) reject(new Error("sidecar exited before responding"));
+    });
+
+    const payload = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
+    proc.stdin.write(payload + "\n");
+  });
+
+  return {
+    promise,
+    kill() {
+      cancelled = true;
+      proc.kill("SIGKILL");
+    },
+  };
+}
+
 // One process per compile, rather than one long-lived sidecar handling a
 // queue of requests. That makes cancellation real: killing the previous
 // process actually stops Tectonic mid-run and releases its resources,
 // instead of just discarding a stale response once it eventually arrives.
 class SidecarClient {
   constructor() {
-    this.nextId = 1;
     this.current = null;
   }
 
@@ -23,63 +85,26 @@ class SidecarClient {
   // work. See apps/desktop/src/project.js.
   compile(source, cwd) {
     if (this.current) {
-      this.current.cancelled = true;
-      this.current.proc.kill("SIGKILL");
+      this.current.kill();
       this.current = null;
     }
 
-    const id = this.nextId++;
-    const proc = spawn(SIDECAR_PATH, [], { cwd, stdio: ["pipe", "pipe", "inherit"] });
-    const state = { proc, cancelled: false };
-    this.current = state;
-
-    return new Promise((resolve, reject) => {
-      let settled = false;
-
-      const rl = readline.createInterface({ input: proc.stdout });
-
-      rl.on("line", (line) => {
-        if (settled || !line.trim()) return;
-        settled = true;
-        rl.close();
-        if (this.current === state) this.current = null;
-
-        let response;
-        try {
-          response = JSON.parse(line);
-        } catch (err) {
-          reject(new Error(`bad sidecar response: ${err.message}`));
-          return;
-        }
-
-        if (response.error) {
-          const log = response.error.data?.log;
-          const message = log ? `${response.error.message}\n\n${log}` : response.error.message;
-          reject(new Error(message));
-        } else {
-          resolve(response.result);
-        }
-      });
-
-      proc.on("error", (err) => {
-        if (settled) return;
-        settled = true;
-        if (this.current === state) this.current = null;
-        if (!state.cancelled) reject(err);
-        // else: killed deliberately by a newer compile() call. Leave this
-        // promise permanently pending -- nothing should ever act on it.
-      });
-
-      proc.on("exit", () => {
-        if (settled) return;
-        settled = true;
-        if (this.current === state) this.current = null;
-        if (!state.cancelled) reject(new Error("sidecar exited before responding"));
-      });
-
-      const payload = JSON.stringify({ jsonrpc: "2.0", id, method: "compile", params: { source } });
-      proc.stdin.write(payload + "\n");
+    const call = runOnce("compile", { source }, cwd);
+    this.current = call;
+    call.promise.finally(() => {
+      if (this.current === call) this.current = null;
     });
+    return call.promise;
+  }
+
+  // Stateless, independent of compile()'s cancellation: each call spawns
+  // its own short-lived process and parses the given synctex blob fresh.
+  forwardSync(synctexBase64, tag, line) {
+    return runOnce("forwardSync", { synctexBase64, tag, line }).promise;
+  }
+
+  inverseSync(synctexBase64, page, x, y) {
+    return runOnce("inverseSync", { synctexBase64, page, x, y }).promise;
   }
 }
 

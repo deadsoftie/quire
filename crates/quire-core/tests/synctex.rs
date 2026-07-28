@@ -69,21 +69,34 @@ fn forward_sync_on_finalization_line_is_low_confidence() {
 }
 
 #[test]
-fn inverse_sync_finds_the_containing_paragraph_line() {
+fn inverse_sync_finds_the_nearest_leaf_not_an_enclosing_container() {
     let parsed = load_from_txt();
-    // Center of the known rect from the forward-sync test above.
-    let result = parsed.inverse_sync(1, 305.6, 132.16);
-    assert_eq!(result, Some((1, 4, Confidence::High)));
+    // h1,5:8799519,9651487:983040,0,0 -- the indent leaf for paragraph 2
+    // ("A second paragraph...", line 5). Querying its own center must
+    // resolve to line 5, not to the line tagging whatever big *container*
+    // box happens to enclose this point (real bug: the enclosing
+    // paragraph vbox for "Hello, world!" is tagged line 4, and the page's
+    // outer box is tagged line 6 -- both previously won here purely by
+    // being large enough to contain almost any point, which is what made
+    // inverse sync resolve to the document's last line almost regardless
+    // of where the PDF was actually clicked).
+    let result = parsed.inverse_sync(1, 133.768 + 14.944 / 2.0, 146.720);
+    assert_eq!(result, Some((1, 5, Confidence::High)));
 }
 
 #[test]
-fn inverse_sync_deep_in_the_page_lands_on_a_low_confidence_box() {
+fn inverse_sync_far_from_any_content_still_finds_a_leaf_not_a_container() {
     let parsed = load_from_txt();
-    // Far from either paragraph's text -- should resolve to one of the
-    // big finalization boxes tagged line 6, not the wrong line.
+    // Deep in empty page space, still nowhere near any real content.
+    // Before the container-exclusion fix this fell back to whichever
+    // giant container box happened to enclose the point (tag 1, line 6 --
+    // the document's last line). It must now resolve to some actual leaf
+    // instead, even if that leaf is far away.
     let result = parsed.inverse_sync(1, 300.0, 300.0);
-    assert_eq!(result.map(|(tag, line, _)| (tag, line)), Some((1, 6)));
-    assert_eq!(result.unwrap().2, Confidence::Low);
+    assert!(result.is_some());
+    let (tag, line, _) = result.unwrap();
+    assert_eq!(tag, 1);
+    assert_ne!(line, 6, "must not fall back to the last line's container box");
 }
 
 #[test]

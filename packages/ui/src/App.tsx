@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor, INITIAL_SOURCE } from "./Editor";
+import type { EditorHandle } from "./Editor";
 import { PdfViewer } from "./PdfViewer";
+import type { SyncRect } from "./quire-bridge";
 
 const DEBOUNCE_MS = 500;
+const FORWARD_SYNC_DEBOUNCE_MS = 50;
 
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
@@ -25,7 +28,10 @@ export function App() {
   const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
   const [projectLabel, setProjectLabel] = useState<string | null>(null);
   const [docVersion, setDocVersion] = useState(0);
+  const [highlightRects, setHighlightRects] = useState<SyncRect[] | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
+  const forwardSyncDebounceRef = useRef<number | undefined>(undefined);
+  const editorRef = useRef<EditorHandle>(null);
 
   // Sending a new compile request kills whatever the sidecar is still
   // running (see apps/desktop/src/sidecar.js), so a superseded request's
@@ -56,6 +62,32 @@ export function App() {
     [runCompile],
   );
 
+  // Forward sync: editor cursor -> PDF highlight. Debounced lightly since
+  // arrow-key repeat can fire this very rapidly; each call is independent
+  // (see sidecar.js), so out-of-order responses are a non-issue in
+  // practice at this debounce window.
+  const onCursorLine = useCallback((line: number) => {
+    if (forwardSyncDebounceRef.current !== undefined) {
+      window.clearTimeout(forwardSyncDebounceRef.current);
+    }
+    forwardSyncDebounceRef.current = window.setTimeout(() => {
+      window.quire.forwardSync(line).then((result) => {
+        setHighlightRects(result?.rects ?? null);
+      });
+    }, FORWARD_SYNC_DEBOUNCE_MS);
+  }, []);
+
+  // Inverse sync: click in the PDF -> editor jumps to and selects the
+  // corresponding source line. Clicks that resolve to a file other than
+  // the one currently open (e.g. a \input'd chapter) are silently
+  // ignored -- there's no multi-file tab UI yet to jump to (see main.js).
+  const onInverseSync = useCallback((page: number, x: number, y: number) => {
+    window.quire.inverseSync(page, x, y).then((result) => {
+      if (!result) return;
+      editorRef.current?.jumpToLine(result.line);
+    });
+  }, []);
+
   useEffect(() => {
     runCompile(INITIAL_SOURCE);
     // Only the very first mount uses the placeholder doc; openProject()
@@ -73,6 +105,7 @@ export function App() {
     setInitialDoc(result.initialText);
     setProjectLabel(result.rootRelativePath);
     setDocVersion((v) => v + 1);
+    setHighlightRects(null);
     runCompile(result.initialText);
   }, [runCompile]);
 
@@ -95,14 +128,20 @@ export function App() {
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div style={paneStyle}>
-          <Editor key={docVersion} initialDoc={initialDoc} onChange={scheduleCompile} />
+          <Editor
+            key={docVersion}
+            ref={editorRef}
+            initialDoc={initialDoc}
+            onChange={scheduleCompile}
+            onCursorLine={onCursorLine}
+          />
         </div>
         <div style={{ width: 1, background: "#888" }} />
         <div style={paneStyle}>
           {error ? (
             <pre style={{ color: "red", padding: 8, whiteSpace: "pre-wrap" }}>{error}</pre>
           ) : (
-            <PdfViewer data={pdfData} />
+            <PdfViewer data={pdfData} highlightRects={highlightRects} onInverseSync={onInverseSync} />
           )}
         </div>
       </div>

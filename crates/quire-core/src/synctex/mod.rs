@@ -34,6 +34,12 @@ struct Node {
     width: i64,
     height: i64,
     depth: i64,
+    /// '[' or '(': a box *container* (a paragraph's enclosing vbox, the
+    /// whole page's outer box, ...), tagged with whatever line *closes*
+    /// it -- often nowhere near the line it visually spans. 'h'/'v'/'k'/'g'
+    /// are leaves: precise per-word/kern/glue position markers, tagged
+    /// with the actual line they're on. See `inverse_sync`.
+    is_container: bool,
 }
 
 fn node_rect(n: &Node) -> Rect {
@@ -161,16 +167,18 @@ impl SyncTex {
         (rects, confidence)
     }
 
-    /// PDF point -> nearest source position on that page. When several
-    /// nested boxes all contain the point (distance 0 for all of them),
-    /// the smallest-area one wins -- otherwise this would resolve to
-    /// whichever containing box happens to appear first in the file,
-    /// almost always the outermost one rather than the innermost.
+    /// PDF point -> nearest source position on that page. Only considers
+    /// leaf records (h/v/k/g), not box containers: containers (a
+    /// paragraph's enclosing vbox, the page's outer box, ...) are tagged
+    /// with whatever line *closes* them, often the document's last line,
+    /// and being large they'd "contain" almost any click -- which without
+    /// this filter made nearly every click resolve to the last line
+    /// instead of wherever was actually clicked.
     pub fn inverse_sync(&self, page: u32, x: f64, y: f64) -> Option<(u32, u32, Confidence)> {
         let (node, rect) = self
             .nodes
             .iter()
-            .filter(|n| n.page == page)
+            .filter(|n| n.page == page && !n.is_container)
             .map(|n| (n, node_rect(n)))
             .min_by(|(_, a), (_, b)| {
                 dist_to_rect(a, x, y)
@@ -273,6 +281,7 @@ fn parse_node_line(line: &str, page: u32) -> Option<Node> {
         width,
         height,
         depth,
+        is_container: matches!(kind, '[' | '('),
     })
 }
 
