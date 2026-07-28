@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld("quire", {
   openProject: () => ipcRenderer.invoke("openProject"),
   forwardSync: (line) => ipcRenderer.invoke("forwardSync", line),
   inverseSync: (page, x, y) => ipcRenderer.invoke("inverseSync", page, x, y),
+  complete: (text, line, character) => ipcRenderer.invoke("complete", text, line, character),
 });

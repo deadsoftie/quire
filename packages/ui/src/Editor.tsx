@@ -1,8 +1,30 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
+import { autocompletion } from "@codemirror/autocomplete";
+import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
+
+// M0/M1 scaffolding: completions come from texlab (GPL-3.0, spawned by
+// apps/desktop/src/completion.js) until quire-core grows its own index
+// (M3). Only replaces the word after the last backslash -- texlab's own
+// textEdit ranges aren't used, this is a simpler stand-in good enough to
+// prove the popup works end to end.
+async function texlabCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
+  const word = context.matchBefore(/\\[a-zA-Z]*/);
+  if (!word || (word.from === word.to && !context.explicit)) return null;
+
+  const line = context.state.doc.lineAt(context.pos);
+  const character = context.pos - line.from;
+  const items = await window.quire.complete(context.state.doc.toString(), line.number - 1, character);
+  if (context.aborted) return null;
+
+  return {
+    from: word.from + 1, // skip the leading backslash itself
+    options: items.map((item) => ({ label: item.label, detail: item.detail, apply: item.label })),
+  };
+}
 
 export interface EditorHandle {
   /** Selects the given 1-indexed source line and scrolls it into view. */
@@ -47,6 +69,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       doc: initialDoc,
       extensions: [
         basicSetup,
+        autocompletion({ override: [texlabCompletionSource] }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());

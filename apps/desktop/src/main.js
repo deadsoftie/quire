@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { SidecarClient } = require("./sidecar");
 const { findRootTexFile, mirrorProjectToShadow } = require("./project");
+const { CompletionClient } = require("./completion");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 
@@ -41,8 +42,11 @@ function createWindow() {
   win.loadURL(DEV_SERVER_URL);
 }
 
+let completion;
+
 app.whenReady().then(() => {
   sidecar = new SidecarClient();
+  completion = new CompletionClient();
 
   ipcMain.handle("openProject", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
@@ -90,11 +94,19 @@ app.whenReady().then(() => {
     return { line: result.line, confidence: result.confidence };
   });
 
+  ipcMain.handle("complete", (_event, text, line, character) =>
+    completion.complete(text, line, character),
+  );
+
   createWindow();
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("will-quit", () => {
+  completion?.stop();
 });
 
 app.on("activate", () => {
