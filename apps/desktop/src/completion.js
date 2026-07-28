@@ -66,6 +66,19 @@ class CompletionClient {
 
       proc.on("error", () => resolve(false));
 
+      // If texlab dies mid-session (crash, killed externally, ...), any
+      // request already written to its stdin would otherwise never get a
+      // response -- reject everything pending instead of leaving those
+      // promises (and whatever awaits them, e.g. a completion popup)
+      // hanging forever.
+      proc.on("exit", () => {
+        this.proc = null;
+        for (const { reject } of this.pending.values()) {
+          reject(new Error("texlab exited"));
+        }
+        this.pending.clear();
+      });
+
       const reader = new LspFrameReader((msg) => this.handleMessage(msg));
       proc.stdout.on("data", (chunk) => reader.push(chunk));
       this.proc = proc;
