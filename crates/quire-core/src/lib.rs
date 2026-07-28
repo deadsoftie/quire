@@ -1,3 +1,4 @@
+pub mod project;
 pub mod synctex;
 
 use tectonic::driver::{OutputFormat, ProcessingSessionBuilder};
