@@ -1,14 +1,13 @@
 import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
-import { keymap } from "@codemirror/view";
 
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-export function Editor({ onSave }: { onSave: (text: string) => void }) {
+export function Editor({ onChange }: { onChange: (text: string) => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const onSaveRef = useRef(onSave);
-  onSaveRef.current = onSave;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -17,15 +16,11 @@ export function Editor({ onSave }: { onSave: (text: string) => void }) {
       doc: INITIAL_SOURCE,
       extensions: [
         basicSetup,
-        keymap.of([
-          {
-            key: "Mod-s",
-            run: (view) => {
-              onSaveRef.current(view.state.doc.toString());
-              return true;
-            },
-          },
-        ]),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            onChangeRef.current(update.state.doc.toString());
+          }
+        }),
       ],
       parent: hostRef.current,
     });

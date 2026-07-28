@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor, INITIAL_SOURCE } from "./Editor";
 import { PdfViewer } from "./PdfViewer";
+
+const DEBOUNCE_MS = 500;
 
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
@@ -16,14 +18,17 @@ const paneStyle: React.CSSProperties = {
   overflow: "auto",
 };
 
-// M0 spike: compiling on every keystroke (0.3) was too jittery without
-// debounce/cancellation (0.4). Until that lands, compile is manual: Cmd/Ctrl-S.
 export function App() {
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "compiling">("idle");
+  const debounceRef = useRef<number | undefined>(undefined);
 
-  const compile = useCallback((source: string) => {
+  // Sending a new compile request kills whatever the sidecar is still
+  // running (see apps/desktop/src/sidecar.js), so a superseded request's
+  // promise never settles -- no risk of a stale result overwriting a
+  // newer one here.
+  const runCompile = useCallback((source: string) => {
     setStatus("compiling");
     window.quire.compile(source).then(
       (result) => {
@@ -38,18 +43,28 @@ export function App() {
     );
   }, []);
 
+  const scheduleCompile = useCallback(
+    (source: string) => {
+      if (debounceRef.current !== undefined) {
+        window.clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = window.setTimeout(() => runCompile(source), DEBOUNCE_MS);
+    },
+    [runCompile],
+  );
+
   useEffect(() => {
-    compile(INITIAL_SOURCE);
-  }, [compile]);
+    runCompile(INITIAL_SOURCE);
+  }, [runCompile]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh" }}>
       <div style={{ padding: "4px 8px", fontFamily: "sans-serif", fontSize: 12, color: "#888" }}>
-        Cmd/Ctrl-S to compile {status === "compiling" ? "· compiling…" : ""}
+        {status === "compiling" ? "compiling…" : ""}
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <div style={paneStyle}>
-          <Editor onSave={compile} />
+          <Editor onChange={scheduleCompile} />
         </div>
         <div style={{ width: 1, background: "#888" }} />
         <div style={paneStyle}>
