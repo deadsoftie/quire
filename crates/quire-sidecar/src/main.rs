@@ -1,8 +1,10 @@
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Deserialize;
+use quire_core::rpc::handlers;
+use quire_core::CompileError;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[derive(Deserialize)]
@@ -11,11 +13,6 @@ struct Request {
     method: String,
     #[serde(default)]
     params: Value,
-}
-
-#[derive(Deserialize)]
-struct CompileRequestParams {
-    source: String,
 }
 
 fn main() {
@@ -81,9 +78,21 @@ fn run_watch_mode(dir: &Path) {
     }
 }
 
+/// Method names match `CoreApi`'s method names exactly (Section 6) --
+/// `packages/client`'s transport just forwards them verbatim. No
+/// `cancelCompile` or `complete` here: see `quire_core::rpc::handlers`'
+/// module docs for why neither belongs at this layer.
 fn handle_request(req: Request) -> Value {
     match req.method.as_str() {
-        "compile" => handle_compile(req.id, req.params),
+        "openProject" => dispatch(req.id, req.params, |p| handlers::open_project(&p)),
+        "setRoot" => dispatch(req.id, req.params, |p| handlers::set_root(&p)),
+        "closeProject" => dispatch(req.id, req.params, |p| handlers::close_project(&p)),
+        "compile" => dispatch(req.id, req.params, |p| handlers::compile(&p)),
+        "outline" => dispatch(req.id, req.params, |p| Ok(handlers::outline(&p))),
+        "prefetchPackages" => dispatch(req.id, req.params, |p| Ok(handlers::prefetch_packages(&p))),
+        "bundleStatus" => dispatch(req.id, Value::Null, |()| handlers::bundle_status()),
+        "readFile" => dispatch(req.id, req.params, |p| handlers::read_file(&p)),
+        "writeFile" => dispatch(req.id, req.params, |p| handlers::write_file(&p)),
         other => json!({
             "jsonrpc": "2.0",
             "id": req.id,
@@ -92,7 +101,7 @@ fn handle_request(req: Request) -> Value {
     }
 }
 
-fn invalid_params(id: Value, e: impl std::fmt::Display) -> Value {
+fn invalid_params(id: &Value, e: impl std::fmt::Display) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -100,28 +109,37 @@ fn invalid_params(id: Value, e: impl std::fmt::Display) -> Value {
     })
 }
 
-fn handle_compile(id: Value, params: Value) -> Value {
-    let params: CompileRequestParams = match serde_json::from_value(params) {
+/// Unlike `tectonic::Error` (whose `Display` is often just a generic
+/// "the LaTeX engine failed"), `CompileError` carries the engine's actual
+/// captured log output when available -- forwarded here as `data.log` so
+/// it isn't lost on the way to the client.
+fn compile_error_response(id: &Value, e: CompileError) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": { "code": -32000, "message": e.message, "data": { "log": e.log } }
+    })
+}
+
+/// Deserializes `params` into `P`, calls `f`, and serializes whatever it
+/// returns -- shared by every method except `openProject`'s
+/// `Vec<u8>`-adjacent free functions (there are none; every handler
+/// already returns a `Result<_, CompileError>`, `outline`/
+/// `prefetchPackages` wrapped in `Ok` at the call site above since they
+/// can't actually fail).
+fn dispatch<P, R, F>(id: Value, params: Value, f: F) -> Value
+where
+    P: DeserializeOwned,
+    R: Serialize,
+    F: FnOnce(P) -> Result<R, CompileError>,
+{
+    let parsed: P = match serde_json::from_value(params) {
         Ok(p) => p,
-        Err(e) => return invalid_params(id, e),
+        Err(e) => return invalid_params(&id, e),
     };
 
-    match quire_core::compile_latex(&params.source) {
-        Ok(output) => json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {
-                "pdfBase64": STANDARD.encode(output.pdf),
-            }
-        }),
-        Err(e) => json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {
-                "code": -32000,
-                "message": e.message,
-                "data": { "log": e.log },
-            }
-        }),
+    match f(parsed) {
+        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        Err(e) => compile_error_response(&id, e),
     }
 }

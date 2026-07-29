@@ -1,6 +1,7 @@
 pub mod page_hash;
 pub mod project;
 pub mod rerun;
+pub mod rpc;
 
 use tectonic::driver::{OutputFormat, ProcessingSessionBuilder};
 use tectonic::status::NoopStatusBackend;

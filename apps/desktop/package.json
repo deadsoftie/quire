@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "electron ."
   },
+  "dependencies": {
+    "@quire/client": "workspace:*"
+  },
   "devDependencies": {
     "electron": "^33.0.0"
   }

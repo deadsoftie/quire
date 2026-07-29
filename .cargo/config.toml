@@ -2,3 +2,9 @@
 # Homebrew, so its .pc files aren't on the default pkg-config search path.
 [env]
 PKG_CONFIG_PATH = "/opt/homebrew/opt/icu4c@78/lib/pkgconfig"
+
+# Task 1.8: ts-rs's #[ts(export)] tests write bindings here at `cargo test`
+# time. Relative to this file's own directory (the workspace root), so
+# `cargo test -p quire-core` run from anywhere in the workspace lands the
+# combined contract.ts in the right place regardless of CWD.
+TS_RS_EXPORT_DIR = { value = "packages/client/src", relative = true }

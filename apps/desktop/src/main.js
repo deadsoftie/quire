@@ -1,22 +1,29 @@
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
-const { SidecarClient } = require("./sidecar");
-const { findRootTexFile, mirrorProjectToShadow } = require("./project");
-const { CompletionClient } = require("./completion");
-const { ProjectWatcher } = require("./watcher");
+const { StdioTransport } = require("@quire/client");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 
-let sidecar;
+// Matches `packages/ui/src/Editor.tsx`'s `INITIAL_SOURCE` in spirit --
+// doesn't need to be byte-identical, since the renderer's real content
+// immediately overrides this via a dirty buffer on the very first
+// compile. Only needs a real `\documentclass` so `openProject`'s root
+// detection (1.2) reports "inferred" instead of falling back to
+// "ambiguous" for a placeholder that was never going to be ambiguous to
+// a human.
+const SCRATCH_PLACEHOLDER = "\\documentclass{article}\n\\begin{document}\n\\end{document}\n";
+
+let client;
 let mainWindow;
-// { projectRoot, shadowDir, rootRelativePath, openRelativePath } | null.
-// rootRelativePath is the compile entry point (what Tectonic's primary
-// buffer represents); openRelativePath is whichever file the editor is
-// currently showing. The renderer never sees filesystem paths, only
-// relative-path labels and text.
+// { projectId, root, openRelativePath, openText } | null. `openText` is
+// the last text the renderer sent for whatever's open -- needed so an
+// externally-triggered recompile (task 1.3, now driven by `client`'s own
+// `files-changed` event) has *something* to use as that file's dirty
+// buffer; every other file in the project is read fresh from disk inside
+// `compile()` itself, so nothing else needs tracking here.
 let currentProject = null;
-let projectWatcher = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -33,118 +40,87 @@ function createWindow() {
   mainWindow.loadURL(DEV_SERVER_URL);
 }
 
-// Recompiles from whatever's currently in the root's shadow copy and
-// pushes the result to the renderer. Used for changes that originate
-// *outside* the app (task 1.3) -- unlike edits typed into our own
-// editor, there's no `compile(source)` IPC call driving this, so main
-// has to both trigger the compile and deliver the result itself.
-async function recompileFromShadow() {
-  if (!currentProject || !mainWindow) return;
-
-  const primaryText = fs.readFileSync(
-    path.join(currentProject.shadowDir, currentProject.rootRelativePath),
-    "utf8",
-  );
-
-  try {
-    const result = await sidecar.compile(primaryText, currentProject.shadowDir);
-    mainWindow.webContents.send("externalRecompile", { pdfBase64: result.pdfBase64 });
-  } catch (err) {
-    mainWindow.webContents.send("externalRecompile", { error: String(err?.message ?? err) });
-  }
+// The `CompileRequest.projectId` the real contract requires has to be a
+// real directory on disk (task 1.8's `open_project`/`compile` handlers
+// both derive everything from it via `PathBuf::from`) -- there's no
+// "no project" compile path anymore. The renderer still compiles a
+// throwaway placeholder before any folder is opened (`App.tsx`'s first
+// `useEffect`), so give it a real, disposable one-file project to be a
+// backing store for exactly that case.
+function createScratchProject() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "quire-scratch-"));
+  const file = path.join(dir, "untitled.tex");
+  fs.writeFileSync(file, SCRATCH_PLACEHOLDER);
+  return { projectId: dir, root: file, openRelativePath: "untitled.tex", openText: SCRATCH_PLACEHOLDER };
 }
 
-// Handles a debounced batch of paths that changed *outside* the app
-// (external editor, `git pull`, etc. -- task 1.3's acceptance case).
-// Changes to whichever file the editor currently has open are skipped:
-// the in-memory buffer is the source of truth for that one file while
-// it's being actively edited, and overwriting its shadow copy from disk
-// here could silently clobber unsaved work the user is mid-typing.
-function handleExternalChanges(changedAbsPaths) {
-  if (!currentProject) return;
+async function compileCurrent(source) {
+  if (source !== undefined) currentProject.openText = source;
 
-  const openAbsPath = path.resolve(currentProject.projectRoot, currentProject.openRelativePath);
-  let anyRelevant = false;
+  const openUri = path.join(currentProject.projectId, currentProject.openRelativePath);
+  const result = await client.compile({
+    projectId: currentProject.projectId,
+    dirtyBuffers: [{ uri: openUri, text: currentProject.openText }],
+    reason: source !== undefined ? "edit" : "manual",
+  });
 
-  for (const absPath of changedAbsPaths) {
-    if (path.resolve(absPath) === openAbsPath) continue;
-
-    const relativePath = path.relative(currentProject.projectRoot, absPath);
-    const shadowTarget = path.join(currentProject.shadowDir, relativePath);
-
-    try {
-      fs.mkdirSync(path.dirname(shadowTarget), { recursive: true });
-      fs.copyFileSync(absPath, shadowTarget);
-      anyRelevant = true;
-    } catch {
-      // e.g. the file was deleted/renamed out from under us -- not fatal,
-      // just skip mirroring it this round.
-    }
+  if (result.status !== "ok") {
+    const d = result.diagnostics[0];
+    throw new Error(d ? d.rawMessage || d.message : "compile failed");
   }
 
-  if (anyRelevant) {
-    recompileFromShadow();
-  }
+  const pdfBase64 = fs.readFileSync(result.pdfPath).toString("base64");
+  return { pdfBase64 };
 }
-
-let completion;
 
 app.whenReady().then(() => {
-  sidecar = new SidecarClient();
-  completion = new CompletionClient();
+  client = new StdioTransport();
+  currentProject = createScratchProject();
+
+  // Replaces task 1.3's old `ProjectWatcher` + `handleExternalChanges`
+  // wiring: `client` already starts watching internally as soon as
+  // `openProject` succeeds (see `packages/client/src/StdioTransport.ts`),
+  // and `compile()` itself now mirrors the *whole* file graph fresh from
+  // disk on every call (task 1.8), not just the file that changed -- so
+  // reacting to `files-changed` is just "recompile," no manual shadow-dir
+  // mirroring needed here anymore.
+  client.onEvent((event) => {
+    if (event.kind !== "files-changed") return;
+    if (!currentProject || event.projectId !== currentProject.projectId) return;
+
+    compileCurrent(undefined).then(
+      (result) => mainWindow?.webContents.send("externalRecompile", result),
+      (err) => mainWindow?.webContents.send("externalRecompile", { error: String(err?.message ?? err) }),
+    );
+  });
 
   ipcMain.handle("openProject", async () => {
-    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    if (result.canceled || result.filePaths.length === 0) return null;
+    const dialogResult = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    if (dialogResult.canceled || dialogResult.filePaths.length === 0) return null;
 
-    const projectRoot = result.filePaths[0];
-    const rootFile = findRootTexFile(projectRoot);
-    if (!rootFile) {
-      throw new Error("No .tex file found in the selected folder");
-    }
+    const opened = await client.openProject({ path: dialogResult.filePaths[0] });
+    const initialText = await client.readFile(opened.root);
+    const rootRelativePath = path.relative(opened.projectId, opened.root);
 
-    const shadowDir = mirrorProjectToShadow(projectRoot);
-    const rootRelativePath = path.relative(projectRoot, rootFile);
-    const initialText = fs.readFileSync(rootFile, "utf8");
-
-    currentProject = { projectRoot, shadowDir, rootRelativePath, openRelativePath: rootRelativePath };
-
-    projectWatcher?.stop();
-    projectWatcher = new ProjectWatcher(projectRoot, handleExternalChanges);
+    currentProject = {
+      projectId: opened.projectId,
+      root: opened.root,
+      openRelativePath: rootRelativePath,
+      openText: initialText,
+    };
 
     return { rootRelativePath, initialText };
   });
 
-  ipcMain.handle("compile", async (_event, source) => {
-    let result;
-
-    if (currentProject) {
-      const { shadowDir, rootRelativePath, openRelativePath } = currentProject;
-
-      const openTarget = path.join(shadowDir, openRelativePath);
-      fs.mkdirSync(path.dirname(openTarget), { recursive: true });
-      fs.writeFileSync(openTarget, source);
-
-      // Tectonic always compiles from the root's content (that's what
-      // \subfile/\input in the other files are relative to). If the
-      // root itself is what's open, `source` already *is* that content;
-      // otherwise read the root's shadow copy, which reflects whatever
-      // was last written for it.
-      const primaryText =
-        openRelativePath === rootRelativePath
-          ? source
-          : fs.readFileSync(path.join(shadowDir, rootRelativePath), "utf8");
-
-      result = await sidecar.compile(primaryText, shadowDir);
-    } else {
-      result = await sidecar.compile(source);
-    }
-
-    return { pdfBase64: result.pdfBase64 };
-  });
+  ipcMain.handle("compile", (_event, source) => compileCurrent(source));
 
   ipcMain.handle("complete", (_event, text, line, character) =>
-    completion.complete(text, line, character),
+    client.complete({
+      projectId: currentProject?.projectId ?? "",
+      uri: currentProject ? path.join(currentProject.projectId, currentProject.openRelativePath) : "",
+      position: { line, column: character },
+      text,
+    }),
   );
 
   createWindow();
@@ -155,9 +131,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
-  completion?.stop();
-  projectWatcher?.stop();
-  sidecar?.stop();
+  client?.stop();
 });
 
 app.on("activate", () => {
