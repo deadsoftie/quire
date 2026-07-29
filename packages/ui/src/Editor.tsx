@@ -77,18 +77,19 @@ const baseEditorTheme = EditorView.theme(
   { dark: true },
 );
 
-// Completions come from quire-core's own index as of 3.1 (label/\ref completion; texlab is no
-// longer called at all -- packages/client/src/texlabClient.ts is inert scaffolding pending 3.12's
-// deletion). Two trigger shapes feed the same request: typing inside a recognized command's
-// brace argument (currently just \ref/\eqref/\autoref, extended by 3.2/3.4 rather than rewritten
-// when citation/path completion land), or a bare backslash for command-name completion (nothing
-// serves that yet -- 3.3/3.5 -- so it always gets [] back today, but the trigger is here so those
-// tasks don't need to touch this file). Each trigger request spawns a fresh quire-sidecar process
-// (see sidecarProcess.ts's runOnce) -- fine once per word/argument, since CM6 filters locally
-// against the already-fetched list as more of it is typed, not on every keystroke.
+// Completions come from quire-core's own index as of 3.1/3.2 (label/\ref and citation/\cite
+// completion; texlab is no longer called at all -- packages/client/src/texlabClient.ts is inert
+// scaffolding pending 3.12's deletion). Two trigger shapes feed the same request: typing inside a
+// recognized command's brace argument (currently \ref/\eqref/\autoref/\cite, extended by 3.4
+// rather than rewritten when path completion lands), or a bare backslash for command-name
+// completion (nothing serves that yet -- 3.3/3.5 -- so it always gets [] back today, but the
+// trigger is here so those tasks don't need to touch this file). Each trigger request spawns a
+// fresh quire-sidecar process (see sidecarProcess.ts's runOnce) -- fine once per word/argument,
+// since CM6 filters locally against the already-fetched list as more of it is typed, not on every
+// keystroke.
 function makeCompletionSource(projectId: string, uri: string) {
   return async function coreCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
-    const argMatch = context.matchBefore(/\\(ref|eqref|autoref)\{[^{}\n]*/);
+    const argMatch = context.matchBefore(/\\(ref|eqref|autoref|cite)\{[^{}\n]*/);
     const wordMatch = context.matchBefore(/\\[a-zA-Z]*/);
 
     let from: number;

@@ -222,7 +222,9 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
 /// (e.g. `\input{/etc/hosts}` or `\input{../../outside}`) must be rejected here as unresolved
 /// rather than followed -- resolving it would let a project's own source smuggle an
 /// out-of-project read/write target past every downstream consumer that trusts the graph.
-fn resolve_within(base_dir: &Path, candidate: PathBuf) -> Option<PathBuf> {
+/// `pub(crate)`: `crate::index` reuses this for `\bibliography`/`\addbibresource` resolution --
+/// a malicious `\addbibresource{/etc/passwd}` shouldn't let the completion index read it either.
+pub(crate) fn resolve_within(base_dir: &Path, candidate: PathBuf) -> Option<PathBuf> {
     if !candidate.is_file() {
         return None;
     }

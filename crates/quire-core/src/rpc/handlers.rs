@@ -215,11 +215,15 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     index.outline_for(Path::new(&req.uri))
 }
 
-/// Real per task 3.1, but only for `\ref`/`\eqref`/`\autoref` label completion -- every other
-/// trigger context (bare command names, `\cite{`, `\input{`, math symbols, snippets) returns
-/// `[]` until 3.2-3.8 land their own extraction sources onto the same [`crate::index::ProjectIndex`].
+/// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion) and 3.2 (`\cite{` citation
+/// completion) -- every other trigger context (bare command names, `\input{`, math symbols,
+/// snippets) returns `[]` until 3.3-3.8 land their own extraction sources onto the same
+/// [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the whole
+/// project index for a keystroke inside an argument neither trigger recognizes.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
-    if !crate::index::is_ref_completion_context(&req.text, &req.position) {
+    let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
+    let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);
+    if !is_ref && !is_cite {
         return Vec::new();
     }
 
@@ -230,6 +234,19 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let graph = project::build_file_graph(&root);
     let index = crate::index::ProjectIndex::build(&graph);
 
+    if is_ref {
+        label_completions(&index)
+    } else {
+        citation_completions(&index)
+    }
+}
+
+// Section 9.4: project-local symbols outrank everything else; every label/citation here is
+// already project-local, so a flat priority is correct until 3.5 introduces package-level items
+// that need to rank below this tier.
+const PROJECT_LOCAL_PRIORITY: i32 = 0;
+
+fn label_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
         .labels()
         .map(|l| CompletionItem {
@@ -239,10 +256,24 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
             detail: None,
             documentation: None,
             symbol_preview: None,
-            // Section 9.4: project-local symbols outrank everything else; every label here is
-            // already project-local, so a flat priority is correct until 3.5 introduces
-            // package-level items that need to rank below this tier.
-            sort_priority: 0,
+            sort_priority: PROJECT_LOCAL_PRIORITY,
+        })
+        .collect();
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+    items
+}
+
+fn citation_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
+    let mut items: Vec<CompletionItem> = index
+        .citations()
+        .map(|c| CompletionItem {
+            label: c.key.clone(),
+            kind: CompletionKind::Citation,
+            insert: c.key.clone(),
+            detail: c.detail.clone(),
+            documentation: None,
+            symbol_preview: None,
+            sort_priority: PROJECT_LOCAL_PRIORITY,
         })
         .collect();
     items.sort_by(|a, b| a.label.cmp(&b.label));
