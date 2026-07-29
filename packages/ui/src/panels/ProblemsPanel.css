@@ -1,0 +1,37 @@
+.problems-panel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.problems-panel__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  border-left: 2px solid transparent;
+}
+
+.problems-panel__item--error {
+  border-left-color: var(--proof-red);
+}
+
+.problems-panel__item--warning {
+  border-left-color: var(--proof-amber);
+}
+
+.problems-panel__item--info {
+  border-left-color: var(--type-lo);
+}
+
+.problems-panel__message {
+  color: var(--type-hi);
+  white-space: pre-wrap;
+}
+
+.problems-panel__hint {
+  color: var(--type-mid);
+}
