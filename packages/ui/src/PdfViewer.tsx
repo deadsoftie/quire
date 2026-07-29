@@ -53,9 +53,11 @@ interface PdfViewerProps {
   data: Uint8Array | null;
   /** Pages changed since the immediately preceding compile; a first-ever compile already reports every page (quire-core's own fallback), so no separate "first load" case is needed here. */
   changedPages: number[];
+  /** Independent of app theme (Section 7) -- inverted figures often look wrong, so this is never derived from it. */
+  inverted: boolean;
 }
 
-export function PdfViewer({ data, changedPages }: PdfViewerProps) {
+export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [pageSizes, setPageSizes] = useState<Map<number, PageSize>>(new Map());
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set());
@@ -214,7 +216,7 @@ export function PdfViewer({ data, changedPages }: PdfViewerProps) {
             key={pageNumber}
             data-page-number={pageNumber}
             ref={(el) => setWrapperRef(pageNumber, el)}
-            className="pdf-viewer__page"
+            className={inverted ? "pdf-viewer__page pdf-viewer__page--inverted" : "pdf-viewer__page"}
             style={size ? { width: size.width, height: size.height } : undefined}
           >
             {isVisible && size && (

@@ -71,6 +71,9 @@ function AppShell() {
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [proseMode, setProseMode] = useState(false);
+  // Two independent settings (Section 7): switching one must never move the other.
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [pdfInverted, setPdfInverted] = useState(false);
 
   const projectRef = useRef<Project | null>(null);
   const currentSourceRef = useRef(INITIAL_SOURCE);
@@ -180,6 +183,11 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // index.html hardcodes data-theme="dark" as the initial paint's best guess; this keeps it in sync with real state from here on.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
   // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
@@ -232,6 +240,18 @@ function AppShell() {
     id: "editor.toggle-prose-mode",
     title: "Toggle Serif Prose Mode",
     run: () => setProseMode((v) => !v),
+  });
+
+  // Deliberately two separate commands, not one -- see the `theme`/`pdfInverted` state comment.
+  useCommand({
+    id: "app.toggle-theme",
+    title: "Toggle Theme",
+    run: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+  });
+  useCommand({
+    id: "pdf.toggle-inversion",
+    title: "Toggle PDF Inversion",
+    run: () => setPdfInverted((v) => !v),
   });
 
   // A pinned panel is already permanently visible; nothing for the shortcut to do.
@@ -366,7 +386,7 @@ function AppShell() {
             {error ? (
               <pre className="app__error">{error}</pre>
             ) : (
-              <PdfViewer data={pdfData} changedPages={changedPages} />
+              <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
             )}
           </div>
         </div>

@@ -16,3 +16,8 @@
   width: 100%;
   height: 100%;
 }
+
+/* hue-rotate keeps colored figures from reading as jarringly wrong-hued as a plain invert(1) alone would. */
+.pdf-viewer__page--inverted {
+  filter: invert(1) hue-rotate(180deg);
+}
