@@ -37,6 +37,8 @@ function createScratchProject() {
 
 app.whenReady().then(() => {
   client = new StdioTransport();
+  // A handful of fields (see packages/ui/src/session.ts) -- not worth a database.
+  const sessionFile = path.join(app.getPath("userData"), "session.json");
 
   // Forwarded unchanged -- App.tsx decides what each event means.
   client.onEvent((event) => {
@@ -66,6 +68,18 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("desktop:readPdfFile", (_event, pdfPath) => new Uint8Array(fs.readFileSync(pdfPath)));
+
+  ipcMain.handle("desktop:loadSession", () => {
+    try {
+      return JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+    } catch {
+      return null; // no session file yet, or it's corrupt -- either way, nothing to restore
+    }
+  });
+
+  ipcMain.handle("desktop:saveSession", (_event, session) => {
+    fs.writeFileSync(sessionFile, JSON.stringify(session));
+  });
 
   createWindow();
 });

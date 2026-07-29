@@ -28,4 +28,6 @@ contextBridge.exposeInMainWorld("quireDesktop", {
   createScratchProject: invoke("desktop:createScratchProject"),
   chooseProjectFolder: invoke("desktop:chooseProjectFolder"),
   readPdfFile: invoke("desktop:readPdfFile"),
+  loadSession: invoke("desktop:loadSession"),
+  saveSession: invoke("desktop:saveSession"),
 });

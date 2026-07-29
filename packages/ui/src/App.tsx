@@ -12,8 +12,11 @@ import type { PanelKind } from "./panels/types";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
+import type { SessionState } from "./session";
 import { TopBar } from "./TopBar";
 import "./App.css";
+
+const SAVE_SESSION_DEBOUNCE_MS = 500;
 
 const DEBOUNCE_MS = 500;
 
@@ -38,11 +41,25 @@ const PANEL_TITLES: Record<PanelKind, string> = {
   problems: "Problems",
 };
 
-// File tree pinned by default; not persisted across launches yet (that's session-restore's job).
+// File tree pinned by default -- the fallback when there's no saved session to restore it from.
 const DEFAULT_PINNED: Record<PanelKind, boolean> = {
   "file-tree": true,
   outline: false,
   problems: false,
+};
+
+const DEFAULT_SESSION: SessionState = {
+  projectPath: null,
+  openUri: null,
+  splitFraction: 0.5,
+  pinned: DEFAULT_PINNED,
+  focusMode: false,
+  typewriterMode: false,
+  proseMode: false,
+  theme: "dark",
+  pdfInverted: false,
+  cursor: null,
+  scrollTop: null,
 };
 
 export function App() {
@@ -74,12 +91,43 @@ function AppShell() {
   // Two independent settings (Section 7): switching one must never move the other.
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [pdfInverted, setPdfInverted] = useState(false);
+  // Session-restore only -- see restoredUriRef below for why these apply to at most one Editor mount.
+  const [restoreCursor, setRestoreCursor] = useState<number | null>(null);
+  const [restoreScrollTop, setRestoreScrollTop] = useState<number | null>(null);
 
   const projectRef = useRef<Project | null>(null);
   const currentSourceRef = useRef(INITIAL_SOURCE);
   const debounceRef = useRef<number | undefined>(undefined);
   const errorTimeoutRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Which uri restoreCursor/restoreScrollTop belong to -- switching files sets
+  // `project.uri` to something else, so those props naturally stop applying
+  // without needing a separate "have we consumed the restore yet" flag.
+  const restoredUriRef = useRef<string | null>(null);
+  const sessionRef = useRef<SessionState>(DEFAULT_SESSION);
+  const saveSessionTimeoutRef = useRef<number | undefined>(undefined);
+  // Guards the "watch state, save" effect below from firing on the
+  // initial render's default state, before the restore-or-scratch effect
+  // has actually finished -- otherwise a slow restore could lose the
+  // race and get overwritten on disk by a premature "nothing open yet"
+  // snapshot.
+  const initializedRef = useRef(false);
+
+  const scheduleSaveSession = useCallback(() => {
+    if (saveSessionTimeoutRef.current !== undefined) window.clearTimeout(saveSessionTimeoutRef.current);
+    saveSessionTimeoutRef.current = window.setTimeout(() => {
+      window.quireDesktop.saveSession(sessionRef.current);
+    }, SAVE_SESSION_DEBOUNCE_MS);
+  }, []);
+
+  // Cursor/scroll come from Editor on every move, not the state watched below -- far too frequent to react to with a dependency array.
+  const handleCursorActivity = useCallback(
+    (cursor: number, scrollTop: number) => {
+      sessionRef.current = { ...sessionRef.current, cursor, scrollTop };
+      scheduleSaveSession();
+    },
+    [scheduleSaveSession],
+  );
 
   // Single-flight: a superseded compile's promise never settles, so a stale result can't overwrite a newer one.
   const runCompile = useCallback(
@@ -165,9 +213,52 @@ function AppShell() {
     [runCompile],
   );
 
-  // Disposable one-file project backing the placeholder doc; runs once, openProjectFlow() replaces it later.
+  // Restores the previous session if one exists and its project still opens;
+  // otherwise (first launch, or the project has since moved/been deleted)
+  // falls back to the same disposable scratch project as before session
+  // restore existed. Layout/panel/mode/theme settings restore either way --
+  // a project that's gone doesn't mean those should reset to defaults too.
   useEffect(() => {
     (async () => {
+      const session = await window.quireDesktop.loadSession();
+
+      if (session) {
+        setSplitFraction(session.splitFraction);
+        setPinned(session.pinned);
+        setFocusMode(session.focusMode);
+        setTypewriterMode(session.typewriterMode);
+        setProseMode(session.proseMode);
+        setTheme(session.theme);
+        setPdfInverted(session.pdfInverted);
+      }
+
+      if (session?.projectPath) {
+        try {
+          const opened = await window.quire.openProject({ path: session.projectPath });
+          const uri = session.openUri ?? opened.root;
+          const text = await window.quire.readFile(uri);
+          const next: Project = {
+            projectId: opened.projectId,
+            uri,
+            label: basename(opened.projectId),
+            engineAvailable: opened.engineAvailable,
+            files: opened.files,
+          };
+          projectRef.current = next;
+          setProject(next);
+          currentSourceRef.current = text;
+          setInitialDoc(text);
+          restoredUriRef.current = uri;
+          setRestoreCursor(session.cursor);
+          setRestoreScrollTop(session.scrollTop);
+          runCompile(next.projectId, uri, text, "open");
+          initializedRef.current = true;
+          return;
+        } catch {
+          // Path moved/deleted/otherwise unreadable -- fall through to the scratch project below, same as a fresh launch.
+        }
+      }
+
       const scratch = await window.quireDesktop.createScratchProject();
       const next: Project = {
         projectId: scratch.projectId,
@@ -179,6 +270,7 @@ function AppShell() {
       projectRef.current = next;
       setProject(next);
       runCompile(next.projectId, next.uri, INITIAL_SOURCE, "open");
+      initializedRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -187,6 +279,24 @@ function AppShell() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  // Everything except cursor/scroll (handleCursorActivity above covers those) -- infrequent enough to just watch directly.
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    sessionRef.current = {
+      ...sessionRef.current,
+      projectPath: project && project.engineAvailable !== null ? project.projectId : null,
+      openUri: project && project.engineAvailable !== null ? project.uri : null,
+      splitFraction,
+      pinned,
+      focusMode,
+      typewriterMode,
+      proseMode,
+      theme,
+      pdfInverted,
+    };
+    scheduleSaveSession();
+  }, [project, splitFraction, pinned, focusMode, typewriterMode, proseMode, theme, pdfInverted, scheduleSaveSession]);
 
   // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {
@@ -363,7 +473,10 @@ function AppShell() {
                 focusMode={focusMode}
                 typewriterMode={typewriterMode}
                 proseMode={proseMode}
+                restoreCursor={project.uri === restoredUriRef.current ? restoreCursor : null}
+                restoreScrollTop={project.uri === restoredUriRef.current ? restoreScrollTop : null}
                 onChange={scheduleCompile}
+                onCursorActivity={handleCursorActivity}
               />
             )}
             {overlayPanel && !pinned[overlayPanel] && (
