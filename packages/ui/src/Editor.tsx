@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { autocompletion } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { latex } from "./latex/language";
 
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
@@ -44,6 +45,7 @@ export function Editor({ initialDoc, onChange }: EditorProps) {
       doc: initialDoc,
       extensions: [
         basicSetup,
+        latex(),
         autocompletion({ override: [texlabCompletionSource] }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
