@@ -77,11 +77,28 @@ const baseEditorTheme = EditorView.theme(
   { dark: true },
 );
 
-// M0/M1 scaffolding: completions come from texlab (GPL-3.0) until quire-core grows its own index (M3).
+// Completions come from quire-core's own index as of 3.1 (label/\ref completion; texlab is no
+// longer called at all -- packages/client/src/texlabClient.ts is inert scaffolding pending 3.12's
+// deletion). Two trigger shapes feed the same request: typing inside a recognized command's
+// brace argument (currently just \ref/\eqref/\autoref, extended by 3.2/3.4 rather than rewritten
+// when citation/path completion land), or a bare backslash for command-name completion (nothing
+// serves that yet -- 3.3/3.5 -- so it always gets [] back today, but the trigger is here so those
+// tasks don't need to touch this file). Each trigger request spawns a fresh quire-sidecar process
+// (see sidecarProcess.ts's runOnce) -- fine once per word/argument, since CM6 filters locally
+// against the already-fetched list as more of it is typed, not on every keystroke.
 function makeCompletionSource(projectId: string, uri: string) {
-  return async function texlabCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
-    const word = context.matchBefore(/\\[a-zA-Z]*/);
-    if (!word || (word.from === word.to && !context.explicit)) return null;
+  return async function coreCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
+    const argMatch = context.matchBefore(/\\(ref|eqref|autoref)\{[^{}\n]*/);
+    const wordMatch = context.matchBefore(/\\[a-zA-Z]*/);
+
+    let from: number;
+    if (argMatch) {
+      from = argMatch.from + argMatch.text.indexOf("{") + 1;
+    } else if (wordMatch && (wordMatch.from !== wordMatch.to || context.explicit)) {
+      from = wordMatch.from + 1; // skip the leading backslash itself
+    } else {
+      return null;
+    }
 
     const line = context.state.doc.lineAt(context.pos);
     const items = await window.quire.complete({
@@ -90,10 +107,10 @@ function makeCompletionSource(projectId: string, uri: string) {
       position: { line: line.number - 1, column: context.pos - line.from },
       text: context.state.doc.toString(),
     });
-    if (context.aborted) return null;
+    if (context.aborted || items.length === 0) return null;
 
     return {
-      from: word.from + 1, // skip the leading backslash itself
+      from,
       options: items.map((item) => ({ label: item.label, detail: item.detail ?? undefined, apply: item.insert })),
     };
   };

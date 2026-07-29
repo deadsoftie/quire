@@ -1,3 +1,4 @@
+pub mod index;
 pub mod page_hash;
 pub mod project;
 pub mod rerun;

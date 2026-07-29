@@ -17,7 +17,7 @@ import { ProjectWatcher } from "./projectWatcher";
 import { runOnce, type SidecarCall } from "./sidecarProcess";
 import { TexlabClient } from "./texlabClient";
 
-/** Desktop's {@link CoreApi}: `quire-sidecar` over stdio, plus `cancelCompile`/`complete` which are transport-layer concerns handled entirely here. */
+/** Desktop's {@link CoreApi}: `quire-sidecar` over stdio, plus `cancelCompile`, which has no `quire-core` handler at all and is a transport-layer concern handled entirely here. */
 export class StdioTransport implements CoreApi {
   private texlab = new TexlabClient();
   private watcher: ProjectWatcher | null = null;
@@ -86,8 +86,10 @@ export class StdioTransport implements CoreApi {
     // Already finished (or never existed) -- nothing to cancel, not an error.
   }
 
+  // Real quire-core completion as of 3.1 (label/\ref completion, from its own index); the wire
+  // shape has been frozen since M1, so this is a backend swap behind an unchanged request object.
   async complete(r: CompletionRequest): Promise<CompletionItem[]> {
-    return this.texlab.complete(r.text, r.position.line, r.position.column);
+    return (await runOnce("complete", r).promise) as CompletionItem[];
   }
 
   async outline(projectId: ProjectId, uri: DocUri): Promise<OutlineNode[]> {

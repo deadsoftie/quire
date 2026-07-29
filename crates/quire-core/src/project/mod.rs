@@ -131,7 +131,8 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
 }
 
 /// Strips unescaped `%`-to-end-of-line comments so a commented-out `\input` isn't followed; doesn't special-case verbatim blocks.
-fn strip_comments(content: &str) -> String {
+/// `pub(crate)`: `crate::index` reuses this so a commented-out `\label`/section heading isn't indexed either, same reasoning.
+pub(crate) fn strip_comments(content: &str) -> String {
     let mut out = String::with_capacity(content.len());
     for line in content.lines() {
         let mut chars = line.char_indices();

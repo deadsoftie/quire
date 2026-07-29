@@ -6,11 +6,11 @@ import "./FileTreePanel.css";
 interface OutlinePanelProps {
   projectId: string;
   uri: string;
-  /** Bumped after every successful compile to refetch; meaningless until M3's completion index exists. */
+  /** Bumped after every successful compile to refetch. Real as of 3.1, but reads from disk (`OutlineRequest` carries no dirty-buffer text), so it only reflects the last saved content -- a compile against unsaved edits doesn't move this until the file is actually written. */
   refreshToken: number;
 }
 
-// outline() is a frozen-shape stub, always [] until M3; renders the real shape now regardless.
+// Real per 3.1: section structure + \label sites from quire-core's own index.
 export function OutlinePanel({ projectId, uri, refreshToken }: OutlinePanelProps) {
   const [nodes, setNodes] = useState<OutlineNode[]>([]);
 

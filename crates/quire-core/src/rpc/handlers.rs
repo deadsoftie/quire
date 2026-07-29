@@ -201,9 +201,52 @@ fn bundle_digest_hex() -> Result<String, CompileError> {
     Ok(bundle.get_digest()?.to_string())
 }
 
-/// M3 scaffolding; always empty until the completion index (Section 9.4) exists.
-pub fn outline(_req: &OutlineRequest) -> Vec<OutlineNode> {
-    Vec::new()
+/// Real per task 3.1: section structure (`\part`..`\subsubsection`) plus `\label` sites, both
+/// built from the same pass over `req.uri`'s content ([`crate::index`]). Reads from disk like
+/// every handler in this file -- `OutlineRequest` carries no dirty-buffer text, so this reflects
+/// the last saved content, not unsaved editor state.
+pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
+    let project_dir = Path::new(&req.project_id);
+    let Some(root) = project::detect_root(project_dir).root else {
+        return Vec::new();
+    };
+    let graph = project::build_file_graph(&root);
+    let index = crate::index::ProjectIndex::build(&graph);
+    index.outline_for(Path::new(&req.uri))
+}
+
+/// Real per task 3.1, but only for `\ref`/`\eqref`/`\autoref` label completion -- every other
+/// trigger context (bare command names, `\cite{`, `\input{`, math symbols, snippets) returns
+/// `[]` until 3.2-3.8 land their own extraction sources onto the same [`crate::index::ProjectIndex`].
+pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
+    if !crate::index::is_ref_completion_context(&req.text, &req.position) {
+        return Vec::new();
+    }
+
+    let project_dir = Path::new(&req.project_id);
+    let Some(root) = project::detect_root(project_dir).root else {
+        return Vec::new();
+    };
+    let graph = project::build_file_graph(&root);
+    let index = crate::index::ProjectIndex::build(&graph);
+
+    let mut items: Vec<CompletionItem> = index
+        .labels()
+        .map(|l| CompletionItem {
+            label: l.name.clone(),
+            kind: CompletionKind::Label,
+            insert: l.name.clone(),
+            detail: None,
+            documentation: None,
+            symbol_preview: None,
+            // Section 9.4: project-local symbols outrank everything else; every label here is
+            // already project-local, so a flat priority is correct until 3.5 introduces
+            // package-level items that need to rank below this tier.
+            sort_priority: 0,
+        })
+        .collect();
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+    items
 }
 
 /// M4 scaffolding; always reports nothing fetched, nothing failed -- honest about doing no work.

@@ -76,13 +76,15 @@ fn run_watch_mode(dir: &Path) {
     }
 }
 
-/// Method names match CoreApi exactly; no cancelCompile/complete here (see quire_core::rpc::handlers).
+/// Method names match CoreApi exactly; no cancelCompile here -- that one has no `quire-core`
+/// handler at all, it's a `packages/client`-only transport concern (see quire_core::rpc::handlers).
 fn handle_request(req: Request) -> Value {
     match req.method.as_str() {
         "openProject" => dispatch(req.id, req.params, |p| handlers::open_project(&p)),
         "setRoot" => dispatch(req.id, req.params, |p| handlers::set_root(&p)),
         "closeProject" => dispatch(req.id, req.params, |p| handlers::close_project(&p)),
         "compile" => dispatch(req.id, req.params, |p| handlers::compile(&p)),
+        "complete" => dispatch(req.id, req.params, |p| Ok(handlers::complete(&p))),
         "outline" => dispatch(req.id, req.params, |p| Ok(handlers::outline(&p))),
         "prefetchPackages" => dispatch(req.id, req.params, |p| Ok(handlers::prefetch_packages(&p))),
         "bundleStatus" => dispatch(req.id, Value::Null, |()| handlers::bundle_status()),
