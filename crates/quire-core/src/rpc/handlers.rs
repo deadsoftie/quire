@@ -160,13 +160,28 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     Ok(response)
 }
 
+/// `project::resolve_within` already confines every reference the graph walk follows to the
+/// project directory, so `real_path` should always be inside `project_dir` by the time it gets
+/// here. This is the last line of defense, not the primary control: `strip_prefix` failing (an
+/// absolute `real_path` outside `project_dir`) or succeeding but leaving `..` components in
+/// `relative` (both would otherwise let `shadow_dir.join(relative)` land outside `shadow_dir`)
+/// are treated as a bug to refuse, never silently followed to wherever they'd resolve.
 fn write_into_shadow(
     project_dir: &Path,
     shadow_dir: &Path,
     real_path: &Path,
     content: &[u8],
 ) -> Result<(), CompileError> {
-    let relative = real_path.strip_prefix(project_dir).unwrap_or(real_path);
+    let relative = real_path.strip_prefix(project_dir).map_err(|_| CompileError {
+        message: format!("refusing to mirror {}: outside the project directory", real_path.display()),
+        log: None,
+    })?;
+    if relative.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err(CompileError {
+            message: format!("refusing to mirror {}: escapes the project directory", real_path.display()),
+            log: None,
+        });
+    }
     let target = shadow_dir.join(relative);
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;

@@ -87,9 +87,27 @@ pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
 }
 
 fn find_all_tex_files(dir: &Path) -> Vec<PathBuf> {
+    let mut visited = HashSet::new();
     let mut results = Vec::new();
+    find_all_tex_files_into(dir, &mut visited, &mut results);
+    results
+}
+
+/// `Path::is_dir()` follows symlinks, so a directory containing a symlink back to itself or an
+/// ancestor would otherwise recurse forever (stack overflow -- a crash, not just a slow walk).
+/// Canonicalizing each directory before descending and tracking `visited` by that real path (not
+/// the walked path string, which keeps changing shape through a symlink) closes the cycle the
+/// same way `build_file_graph`'s own `visited` set already does for `\input` cycles.
+fn find_all_tex_files_into(dir: &Path, visited: &mut HashSet<PathBuf>, results: &mut Vec<PathBuf>) {
+    let Ok(real_dir) = dir.canonicalize() else {
+        return;
+    };
+    if !visited.insert(real_dir) {
+        return;
+    }
+
     let Ok(entries) = fs::read_dir(dir) else {
-        return results;
+        return;
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -98,12 +116,11 @@ fn find_all_tex_files(dir: &Path) -> Vec<PathBuf> {
         }
         let path = entry.path();
         if path.is_dir() {
-            results.extend(find_all_tex_files(&path));
+            find_all_tex_files_into(&path, visited, results);
         } else if path.extension().is_some_and(|e| e == "tex") {
             results.push(path);
         }
     }
-    results
 }
 
 /// `% !TEX root = <path>` markers (TeXShop/TeXWorks convention); disagreeing markers fall through to inference rather than guessing.
@@ -199,6 +216,22 @@ mod tests {
 
     fn fixture(name: &str) -> PathBuf {
         Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/root_detection")).join(name)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn self_referential_symlink_does_not_recurse_forever() {
+        let dir = std::env::temp_dir().join(format!("quire-root-symlink-cycle-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("main.tex"), "\\documentclass{article}\n\\begin{document}x\\end{document}").unwrap();
+        std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
+
+        // Must terminate at all -- a symlink cycle used to stack-overflow this walk.
+        let files = find_all_tex_files(&dir);
+        assert_eq!(files, vec![dir.join("main.tex")]);
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

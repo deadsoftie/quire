@@ -168,13 +168,16 @@ export function Editor({
     });
     viewRef.current = view;
 
+    let restoreRafId: number | null = null;
     if (restoreScrollTop) {
-      requestAnimationFrame(() => {
+      restoreRafId = requestAnimationFrame(() => {
+        restoreRafId = null;
         view.scrollDOM.scrollTop = restoreScrollTop;
       });
     }
 
     return () => {
+      if (restoreRafId !== null) cancelAnimationFrame(restoreRafId);
       view.destroy();
       viewRef.current = null;
     };

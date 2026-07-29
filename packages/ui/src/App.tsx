@@ -12,13 +12,22 @@ import type { PanelKind } from "./panels/types";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
-import type { SessionState } from "./session";
+import { normalizeSession, type SessionState } from "./session";
 import { TopBar } from "./TopBar";
 import "./App.css";
 
 const SAVE_SESSION_DEBOUNCE_MS = 500;
 
 const DEBOUNCE_MS = 500;
+
+// Mirrors @quire/client's sidecarProcess.ts:SIDECAR_CALL_CANCELLED. Duplicated as a literal
+// rather than imported -- this crosses both the Electron IPC boundary (ipcMain.handle serializes
+// thrown errors down to a plain Error, so only .message survives) and, since @quire/client ships
+// CommonJS for apps/desktop's plain `require()`, Vite's production build (which cannot resolve a
+// named value export from that CJS package through the symlinked workspace dependency). Same
+// tradeoff apps/desktop/src/{main,preload}.js already make for IPC channel names like
+// "core:compile", duplicated as literals on both sides rather than shared across that boundary.
+const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 interface Project {
   projectId: string;
@@ -89,7 +98,11 @@ function AppShell() {
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [proseMode, setProseMode] = useState(false);
   // Two independent settings (Section 7): switching one must never move the other.
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // Seeded from the same localStorage mirror index.html's inline script reads synchronously,
+  // so this matches first paint instead of always starting "dark" and flashing on session load.
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
+  );
   const [pdfInverted, setPdfInverted] = useState(false);
   // Session-restore only -- see restoredUriRef below for why these apply to at most one Editor mount.
   const [restoreCursor, setRestoreCursor] = useState<number | null>(null);
@@ -129,7 +142,9 @@ function AppShell() {
     [scheduleSaveSession],
   );
 
-  // Single-flight: a superseded compile's promise never settles, so a stale result can't overwrite a newer one.
+  // Single-flight: a superseded compile is killed and its promise now rejects with
+  // SIDECAR_CALL_CANCELLED (rather than hanging forever) -- swallow that one specifically so a
+  // stale/cancelled compile neither overwrites a newer result nor flashes a spurious error.
   const runCompile = useCallback(
     async (projectId: string, uri: string, source: string, reason: CompileReason) => {
       try {
@@ -150,7 +165,9 @@ function AppShell() {
           setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
         }
       } catch (err) {
-        setError(String((err as Error)?.message ?? err));
+        const message = String((err as Error)?.message ?? err);
+        if (message.includes(SIDECAR_CALL_CANCELLED)) return;
+        setError(message);
       }
     },
     [],
@@ -220,7 +237,8 @@ function AppShell() {
   // a project that's gone doesn't mean those should reset to defaults too.
   useEffect(() => {
     (async () => {
-      const session = await window.quireDesktop.loadSession();
+      const loaded = await window.quireDesktop.loadSession();
+      const session = loaded ? normalizeSession(loaded, DEFAULT_SESSION) : null;
 
       if (session) {
         setSplitFraction(session.splitFraction);
@@ -275,9 +293,11 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // index.html hardcodes data-theme="dark" as the initial paint's best guess; this keeps it in sync with real state from here on.
+  // index.html's inline script reads this same key synchronously before first paint, so a saved
+  // light theme doesn't flash dark while the real (async) session load is still in flight.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    localStorage.setItem("quire-theme", theme);
   }, [theme]);
 
   // Everything except cursor/scroll (handleCursorActivity above covers those) -- infrequent enough to just watch directly.

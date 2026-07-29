@@ -25,6 +25,9 @@ function createWindow() {
   });
 
   mainWindow.loadURL(DEV_SERVER_URL);
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
 // Never calls client.openProject -- compile() works fine against a projectId that was never "opened," and a known-shape single-file dir doesn't need root detection.
@@ -40,9 +43,14 @@ app.whenReady().then(() => {
   // A handful of fields (see packages/ui/src/session.ts) -- not worth a database.
   const sessionFile = path.join(app.getPath("userData"), "session.json");
 
-  // Forwarded unchanged -- App.tsx decides what each event means.
+  // Forwarded unchanged -- App.tsx decides what each event means. On macOS the app (and any
+  // in-flight compile or ProjectWatcher) outlives the window past window-all-closed, so a
+  // background event can still fire after the window's gone -- isDestroyed() guards that,
+  // since mainWindow itself is only cleared on 'closed', not synchronously with destruction.
   client.onEvent((event) => {
-    mainWindow?.webContents.send("core-event", event);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("core-event", event);
+    }
   });
 
   // One handler per CoreApi method, forwarding to the real transport with no reshaping.

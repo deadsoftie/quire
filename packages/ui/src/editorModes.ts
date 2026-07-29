@@ -16,16 +16,31 @@ export function proseModeExtension(): Extension {
   });
 }
 
+// A ViewPlugin rather than a plain updateListener specifically for the destroy() hook: switching
+// files/projects destroys this view, and an in-flight requestAnimationFrame from a keystroke
+// just before that would otherwise dispatch to an already-destroyed EditorView.
 export function typewriterScrollingExtension(): Extension {
-  return EditorView.updateListener.of((update) => {
-    if (!update.docChanged && !update.selectionSet) return;
-    const view = update.view;
-    const head = update.state.selection.main.head;
-    // Deferred a frame so this dispatch isn't re-entrant with the update it's reacting to.
-    requestAnimationFrame(() => {
-      view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) });
-    });
-  });
+  return ViewPlugin.fromClass(
+    class {
+      private rafId: number | null = null;
+
+      update(update: ViewUpdate) {
+        if (!update.docChanged && !update.selectionSet) return;
+        const view = update.view;
+        const head = update.state.selection.main.head;
+        if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+        // Deferred a frame so this dispatch isn't re-entrant with the update it's reacting to.
+        this.rafId = requestAnimationFrame(() => {
+          this.rafId = null;
+          view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) });
+        });
+      }
+
+      destroy() {
+        if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+      }
+    },
+  );
 }
 
 // A paragraph is a run of lines with no blank line in between.

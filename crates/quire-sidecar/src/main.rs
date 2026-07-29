@@ -44,8 +44,13 @@ fn main() {
             }),
         };
 
-        writeln!(stdout, "{}", response).expect("write to stdout");
-        stdout.flush().expect("flush stdout");
+        // Matches run_watch_mode's handling below: the other end (the TS client, one process
+        // per call) can close its end of the pipe before this write lands -- e.g. the app is
+        // force-quit mid-compile, or the client already gave up and killed us. That's a normal
+        // shutdown race, not a condition worth a panic over.
+        if writeln!(stdout, "{response}").is_err() || stdout.flush().is_err() {
+            break;
+        }
     }
 }
 

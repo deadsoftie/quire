@@ -41,6 +41,13 @@ export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
+  // The OS can interrupt a drag with pointercancel instead of pointerup (trackpad/touch gesture
+  // recognition, focus steal) -- without this, draggingRef stays stuck "on" and the split keeps
+  // changing on ordinary subsequent mouse movement until the user clicks the seam once more.
+  function handlePointerCancel() {
+    draggingRef.current = false;
+  }
+
   return (
     <div
       className="seam hit-target"
@@ -52,6 +59,7 @@ export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onDoubleClick={onReset}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") onReset();

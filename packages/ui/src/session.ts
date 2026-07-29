@@ -1,5 +1,7 @@
 import type { PanelKind } from "./panels/types";
 
+const PANEL_KINDS: PanelKind[] = ["file-tree", "outline", "problems"];
+
 // Everything that "quit and relaunch returns to identical state" covers.
 // Deliberately just the fields that exist today (2.3's split, 2.5's
 // pinning, 2.8's editor modes, 2.9's theme/inversion), plus the cursor
@@ -22,4 +24,40 @@ export interface SessionState {
   cursor: number | null;
   /** The editor's own scroll position, in pixels. Deliberately not the PDF preview's -- that regenerates from a fresh compile every launch anyway. */
   scrollTop: number | null;
+}
+
+/**
+ * `session.json` on disk may predate a field this build expects (the shape has grown across
+ * 2.3/2.5/2.8/2.9) or may not even be an object -- `loadSession`'s only guard is against invalid
+ * JSON, not an outdated or malformed-but-parseable shape. Validate field-by-field against
+ * `fallback` rather than trusting the loaded value wholesale, so a stale or corrupt session file
+ * degrades to defaults instead of crashing the app on launch (e.g. `pinned` missing/non-object
+ * used to reach `Object.keys(pinned)` as `undefined`).
+ */
+export function normalizeSession(raw: unknown, fallback: SessionState): SessionState {
+  if (typeof raw !== "object" || raw === null) return fallback;
+  const r = raw as Record<string, unknown>;
+
+  const pinnedRaw = r.pinned;
+  const pinned: Record<PanelKind, boolean> = { ...fallback.pinned };
+  if (typeof pinnedRaw === "object" && pinnedRaw !== null) {
+    for (const kind of PANEL_KINDS) {
+      const value = (pinnedRaw as Record<string, unknown>)[kind];
+      if (typeof value === "boolean") pinned[kind] = value;
+    }
+  }
+
+  return {
+    projectPath: typeof r.projectPath === "string" ? r.projectPath : fallback.projectPath,
+    openUri: typeof r.openUri === "string" ? r.openUri : fallback.openUri,
+    splitFraction: typeof r.splitFraction === "number" ? r.splitFraction : fallback.splitFraction,
+    pinned,
+    focusMode: typeof r.focusMode === "boolean" ? r.focusMode : fallback.focusMode,
+    typewriterMode: typeof r.typewriterMode === "boolean" ? r.typewriterMode : fallback.typewriterMode,
+    proseMode: typeof r.proseMode === "boolean" ? r.proseMode : fallback.proseMode,
+    theme: r.theme === "dark" || r.theme === "light" ? r.theme : fallback.theme,
+    pdfInverted: typeof r.pdfInverted === "boolean" ? r.pdfInverted : fallback.pdfInverted,
+    cursor: typeof r.cursor === "number" ? r.cursor : fallback.cursor,
+    scrollTop: typeof r.scrollTop === "number" ? r.scrollTop : fallback.scrollTop,
+  };
 }

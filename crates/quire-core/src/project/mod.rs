@@ -215,15 +215,34 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
     refs
 }
 
+/// A resolved reference is only trusted if it canonicalizes to somewhere inside `base_dir` --
+/// the shadow-dir mirror (`write_into_shadow`) and the UI's file tree both treat any resolved
+/// path as "a file belonging to this project," so an absolute path or a `..`-laden relative one
+/// (e.g. `\input{/etc/hosts}` or `\input{../../outside}`) must be rejected here as unresolved
+/// rather than followed -- resolving it would let a project's own source smuggle an
+/// out-of-project read/write target past every downstream consumer that trusts the graph.
+fn resolve_within(base_dir: &Path, candidate: PathBuf) -> Option<PathBuf> {
+    if !candidate.is_file() {
+        return None;
+    }
+    let base_real = base_dir.canonicalize().ok()?;
+    let candidate_real = candidate.canonicalize().ok()?;
+    if candidate_real.starts_with(&base_real) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 fn resolve_tex(raw: &str, base_dir: &Path) -> Option<PathBuf> {
     let candidate = base_dir.join(raw);
-    if candidate.is_file() {
-        return Some(candidate);
+    if let Some(resolved) = resolve_within(base_dir, candidate.clone()) {
+        return Some(resolved);
     }
     if candidate.extension().is_none() {
         let with_ext = base_dir.join(format!("{raw}.tex"));
-        if with_ext.is_file() {
-            return Some(with_ext);
+        if let Some(resolved) = resolve_within(base_dir, with_ext) {
+            return Some(resolved);
         }
     }
     None
@@ -231,14 +250,14 @@ fn resolve_tex(raw: &str, base_dir: &Path) -> Option<PathBuf> {
 
 fn resolve_graphic(raw: &str, base_dir: &Path) -> Option<PathBuf> {
     let candidate = base_dir.join(raw);
-    if candidate.is_file() {
-        return Some(candidate);
+    if let Some(resolved) = resolve_within(base_dir, candidate.clone()) {
+        return Some(resolved);
     }
     if candidate.extension().is_none() {
         for ext in GRAPHIC_EXTENSIONS {
             let with_ext = base_dir.join(format!("{raw}.{ext}"));
-            if with_ext.is_file() {
-                return Some(with_ext);
+            if let Some(resolved) = resolve_within(base_dir, with_ext) {
+                return Some(resolved);
             }
         }
     }
@@ -278,6 +297,39 @@ mod tests {
         assert_eq!(tex_paths.len(), 2, "each file visited exactly once: {tex_paths:?}");
         assert!(tex_paths.contains(&dir.join("a.tex").as_path()));
         assert!(tex_paths.contains(&dir.join("b.tex").as_path()));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn absolute_input_target_outside_project_is_not_resolved() {
+        let dir = temp_dir("escape-absolute");
+        let outside = temp_dir("escape-absolute-target");
+        fs::write(outside.join("secret.tex"), "outside content").unwrap();
+
+        let outside_path = outside.join("secret").display().to_string();
+        fs::write(dir.join("a.tex"), format!("\\input{{{outside_path}}}")).unwrap();
+
+        let graph = build_file_graph(&dir.join("a.tex"));
+        assert_eq!(graph.files.len(), 1, "the outside file must not enter the graph: {graph:?}");
+        let refs = &graph.files[0].references;
+        assert_eq!(refs.len(), 1);
+        assert!(refs[0].resolved.is_none(), "an absolute path outside the project must be unresolved");
+
+        fs::remove_dir_all(&dir).unwrap();
+        fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn dotdot_input_target_outside_project_is_not_resolved() {
+        let dir = temp_dir("escape-dotdot");
+        fs::create_dir_all(dir.join("project")).unwrap();
+        fs::write(dir.join("outside.tex"), "outside content").unwrap();
+        fs::write(dir.join("project").join("a.tex"), "\\input{../outside}").unwrap();
+
+        let graph = build_file_graph(&dir.join("project").join("a.tex"));
+        assert_eq!(graph.files.len(), 1, "the outside file must not enter the graph: {graph:?}");
+        assert!(graph.files[0].references[0].resolved.is_none());
 
         fs::remove_dir_all(&dir).unwrap();
     }

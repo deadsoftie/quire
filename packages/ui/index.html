@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <title>Quire</title>
+    <!-- Real session restore is async (IPC round-trip to read session.json); this blocking,
+         synchronous read of the mirrored localStorage value runs before first paint so a saved
+         light theme doesn't flash dark first. App.tsx keeps this mirror in sync on every change. -->
+    <script>
+      (function () {
+        var saved = localStorage.getItem("quire-theme");
+        if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+      })();
+    </script>
   </head>
   <body>
     <div id="root" style="display: flex; height: 100vh"></div>
