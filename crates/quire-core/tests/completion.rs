@@ -1,6 +1,6 @@
-//! Tasks 3.1 and 3.2's acceptance criteria, end to end: "Cross-file labels complete" and "\cite{
-//! completes with readable entries." Exercises the real `outline`/`complete` handlers
-//! (crate::index::ProjectIndex) against multi-file fixtures.
+//! Tasks 3.1-3.3's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
+//! completes with readable entries," and "Custom macros appear with correct tabstops." Exercises
+//! the real `outline`/`complete` handlers (crate::index::ProjectIndex) against multi-file fixtures.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -76,20 +76,48 @@ fn ref_completion_includes_labels_defined_in_other_files() {
 }
 
 #[test]
-fn non_ref_non_cite_context_returns_no_completions_yet() {
+fn non_matching_context_returns_no_completions_yet() {
     let project_dir = fresh_project_copy("labels", "complete-noncontext");
     let project_id = project_dir.display().to_string();
     let main_uri = project_dir.join("main.tex").display().to_string();
     let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    // Inside \documentclass{article}'s own argument -- an enclosing-command context, but for a
+    // command none of ref/eqref/autoref/cite recognize, and not a bare command-name context either
+    // (the `{` since the last backslash rules that out). 3.4/3.7/3.8 haven't landed yet regardless.
+    let position = position_after(&text, "\\documentclass{art");
 
-    let items = complete(&CompletionRequest {
-        project_id,
-        uri: main_uri,
-        position: Position { line: 0, column: 5 }, // inside \documentclass{, not a \ref/\eqref/\autoref/\cite context
-        text,
-    });
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
 
-    assert!(items.is_empty(), "3.3-3.8 haven't landed yet -- only \\ref/\\eqref/\\autoref/\\cite complete today");
+    assert!(items.is_empty());
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn macro_completion_merges_newcommand_declaremathoperator_and_def_across_files_with_correct_tabstops() {
+    let project_dir = fresh_project_copy("macros", "complete-macro");
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    // "using \v" (not just "\v"): line 4 already contains "\v" inside "\newcommand{\vect}" --
+    // position_after must land on the actual bare-command-typing line, not that definition line.
+    let position = position_after(&text, "using \\v");
+
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
+
+    assert!(items.iter().all(|i| i.kind == CompletionKind::Macro));
+    let by_label: std::collections::HashMap<&str, &CompletionItem> = items.iter().map(|i| (i.label.as_str(), i)).collect();
+
+    let vect = by_label.get("vect").expect("\\newcommand{\\vect}[1]{...} should complete");
+    assert_eq!(vect.insert, "vect{${1:arg1}}");
+    assert_eq!(vect.detail.as_deref(), Some("\\mathbf{#1}"));
+
+    let argmax = by_label.get("argmax").expect("\\DeclareMathOperator should complete");
+    assert_eq!(argmax.insert, "argmax", "DeclareMathOperator is always arity 0 -- no braces");
+
+    let greet = by_label.get("greet").expect("\\def\\greet#1#2{...} defined in the \\input'd defs.tex should complete across files");
+    assert_eq!(greet.insert, "greet{${1:arg1}}{${2:arg2}}");
 
     fs::remove_dir_all(&project_dir).ok();
 }

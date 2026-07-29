@@ -8,9 +8,11 @@
 //! the same pass over a file, since they're the same walk. 3.2 adds `.bib` parsing, discovered via
 //! `\bibliography`/`\addbibresource` in `.tex` source (there's no `Bib` `FileKind` in
 //! [`crate::project::FileGraph`] -- bibliography files aren't mirrored into the compile shadow
-//! dir today, a separate, pre-existing gap this task doesn't touch). 3.3-3.5 extend
-//! [`ProjectIndex`] with their own extraction sources (macros, file paths, CTAN commands) rather
-//! than standing up parallel machinery.
+//! dir today, a separate, pre-existing gap this task doesn't touch). 3.3 adds `\newcommand`/`\def`/
+//! `\DeclareMathOperator` macros, and -- since something in 3.1-3.3 has to build it before 3.5
+//! needs it -- `\usepackage` tracking, which isn't a numbered task of its own. 3.4-3.5 extend
+//! [`ProjectIndex`] with their own extraction sources (file paths, CTAN commands) rather than
+//! standing up parallel machinery.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -40,6 +42,20 @@ pub struct CitationEntry {
     pub detail: Option<String>,
 }
 
+/// A `\newcommand`/`\def`/`\DeclareMathOperator` definition, merged project-wide the same way
+/// [`LabelDef`] is (no textual/definition-order scoping -- consistent with how labels and
+/// citations already work here, not a new model just for macros).
+#[derive(Debug, Clone)]
+pub struct MacroDef {
+    /// Without the leading backslash, matching [`LabelDef::name`]/[`CitationEntry::key`]'s convention.
+    pub name: String,
+    /// How many required `{}` arguments -- what turns into `insert`'s `${1:...}` tabstops.
+    pub arity: u32,
+    /// Raw substitution body, trimmed. Not used for `insert` (that's arity-driven, not
+    /// body-driven), just a readable `detail` so the popup shows what the macro actually expands to.
+    pub body: String,
+}
+
 struct FileIndex {
     /// Top-level outline tree for this one file -- `outline()` is per-`uri`, not project-wide.
     outline: Vec<OutlineNode>,
@@ -47,11 +63,17 @@ struct FileIndex {
     labels: Vec<LabelDef>,
     /// `.bib` files this one file's `\bibliography`/`\addbibresource` commands resolved to.
     bib_resources: Vec<PathBuf>,
+    /// This file's own macro definitions.
+    macros: Vec<MacroDef>,
+    /// This file's own `\usepackage{...}` loads.
+    packages: Vec<String>,
 }
 
 pub struct ProjectIndex {
     files: HashMap<PathBuf, FileIndex>,
     citations: Vec<CitationEntry>,
+    macros: Vec<MacroDef>,
+    packages: HashSet<String>,
 }
 
 impl ProjectIndex {
@@ -66,6 +88,11 @@ impl ProjectIndex {
 
         let mut files = HashMap::with_capacity(graph.files.len());
         let mut bib_paths: HashSet<PathBuf> = HashSet::new();
+        // Keyed by name so a macro defined more than once (redefinition, or the same name
+        // appearing in two files) shows up once in completion rather than as confusing duplicates;
+        // last one scanned wins, since there's no real cross-file definition-order to prefer by.
+        let mut macros: HashMap<String, MacroDef> = HashMap::new();
+        let mut packages: HashSet<String> = HashSet::new();
 
         for file in &graph.files {
             if file.kind != FileKind::Tex {
@@ -76,6 +103,10 @@ impl ProjectIndex {
             };
             let index = index_file(&content, &file.path, base_dir);
             bib_paths.extend(index.bib_resources.iter().cloned());
+            packages.extend(index.packages.iter().cloned());
+            for m in index.macros.iter().cloned() {
+                macros.insert(m.name.clone(), m);
+            }
             files.insert(file.path.clone(), index);
         }
 
@@ -86,7 +117,10 @@ impl ProjectIndex {
             .collect();
         citations.sort_by(|a, b| a.key.cmp(&b.key));
 
-        ProjectIndex { files, citations }
+        let mut macros: Vec<MacroDef> = macros.into_values().collect();
+        macros.sort_by(|a, b| a.name.cmp(&b.name));
+
+        ProjectIndex { files, citations, macros, packages }
     }
 
     /// `outline()`'s real implementation: just this one file's section tree, `[]` if it isn't
@@ -105,6 +139,18 @@ impl ProjectIndex {
     pub fn citations(&self) -> impl Iterator<Item = &CitationEntry> {
         self.citations.iter()
     }
+
+    /// Every user-defined macro in the project, deduplicated by name.
+    pub fn macros(&self) -> impl Iterator<Item = &MacroDef> {
+        self.macros.iter()
+    }
+
+    /// Every package loaded anywhere in the project via `\usepackage`. Not consumed by anything
+    /// yet -- 3.5's CTAN command scoping is the reason this exists ("only suggest what's actually
+    /// available," Section 9.4).
+    pub fn packages(&self) -> impl Iterator<Item = &str> {
+        self.packages.iter().map(|s| s.as_str())
+    }
 }
 
 fn index_file(content: &str, uri: &Path, base_dir: &Path) -> FileIndex {
@@ -120,8 +166,10 @@ fn index_file(content: &str, uri: &Path, base_dir: &Path) -> FileIndex {
 
     let outline = build_outline(entries);
     let bib_resources = find_bib_resources(&stripped, base_dir);
+    let macros = find_macros(&stripped);
+    let packages = find_packages(&stripped);
 
-    FileIndex { outline, labels, bib_resources }
+    FileIndex { outline, labels, bib_resources, macros, packages }
 }
 
 struct RawEntry {
@@ -470,6 +518,209 @@ fn citation_entry(entry: BibEntry) -> CitationEntry {
     CitationEntry { key: entry.key, detail }
 }
 
+fn skip_spaces(s: &str, mut pos: usize) -> usize {
+    let bytes = s.as_bytes();
+    while bytes.get(pos).is_some_and(u8::is_ascii_whitespace) {
+        pos += 1;
+    }
+    pos
+}
+
+/// Longest-name-first, same discipline as [`classify`]. `\DeclareMathOperator` isn't a prefix of
+/// anything else here, but keeping the ordering convention consistent costs nothing.
+fn classify_macro_command(rest: &str) -> Option<(&'static str, usize)> {
+    const COMMANDS: &[(&str, &str)] = &[
+        ("\\DeclareMathOperator", "declaremathoperator"),
+        ("\\newcommand", "newcommand"),
+        ("\\def", "def"),
+    ];
+    COMMANDS.iter().find(|(name, _)| rest.starts_with(name)).map(|(name, tag)| (*tag, name.len()))
+}
+
+/// Scans `stripped` for `\newcommand`/`\def`/`\DeclareMathOperator` definitions. Unlike
+/// `scan_into`, an entry that doesn't parse as one of these three recognized shapes is dropped
+/// entirely rather than guessed at -- per this task's own instruction, a macro indexed with the
+/// wrong arity is a *wrong* completion, worse than a missing one.
+fn find_macros(stripped: &str) -> Vec<MacroDef> {
+    let mut macros = Vec::new();
+    let bytes = stripped.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'\\' {
+            i += 1;
+            continue;
+        }
+        let Some((tag, name_len)) = classify_macro_command(&stripped[i..]) else {
+            i += 1;
+            continue;
+        };
+
+        let mut after = i + name_len;
+        if bytes.get(after) == Some(&b'*') {
+            after += 1;
+        }
+
+        let parsed = match tag {
+            "newcommand" => parse_newcommand(stripped, after),
+            "declaremathoperator" => parse_declare_math_operator(stripped, after),
+            "def" => parse_def(stripped, after),
+            _ => unreachable!("classify_macro_command only returns these three tags"),
+        };
+
+        match parsed {
+            Some((macro_def, next_i)) => {
+                macros.push(macro_def);
+                i = next_i;
+            }
+            None => i = after,
+        }
+    }
+    macros
+}
+
+/// `\newcommand{\name}[N][default]{body}` or `\newcommand\name[N]{body}` (both forms of naming
+/// are real LaTeX). The optional second `[default]` bracket (an optional first argument) is
+/// skipped without changing `arity` -- it doesn't add a required `{}` group, so it doesn't add a
+/// tabstop either.
+fn parse_newcommand(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
+    let bytes = stripped.as_bytes();
+    let pos = skip_spaces(stripped, after);
+
+    let (name, pos) = if bytes.get(pos) == Some(&b'{') {
+        let close = matching_brace(stripped, pos)?;
+        let name = stripped[pos + 1..close].trim().strip_prefix('\\')?.to_string();
+        (name, close + 1)
+    } else if bytes.get(pos) == Some(&b'\\') {
+        let mut end = pos + 1;
+        while bytes.get(end).is_some_and(u8::is_ascii_alphabetic) {
+            end += 1;
+        }
+        if end == pos + 1 {
+            return None;
+        }
+        (stripped[pos + 1..end].to_string(), end)
+    } else {
+        return None;
+    };
+
+    let mut pos = skip_spaces(stripped, pos);
+    let mut arity = 0u32;
+    if bytes.get(pos) == Some(&b'[') {
+        let close = pos + stripped[pos..].find(']')?;
+        arity = stripped[pos + 1..close].trim().parse().ok()?;
+        pos = skip_spaces(stripped, close + 1);
+        if bytes.get(pos) == Some(&b'[') {
+            let close2 = pos + stripped[pos..].find(']')?;
+            pos = skip_spaces(stripped, close2 + 1);
+        }
+    }
+
+    if bytes.get(pos) != Some(&b'{') {
+        return None;
+    }
+    let close = matching_brace(stripped, pos)?;
+    let body = stripped[pos + 1..close].trim().to_string();
+    Some((MacroDef { name, arity, body }, close + 1))
+}
+
+/// `\DeclareMathOperator{\name}{text}` (and the starred limits-style variant, star already
+/// consumed by the caller) -- always arity 0, structurally fixed (no `[N]` at all).
+fn parse_declare_math_operator(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
+    let bytes = stripped.as_bytes();
+    let pos = skip_spaces(stripped, after);
+    if bytes.get(pos) != Some(&b'{') {
+        return None;
+    }
+    let name_close = matching_brace(stripped, pos)?;
+    let name = stripped[pos + 1..name_close].trim().strip_prefix('\\')?.to_string();
+
+    let pos2 = skip_spaces(stripped, name_close + 1);
+    if bytes.get(pos2) != Some(&b'{') {
+        return None;
+    }
+    let body_close = matching_brace(stripped, pos2)?;
+    let body = stripped[pos2 + 1..body_close].trim().to_string();
+
+    Some((MacroDef { name, arity: 0, body }, body_close + 1))
+}
+
+/// `\def\name#1#2{body}` (plain TeX). Only the common undelimited `#1#2...#N` parameter-text
+/// shape is supported -- TeX's `\def` also allows delimited parameters with literal tokens
+/// between `#`s (`\def\foo#1,#2.{...}`), which is unparseable here on purpose: guessing an arity
+/// for that shape risks exactly the "wrong, not missing" completion this task warns against, so
+/// it's dropped instead.
+fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
+    let bytes = stripped.as_bytes();
+    let pos = skip_spaces(stripped, after);
+    if bytes.get(pos) != Some(&b'\\') {
+        return None;
+    }
+    let mut name_end = pos + 1;
+    while bytes.get(name_end).is_some_and(u8::is_ascii_alphabetic) {
+        name_end += 1;
+    }
+    if name_end == pos + 1 {
+        return None;
+    }
+    let name = stripped[pos + 1..name_end].to_string();
+
+    let mut cursor = name_end;
+    let mut arity = 0u32;
+    loop {
+        match bytes.get(cursor) {
+            Some(b'{') => break,
+            Some(b'#') => {
+                let digit_pos = cursor + 1;
+                let n = bytes.get(digit_pos).filter(|b| b.is_ascii_digit()).map(|b| (b - b'0') as u32)?;
+                if n != arity + 1 {
+                    return None; // out-of-order/skipped parameter numbering -- not the common case
+                }
+                arity = n;
+                cursor = digit_pos + 1;
+            }
+            _ => return None, // a literal delimiter token in the parameter text -- unsupported, see doc comment
+        }
+    }
+
+    let close = matching_brace(stripped, cursor)?;
+    let body = stripped[cursor + 1..close].trim().to_string();
+    Some((MacroDef { name, arity, body }, close + 1))
+}
+
+/// `\usepackage[options]{pkg1,pkg2}` -- Section 9.4 lists this under `.tex` files' extracted data
+/// without giving it its own numbered task; 3.5 depends on it for CTAN command scoping.
+fn find_packages(stripped: &str) -> Vec<String> {
+    const CMD: &str = "\\usepackage";
+    let mut packages = Vec::new();
+    let bytes = stripped.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'\\' || !stripped[i..].starts_with(CMD) {
+            i += 1;
+            continue;
+        }
+
+        let mut after = i + CMD.len();
+        if bytes.get(after) == Some(&b'[') {
+            if let Some(end) = stripped[after..].find(']') {
+                after += end + 1;
+            }
+        }
+        if bytes.get(after) != Some(&b'{') {
+            i += CMD.len();
+            continue;
+        }
+        let Some(close) = matching_brace(stripped, after) else {
+            i += CMD.len();
+            continue;
+        };
+
+        packages.extend(stripped[after + 1..close].split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string));
+        i = close + 1;
+    }
+    packages
+}
+
 /// Byte offset -> `Position` (0-based line, 0-based UTF-16 code units per Section 6's Position --
 /// matches CodeMirror/LSP convention). O(n) per call, fine here: called a handful of times per
 /// file (once per label/heading), never in a hot loop.
@@ -594,6 +845,20 @@ pub fn is_ref_completion_context(text: &str, position: &Position) -> bool {
 /// suggesting syntax the compile pipeline can't actually use.
 pub fn is_cite_completion_context(text: &str, position: &Position) -> bool {
     enclosing_command(text, position).as_deref() == Some("cite")
+}
+
+/// Trigger context for bare command-name completion (task 3.3's macros today; 3.5's CTAN
+/// commands will feed the same trigger later, ranked below project-local macros per Section
+/// 9.4). True when the cursor is right after `\` plus zero or more letters and nothing else --
+/// deliberately distinct from [`enclosing_command`]'s "inside a `{` argument" shape, and mutually
+/// exclusive with it: any `{`, `}`, or other non-letter since the last backslash rules this out.
+pub fn is_command_completion_context(text: &str, position: &Position) -> bool {
+    let cursor = byte_offset_of(text, position).min(text.len());
+    let before = &text[..cursor];
+    let Some(backslash) = before.rfind('\\') else {
+        return false;
+    };
+    before[backslash + 1..].chars().all(|c| c.is_ascii_alphabetic())
 }
 
 #[cfg(test)]
@@ -794,4 +1059,85 @@ mod tests {
         fs::remove_dir_all(&dir).ok();
         fs::remove_dir_all(&outside).ok();
     }
+
+    #[test]
+    fn cite_context_does_not_overlap_with_command_context() {
+        for cmd in ["\\ref{", "\\cite{sec"] {
+            assert!(!is_command_completion_context(cmd, &end_position(cmd)), "{cmd:?} is an argument context, not a bare command context");
+        }
+        for cmd in ["\\vec", "\\", "\\v"] {
+            assert!(is_command_completion_context(cmd, &end_position(cmd)), "{cmd:?} should be a bare command context");
+        }
+    }
+
+    #[test]
+    fn newcommand_with_bracket_arity_and_braced_name() {
+        let macros = find_macros("\\newcommand{\\vect}[1]{\\mathbf{#1}}");
+        assert_eq!(macros.len(), 1);
+        assert_eq!(macros[0].name, "vect");
+        assert_eq!(macros[0].arity, 1);
+        assert_eq!(macros[0].body, "\\mathbf{#1}");
+    }
+
+    #[test]
+    fn newcommand_with_no_arity_and_bare_name() {
+        let macros = find_macros("\\newcommand\\greeting{Hello, world}");
+        assert_eq!(macros.len(), 1);
+        assert_eq!(macros[0].name, "greeting");
+        assert_eq!(macros[0].arity, 0);
+        assert_eq!(macros[0].body, "Hello, world");
+    }
+
+    #[test]
+    fn newcommand_star_and_optional_default_argument_do_not_change_arity() {
+        let macros = find_macros("\\newcommand*{\\greet}[2][Hello]{#1, #2!}");
+        assert_eq!(macros.len(), 1);
+        assert_eq!(macros[0].name, "greet");
+        assert_eq!(macros[0].arity, 2, "the [Hello] default-value bracket must not be counted as arity");
+        assert_eq!(macros[0].body, "#1, #2!");
+    }
+
+    #[test]
+    fn def_counts_hash_parameters() {
+        let macros = find_macros("\\def\\foo#1#2{(#1,#2)}");
+        assert_eq!(macros.len(), 1);
+        assert_eq!(macros[0].name, "foo");
+        assert_eq!(macros[0].arity, 2);
+        assert_eq!(macros[0].body, "(#1,#2)");
+    }
+
+    #[test]
+    fn def_with_delimited_parameters_is_unparseable_and_skipped() {
+        // `\def\foo#1,#2.{...}` -- a literal `,` token between parameters. Getting this wrong
+        // (guessing arity 2 and ignoring the delimiters) would be a *wrong* completion; dropping
+        // it entirely is the documented tradeoff.
+        let macros = find_macros("\\def\\foo#1,#2.{body}");
+        assert!(macros.is_empty(), "delimited \\def parameters must be dropped, not guessed at: {macros:?}");
+    }
+
+    #[test]
+    fn declare_math_operator_is_always_arity_zero() {
+        let macros = find_macros("\\DeclareMathOperator{\\argmax}{arg\\,max}");
+        assert_eq!(macros.len(), 1);
+        assert_eq!(macros[0].name, "argmax");
+        assert_eq!(macros[0].arity, 0);
+
+        let starred = find_macros("\\DeclareMathOperator*{\\lim}{lim}");
+        assert_eq!(starred.len(), 1);
+        assert_eq!(starred[0].name, "lim");
+        assert_eq!(starred[0].arity, 0);
+    }
+
+    #[test]
+    fn macro_scan_does_not_misfire_on_lookalike_commands() {
+        // \newcommandy isn't \newcommand; \defer isn't \def; the "next char must be brace/backslash/whitespace-then-those" check must reject both.
+        assert!(find_macros("\\newcommandy{\\x}{y}").is_empty());
+    }
+
+    #[test]
+    fn find_packages_handles_options_and_comma_lists() {
+        let packages = find_packages("\\usepackage[utf8]{inputenc}\n\\usepackage{tikz,amsmath}\n");
+        assert_eq!(packages, vec!["inputenc", "tikz", "amsmath"]);
+    }
+
 }

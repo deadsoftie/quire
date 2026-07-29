@@ -2,7 +2,8 @@
 //!
 //! No `cancel_compile` here: `quire-sidecar` is one process per compile with no in-process handle to interrupt -- the caller kills the OS process instead, a transport-layer concern.
 //!
-//! No `complete` here either: it's still texlab (GPL-3.0, D7), kept out of this binary since it will eventually ship on iOS.
+//! `complete` *is* here as of 3.1 -- real for `\ref`/`\eqref`/`\autoref`/`\cite`/bare-command
+//! (macro) completion, `quire-core`'s own index rather than texlab (GPL-3.0, D7).
 //!
 //! `quire-core` holds no project registry -- `ProjectId` is the project's root directory path itself, and every function re-derives what it needs from that.
 
@@ -215,15 +216,16 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     index.outline_for(Path::new(&req.uri))
 }
 
-/// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion) and 3.2 (`\cite{` citation
-/// completion) -- every other trigger context (bare command names, `\input{`, math symbols,
-/// snippets) returns `[]` until 3.3-3.8 land their own extraction sources onto the same
-/// [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the whole
-/// project index for a keystroke inside an argument neither trigger recognizes.
+/// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion), 3.2 (`\cite{` citation
+/// completion), and 3.3 (bare-command macro completion) -- every other trigger context (`\input{`,
+/// math symbols, snippets) returns `[]` until 3.4/3.7/3.8 land their own extraction sources onto
+/// the same [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the
+/// whole project index for a keystroke inside an argument none of the three triggers recognize.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
     let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);
-    if !is_ref && !is_cite {
+    let is_command = crate::index::is_command_completion_context(&req.text, &req.position);
+    if !is_ref && !is_cite && !is_command {
         return Vec::new();
     }
 
@@ -236,8 +238,10 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
 
     if is_ref {
         label_completions(&index)
-    } else {
+    } else if is_cite {
         citation_completions(&index)
+    } else {
+        macro_completions(&index)
     }
 }
 
@@ -280,6 +284,42 @@ fn citation_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionIte
     items
 }
 
+/// `label`/`insert` deliberately omit the leading backslash -- the client's bare-command trigger
+/// (`Editor.tsx`'s `wordMatch`) replaces starting right after the backslash already in the
+/// document, matching how label/citation completions already replace starting after `{`.
+fn macro_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
+    let mut items: Vec<CompletionItem> = index
+        .macros()
+        .map(|m| CompletionItem {
+            label: m.name.clone(),
+            kind: CompletionKind::Macro,
+            insert: insert_for_macro(m),
+            // The raw substitution body, not a description -- there's nothing else to show, and
+            // seeing what a macro actually expands to is exactly what "readable" means here too.
+            detail: if m.body.is_empty() { None } else { Some(m.body.clone()) },
+            documentation: None,
+            symbol_preview: None,
+            sort_priority: PROJECT_LOCAL_PRIORITY,
+        })
+        .collect();
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+    items
+}
+
+/// Arity -> tabstops: `\vect` (arity 1) becomes `vect{${1:arg1}}` (no leading backslash -- see
+/// `macro_completions`'s comment), `\greet` (arity 2) becomes `greet{${1:arg1}}{${2:arg2}}`, and
+/// arity 0 is just the bare name with no braces at all. `${N:argN}` rather than empty `${N}`
+/// fields since a macro definition carries no argument names of its own to use instead.
+fn insert_for_macro(m: &crate::index::MacroDef) -> String {
+    let mut s = m.name.clone();
+    for n in 1..=m.arity {
+        s.push('{');
+        s.push_str(&format!("${{{n}:arg{n}}}"));
+        s.push('}');
+    }
+    s
+}
+
 /// M4 scaffolding; always reports nothing fetched, nothing failed -- honest about doing no work.
 pub fn prefetch_packages(_req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
     PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() }
@@ -297,4 +337,22 @@ pub fn read_file(req: &ReadFileRequest) -> Result<String, CompileError> {
 pub fn write_file(req: &WriteFileRequest) -> Result<(), CompileError> {
     fs::write(&req.uri, &req.text)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::index::MacroDef;
+
+    #[test]
+    fn insert_for_macro_produces_one_brace_group_per_arity() {
+        let zero = MacroDef { name: "greeting".to_string(), arity: 0, body: "Hello".to_string() };
+        assert_eq!(insert_for_macro(&zero), "greeting", "arity 0 must not add any braces at all");
+
+        let one = MacroDef { name: "vect".to_string(), arity: 1, body: "\\mathbf{#1}".to_string() };
+        assert_eq!(insert_for_macro(&one), "vect{${1:arg1}}");
+
+        let two = MacroDef { name: "greet".to_string(), arity: 2, body: "#1, #2!".to_string() };
+        assert_eq!(insert_for_macro(&two), "greet{${1:arg1}}{${2:arg2}}", "each argument gets its own brace group, in order");
+    }
 }
