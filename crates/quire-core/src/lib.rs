@@ -1,3 +1,4 @@
+pub mod page_hash;
 pub mod project;
 pub mod rerun;
 
@@ -6,6 +7,15 @@ use tectonic::status::NoopStatusBackend;
 
 pub struct CompileOutput {
     pub pdf: Vec<u8>,
+    pub page_count: u32,
+    /// 1-indexed page numbers that changed since the previous compile.
+    /// This function has no notion of a "previous compile" (it's a pure,
+    /// stateless, one-shot call) -- every page is reported changed, same
+    /// as [`rerun::compile_latex_in_dir`] does for a project's first-ever
+    /// compile. Callers that actually want incremental re-render need
+    /// [`rerun::compile_latex_in_dir`], which persists page hashes across
+    /// calls and reports real diffs.
+    pub changed_pages: Vec<u32>,
 }
 
 /// Unlike `tectonic::Error` (whose `Display` is often just a generic
@@ -86,5 +96,8 @@ pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
         log: None,
     })?;
 
-    Ok(CompileOutput { pdf })
+    let page_count = page_hash::hash_pages(&pdf)?.len() as u32;
+    let changed_pages = (1..=page_count).collect();
+
+    Ok(CompileOutput { pdf, page_count, changed_pages })
 }

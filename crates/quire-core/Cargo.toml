@@ -9,5 +9,6 @@ tectonic_bridge_core = "0.5"
 tectonic_bundles = "0.4"
 tectonic_engine_xdvipdfmx = "0.4"
 notify = "8.2.0"
+lopdf = { version = "0.44.0", default-features = false }
 
 [dev-dependencies]

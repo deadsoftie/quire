@@ -34,6 +34,13 @@
 //! 9.1 (Tectonic's own automatic pipeline defaults to up to 6 with no
 //! public way to lower that ceiling while keeping early-exit-on-stability,
 //! so this drives passes manually instead of using `PassSetting::Default`).
+//!
+//! Page hashing (task 1.7) piggybacks on the same disk-state mechanism:
+//! `changedPages` also means nothing without a previous compile to diff
+//! against, so it lives here rather than in the stateless
+//! [`crate::compile_latex`] too -- see [`crate::page_hash`] for the actual
+//! hashing/diffing logic, this module just persists the previous compile's
+//! hashes (`quire-page-hashes.txt`) alongside the citation fingerprint.
 
 use std::fs;
 use std::path::Path;
@@ -50,6 +57,7 @@ use crate::{CompileError, CompileOutput};
 
 const MAX_PASSES: usize = 4;
 const CITATION_FINGERPRINT_FILE: &str = "quire-citations.txt";
+const PAGE_HASHES_FILE: &str = "quire-page-hashes.txt";
 const TEX_INPUT_NAME: &str = "texput.tex";
 
 /// Same compile as [`crate::compile_latex`], but backed by real files in
@@ -106,7 +114,14 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
         log: None,
     })?;
 
-    Ok(CompileOutput { pdf })
+    let hashes = crate::page_hash::hash_pages(&pdf)?;
+    let hashes_path = build_dir.join(PAGE_HASHES_FILE);
+    let previous_hashes: Option<Vec<String>> =
+        fs::read_to_string(&hashes_path).ok().map(|s| s.lines().map(str::to_string).collect());
+    let changed_pages = crate::page_hash::diff_pages(previous_hashes.as_deref(), &hashes);
+    fs::write(&hashes_path, hashes.join("\n"))?;
+
+    Ok(CompileOutput { pdf, page_count: hashes.len() as u32, changed_pages })
 }
 
 fn run_tex_pass(
