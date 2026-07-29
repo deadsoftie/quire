@@ -73,6 +73,12 @@ importers:
       '@lezer/lr':
         specifier: ^1.4.10
         version: 1.4.10
+      '@quire/client':
+        specifier: workspace:*
+        version: link:../client
+      '@quire/design':
+        specifier: workspace:*
+        version: link:../design
       codemirror:
         specifier: ^6.0.1
         version: 6.0.2

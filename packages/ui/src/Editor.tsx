@@ -12,27 +12,39 @@ export const INITIAL_SOURCE =
 // (M3). Only replaces the word after the last backslash -- texlab's own
 // textEdit ranges aren't used, this is a simpler stand-in good enough to
 // prove the popup works end to end.
-async function texlabCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
-  const word = context.matchBefore(/\\[a-zA-Z]*/);
-  if (!word || (word.from === word.to && !context.explicit)) return null;
+//
+// `projectId`/`uri` close over whatever Editor was mounted with -- fine
+// because Editor is remounted (via `key`) whenever the caller switches
+// projects, same reasoning as `initialDoc` below.
+function makeCompletionSource(projectId: string, uri: string) {
+  return async function texlabCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
+    const word = context.matchBefore(/\\[a-zA-Z]*/);
+    if (!word || (word.from === word.to && !context.explicit)) return null;
 
-  const line = context.state.doc.lineAt(context.pos);
-  const character = context.pos - line.from;
-  const items = await window.quire.complete(context.state.doc.toString(), line.number - 1, character);
-  if (context.aborted) return null;
+    const line = context.state.doc.lineAt(context.pos);
+    const items = await window.quire.complete({
+      projectId,
+      uri,
+      position: { line: line.number - 1, column: context.pos - line.from },
+      text: context.state.doc.toString(),
+    });
+    if (context.aborted) return null;
 
-  return {
-    from: word.from + 1, // skip the leading backslash itself
-    options: items.map((item) => ({ label: item.label, detail: item.detail, apply: item.label })),
+    return {
+      from: word.from + 1, // skip the leading backslash itself
+      options: items.map((item) => ({ label: item.label, detail: item.detail ?? undefined, apply: item.insert })),
+    };
   };
 }
 
 interface EditorProps {
   initialDoc: string;
+  projectId: string;
+  uri: string;
   onChange: (text: string) => void;
 }
 
-export function Editor({ initialDoc, onChange }: EditorProps) {
+export function Editor({ initialDoc, projectId, uri, onChange }: EditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -46,7 +58,7 @@ export function Editor({ initialDoc, onChange }: EditorProps) {
       extensions: [
         basicSetup,
         latex(),
-        autocompletion({ override: [texlabCompletionSource] }),
+        autocompletion({ override: [makeCompletionSource(projectId, uri)] }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
@@ -61,8 +73,8 @@ export function Editor({ initialDoc, onChange }: EditorProps) {
       view.destroy();
       viewRef.current = null;
     };
-    // initialDoc is only used to seed the view on mount; the caller
-    // remounts (via `key`) when it wants a different starting doc.
+    // initialDoc/projectId/uri only seed the view on mount; the caller
+    // remounts (via `key`) when any of them should actually change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

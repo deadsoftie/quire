@@ -1,124 +1,186 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CompileReason, CoreEvent } from "@quire/client";
 import { Editor, INITIAL_SOURCE } from "./Editor";
 import { PdfViewer } from "./PdfViewer";
+import { Seam } from "./Seam";
+import type { SeamState } from "./Seam";
+import { TopBar } from "./TopBar";
+import "./App.css";
 
 const DEBOUNCE_MS = 500;
 
-function base64ToBytes(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+interface Project {
+  projectId: string;
+  uri: string;
+  label: string;
+  /** `null` for the scratch/placeholder project, which never calls the
+   * real `openProject` and so has no real answer for this. */
+  engineAvailable: boolean | null;
 }
 
-const paneStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  height: "100%",
-  overflow: "auto",
-};
+function basename(p: string): string {
+  const parts = p.split(/[/\\]/).filter(Boolean);
+  return parts[parts.length - 1] ?? p;
+}
 
 export function App() {
+  const [project, setProject] = useState<Project | null>(null);
+  const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "compiling">("idle");
-  const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
-  const [projectLabel, setProjectLabel] = useState<string | null>(null);
-  const [docVersion, setDocVersion] = useState(0);
-  const debounceRef = useRef<number | undefined>(undefined);
+  const [seamState, setSeamState] = useState<SeamState>("idle");
+  const [splitFraction, setSplitFraction] = useState(0.5);
 
-  // Sending a new compile request kills whatever the sidecar is still
-  // running (see apps/desktop/src/sidecar.js), so a superseded request's
-  // promise never settles -- no risk of a stale result overwriting a
-  // newer one here.
-  const runCompile = useCallback((source: string) => {
-    setStatus("compiling");
-    window.quire.compile(source).then(
-      (result) => {
-        setError(null);
-        setPdfData(base64ToBytes(result.pdfBase64));
-        setStatus("idle");
-      },
-      (err) => {
-        setError(String(err?.message ?? err));
-        setStatus("idle");
-      },
-    );
-  }, []);
+  const projectRef = useRef<Project | null>(null);
+  const currentSourceRef = useRef(INITIAL_SOURCE);
+  const debounceRef = useRef<number | undefined>(undefined);
+  const errorTimeoutRef = useRef<number | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // A new compile request kills whatever the sidecar is still running
+  // (single-flight, task 1.4), so a superseded call's promise never
+  // settles -- no risk of a stale result overwriting a newer one here.
+  const runCompile = useCallback(
+    async (projectId: string, uri: string, source: string, reason: CompileReason) => {
+      try {
+        const result = await window.quire.compile({
+          projectId,
+          dirtyBuffers: [{ uri, text: source }],
+          reason,
+        });
+        if (result.status === "ok" && result.pdfPath) {
+          const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
+          setPdfData(bytes);
+          setError(null);
+        } else {
+          const diagnostic = result.diagnostics[0];
+          setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
+        }
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+    [],
+  );
 
   const scheduleCompile = useCallback(
     (source: string) => {
-      if (debounceRef.current !== undefined) {
-        window.clearTimeout(debounceRef.current);
-      }
-      debounceRef.current = window.setTimeout(() => runCompile(source), DEBOUNCE_MS);
+      currentSourceRef.current = source;
+      if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
+      debounceRef.current = window.setTimeout(() => {
+        const current = projectRef.current;
+        if (current) runCompile(current.projectId, current.uri, source, "edit");
+      }, DEBOUNCE_MS);
     },
     [runCompile],
   );
 
+  const openProjectFlow = useCallback(async () => {
+    const path = await window.quireDesktop.chooseProjectFolder();
+    if (!path) return;
+
+    try {
+      const opened = await window.quire.openProject({ path });
+      const initialText = await window.quire.readFile(opened.root);
+      const next: Project = {
+        projectId: opened.projectId,
+        uri: opened.root,
+        label: basename(opened.projectId),
+        engineAvailable: opened.engineAvailable,
+      };
+      projectRef.current = next;
+      setProject(next);
+      currentSourceRef.current = initialText;
+      setInitialDoc(initialText);
+      runCompile(next.projectId, next.uri, initialText, "open");
+    } catch (err) {
+      setError(String((err as Error)?.message ?? err));
+    }
+  }, [runCompile]);
+
+  // Scratch project: a disposable one-file project backing the
+  // placeholder doc shown before the user opens anything (task 1.8's
+  // scratch mechanism). Runs once; openProjectFlow() replaces it later.
   useEffect(() => {
-    runCompile(INITIAL_SOURCE);
-    // Only the very first mount uses the placeholder doc; openProject()
-    // drives subsequent compiles directly.
+    (async () => {
+      const scratch = await window.quireDesktop.createScratchProject();
+      const next: Project = {
+        projectId: scratch.projectId,
+        uri: scratch.root,
+        label: "Untitled",
+        engineAvailable: null,
+      };
+      projectRef.current = next;
+      setProject(next);
+      runCompile(next.projectId, next.uri, INITIAL_SOURCE, "open");
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // An external edit (another editor, `git pull`, ...) triggered a
-  // recompile in main.js -- task 1.3. Unlike runCompile, nothing here
-  // called window.quire.compile ourselves; main pushed this unprompted,
-  // so just mirror its result into the same state runCompile updates.
+  // The seam's compile state, and reacting to an externally-triggered
+  // recompile (another editor, `git pull`, ... -- task 1.3, now driven by
+  // `files-changed`), both come from the same real CoreEvent stream
+  // (task 2.3) instead of a bespoke IPC event apps/desktop used to invent
+  // for this.
   useEffect(() => {
-    return window.quire.onExternalRecompile((result) => {
-      if ("error" in result) {
-        setError(result.error);
-      } else {
-        setError(null);
-        setPdfData(base64ToBytes(result.pdfBase64));
+    return window.quire.onEvent((event: CoreEvent) => {
+      if (event.kind === "compile-started") {
+        if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
+        setSeamState("compiling");
+      } else if (event.kind === "compile-finished") {
+        if (event.result.status === "ok") {
+          if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
+          setSeamState("idle");
+        } else {
+          setSeamState("error");
+          errorTimeoutRef.current = window.setTimeout(() => setSeamState("idle"), 800);
+        }
+      } else if (event.kind === "files-changed") {
+        const current = projectRef.current;
+        if (current && event.projectId === current.projectId) {
+          runCompile(current.projectId, current.uri, currentSourceRef.current, "edit");
+        }
       }
     });
-  }, []);
-
-  const openProject = useCallback(async () => {
-    const result = await window.quire.openProject().catch((err) => {
-      setError(String(err?.message ?? err));
-      return null;
-    });
-    if (!result) return;
-
-    setInitialDoc(result.initialText);
-    setProjectLabel(result.rootRelativePath);
-    setDocVersion((v) => v + 1);
-    runCompile(result.initialText);
   }, [runCompile]);
 
+  // No "Open Project" button -- Section 7's top bar has none (just "⌘K"
+  // and "Project ◦"). Reachable by shortcut until 2.4's command palette
+  // gives ⌘K a real command to register this into.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        openProjectFlow();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openProjectFlow]);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "4px 8px",
-          fontFamily: "sans-serif",
-          fontSize: 12,
-          color: "#888",
-        }}
-      >
-        <button onClick={openProject}>Open Project…</button>
-        <span>{projectLabel ?? "(no project open -- editing a throwaway placeholder)"}</span>
-        <span>{status === "compiling" ? "compiling…" : ""}</span>
-      </div>
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <div style={paneStyle}>
-          <Editor key={docVersion} initialDoc={initialDoc} onChange={scheduleCompile} />
-        </div>
-        <div style={{ width: 1, background: "#888" }} />
-        <div style={paneStyle}>
-          {error ? (
-            <pre style={{ color: "red", padding: 8, whiteSpace: "pre-wrap" }}>{error}</pre>
-          ) : (
-            <PdfViewer data={pdfData} />
+    <div className="app">
+      <TopBar projectLabel={project?.label ?? "Untitled"} engineAvailable={project?.engineAvailable ?? null} />
+      <div className="app__panes" ref={containerRef} style={{ gridTemplateColumns: `${splitFraction}fr var(--s-2) ${1 - splitFraction}fr` }}>
+        <div className="app__pane">
+          {project && (
+            <Editor
+              key={project.projectId}
+              initialDoc={initialDoc}
+              projectId={project.projectId}
+              uri={project.uri}
+              onChange={scheduleCompile}
+            />
           )}
+        </div>
+        <Seam
+          state={seamState}
+          containerRef={containerRef}
+          onChange={setSplitFraction}
+          onReset={() => setSplitFraction(0.5)}
+        />
+        <div className="app__pane">
+          {error ? <pre className="app__error">{error}</pre> : <PdfViewer data={pdfData} />}
         </div>
       </div>
     </div>

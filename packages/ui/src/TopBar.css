@@ -1,0 +1,33 @@
+.top-bar {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--s-3);
+  background: var(--ink-800);
+  border-bottom: var(--seam) solid var(--ink-600);
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  color: var(--type-mid);
+}
+
+.top-bar__hint {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.top-bar__project {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+}
+
+.top-bar__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--proof-amber);
+}
