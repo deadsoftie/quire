@@ -67,6 +67,10 @@ function AppShell() {
   // Pinned: docked in the sidebar. Not pinned: at most one shows as the ephemeral overlay (overlayPanel).
   const [pinned, setPinned] = useState<Record<PanelKind, boolean>>(DEFAULT_PINNED);
   const [overlayPanel, setOverlayPanel] = useState<PanelKind | null>(null);
+  // Lifted above Editor (not local state there) so they survive the remount that happens when switching files/projects.
+  const [focusMode, setFocusMode] = useState(false);
+  const [typewriterMode, setTypewriterMode] = useState(false);
+  const [proseMode, setProseMode] = useState(false);
 
   const projectRef = useRef<Project | null>(null);
   const currentSourceRef = useRef(INITIAL_SOURCE);
@@ -214,6 +218,22 @@ function AppShell() {
     run: () => setSplitFraction(0.5),
   });
 
+  useCommand({
+    id: "editor.toggle-focus-mode",
+    title: "Toggle Focus Mode",
+    run: () => setFocusMode((v) => !v),
+  });
+  useCommand({
+    id: "editor.toggle-typewriter-scrolling",
+    title: "Toggle Typewriter Scrolling",
+    run: () => setTypewriterMode((v) => !v),
+  });
+  useCommand({
+    id: "editor.toggle-prose-mode",
+    title: "Toggle Serif Prose Mode",
+    run: () => setProseMode((v) => !v),
+  });
+
   // A pinned panel is already permanently visible; nothing for the shortcut to do.
   const togglePanel = useCallback(
     (kind: PanelKind) => {
@@ -320,6 +340,9 @@ function AppShell() {
                 initialDoc={initialDoc}
                 projectId={project.projectId}
                 uri={project.uri}
+                focusMode={focusMode}
+                typewriterMode={typewriterMode}
+                proseMode={proseMode}
                 onChange={scheduleCompile}
               />
             )}

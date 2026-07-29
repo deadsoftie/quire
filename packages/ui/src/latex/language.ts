@@ -1,4 +1,4 @@
-import { LRLanguage, LanguageSupport } from "@codemirror/language";
+import { HighlightStyle, LRLanguage, LanguageSupport, syntaxHighlighting } from "@codemirror/language";
 import { styleTags, tags as t } from "@lezer/highlight";
 import { parser } from "./parser";
 
@@ -13,6 +13,20 @@ const highlighting = styleTags({
   "{ }": t.brace,
 });
 
+// `basicSetup` (Editor.tsx) already brings its own `syntaxHighlighting(defaultHighlightStyle)`,
+// whose colors (navy, dark red, ...) assume a light background -- illegible against this
+// app's dark editor theme. This layers a second, dark-appropriate style on top of it,
+// using the same design tokens as the rest of the app, for exactly the tags used above.
+const latexHighlightStyle = HighlightStyle.define([
+  { tag: t.lineComment, color: "var(--type-lo)", fontStyle: "italic" },
+  { tag: t.macroName, color: "var(--nonrepro)" },
+  { tag: t.keyword, color: "var(--nonrepro)", fontWeight: "600" },
+  { tag: t.typeName, color: "var(--type-hi)", fontStyle: "italic" },
+  { tag: t.processingInstruction, color: "var(--type-mid)" },
+  { tag: t.brace, color: "var(--type-mid)" },
+  { tag: t.monospace, color: "var(--type-mid)" },
+]);
+
 export const latexLanguage = LRLanguage.define({
   parser: parser.configure({ props: [highlighting] }),
   languageData: {
@@ -22,5 +36,5 @@ export const latexLanguage = LRLanguage.define({
 });
 
 export function latex() {
-  return new LanguageSupport(latexLanguage);
+  return new LanguageSupport(latexLanguage, [syntaxHighlighting(latexHighlightStyle)]);
 }
