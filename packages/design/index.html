@@ -1,0 +1,189 @@
+<!doctype html>
+<html data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Quire design tokens</title>
+    <script type="module" src="/src/index.ts"></script>
+    <style>
+      /* Preview-page-only layout. Everything colored/typeset below this
+         point uses real tokens from tokens.css/fonts.css/primitives.css --
+         this block just arranges the specimens on the page. */
+      body {
+        padding: var(--s-8);
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--s-8);
+      }
+      button {
+        background: var(--ink-700);
+        color: var(--type-hi);
+        border: var(--seam) solid var(--ink-600);
+        border-radius: var(--radius);
+        padding: var(--s-2) var(--s-4);
+        font-family: var(--ui-font);
+        font-size: var(--ui-size);
+        cursor: pointer;
+      }
+      section {
+        margin-bottom: var(--s-12);
+      }
+      h2 {
+        font-family: var(--ui-font);
+        font-size: var(--t-sm);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--type-mid);
+        border-bottom: var(--seam) solid var(--ink-600);
+        padding-bottom: var(--s-2);
+      }
+      .swatch-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: var(--s-4);
+      }
+      .swatch {
+        border-radius: var(--radius);
+        border: var(--seam) solid var(--ink-600);
+        padding: var(--s-6) var(--s-2) var(--s-2);
+        font-family: var(--font-mono);
+        font-size: var(--t-xs);
+      }
+      .type-row {
+        display: flex;
+        align-items: baseline;
+        gap: var(--s-4);
+        margin: var(--s-2) 0;
+      }
+      .type-row span:first-child {
+        width: 3ch;
+        color: var(--type-mid);
+        font-family: var(--font-mono);
+        font-size: var(--t-xs);
+      }
+      .space-row {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        margin: var(--s-2) 0;
+        font-family: var(--font-mono);
+        font-size: var(--t-xs);
+        color: var(--type-mid);
+      }
+      .space-bar {
+        background: var(--nonrepro);
+        height: var(--s-3);
+      }
+      .seam-row {
+        display: flex;
+        align-items: center;
+        gap: var(--s-4);
+        margin: var(--s-3) 0;
+      }
+      .seam-line {
+        width: 240px;
+        height: var(--seam);
+      }
+      .radius-box {
+        width: 80px;
+        height: 80px;
+        background: var(--ink-700);
+        border: var(--seam) solid var(--ink-600);
+        border-radius: var(--radius);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 class="title" style="font-size: var(--t-xl); margin: 0">Quire design tokens</h1>
+      <button id="theme-toggle" class="hit-target">Toggle theme</button>
+    </header>
+
+    <section>
+      <h2>Color</h2>
+      <div class="swatch-grid">
+        <div class="swatch" style="background: var(--ink-900)">--ink-900</div>
+        <div class="swatch" style="background: var(--ink-800)">--ink-800</div>
+        <div class="swatch" style="background: var(--ink-700)">--ink-700</div>
+        <div class="swatch" style="background: var(--ink-600)">--ink-600</div>
+        <div class="swatch" style="background: var(--type-hi); color: var(--ink-900)">--type-hi</div>
+        <div class="swatch" style="background: var(--type-mid); color: var(--ink-900)">--type-mid</div>
+        <div class="swatch" style="background: var(--type-lo); color: var(--ink-900)">--type-lo</div>
+        <div class="swatch" style="background: var(--nonrepro); color: var(--ink-900)">--nonrepro</div>
+        <div class="swatch" style="background: var(--nonrepro-dim)">--nonrepro-dim</div>
+        <div class="swatch" style="background: var(--proof-red)">--proof-red</div>
+        <div class="swatch" style="background: var(--proof-amber); color: var(--ink-900)">--proof-amber</div>
+        <div class="swatch" style="background: var(--paper); color: #000">--paper</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Type scale (1.25 ratio)</h2>
+      <div class="type-row"><span>xs</span><span style="font-size: var(--t-xs)">The quick brown fox jumps over the lazy dog.</span></div>
+      <div class="type-row"><span>sm</span><span style="font-size: var(--t-sm)">The quick brown fox jumps over the lazy dog.</span></div>
+      <div class="type-row"><span>base</span><span style="font-size: var(--t-base)">The quick brown fox jumps over the lazy dog.</span></div>
+      <div class="type-row"><span>md</span><span style="font-size: var(--t-md)">The quick brown fox jumps over the lazy dog.</span></div>
+      <div class="type-row"><span>lg</span><span style="font-size: var(--t-lg)">The quick brown fox jumps over the lazy dog.</span></div>
+      <div class="type-row"><span>xl</span><span style="font-size: var(--t-xl)">The quick brown fox jumps over the lazy dog.</span></div>
+    </section>
+
+    <section>
+      <h2>Typography roles</h2>
+      <p style="font-family: var(--editor-font); font-size: var(--editor-size); line-height: var(--editor-line-height)">
+        \documentclass{article} % Editor -- IBM Plex Mono, 14px/1.65
+      </p>
+      <p style="font-family: var(--ui-font); font-size: var(--ui-size)">
+        Command Palette, Outline, Problems -- UI, IBM Plex Sans, 13px
+      </p>
+      <p class="title" style="font-size: var(--t-lg); margin: var(--s-2) 0">
+        Document title -- Latin Modern Roman
+      </p>
+      <p style="font-family: var(--prose-font); font-size: var(--prose-size); line-height: var(--prose-line-height)">
+        Prose (focus mode) is set in Latin Modern Roman at 17px with a 1.7 line height --
+        used with restraint, titles and outline only, never body UI.
+      </p>
+    </section>
+
+    <section>
+      <h2>Space scale (4px base)</h2>
+      <div class="space-row"><span style="width: 3ch">s-1</span><div class="space-bar" style="width: var(--s-1)"></div></div>
+      <div class="space-row"><span style="width: 3ch">s-2</span><div class="space-bar" style="width: var(--s-2)"></div></div>
+      <div class="space-row"><span style="width: 3ch">s-3</span><div class="space-bar" style="width: var(--s-3)"></div></div>
+      <div class="space-row"><span style="width: 3ch">s-4</span><div class="space-bar" style="width: var(--s-4)"></div></div>
+      <div class="space-row"><span style="width: 3ch">s-6</span><div class="space-bar" style="width: var(--s-6)"></div></div>
+      <div class="space-row"><span style="width: 3ch">s-8</span><div class="space-bar" style="width: var(--s-8)"></div></div>
+      <div class="space-row"><span style="width: 3ch">s-12</span><div class="space-bar" style="width: var(--s-12)"></div></div>
+    </section>
+
+    <section>
+      <h2>Radius &amp; seam</h2>
+      <div class="radius-box"></div>
+      <div class="seam-row">
+        <span style="font-family: var(--font-mono); font-size: var(--t-xs); color: var(--type-mid); width: 8ch">idle</span>
+        <div class="seam-line" style="background: var(--ink-600)"></div>
+      </div>
+      <div class="seam-row">
+        <span style="font-family: var(--font-mono); font-size: var(--t-xs); color: var(--type-mid); width: 8ch">compiling*</span>
+        <div class="seam-line" style="background: var(--nonrepro)"></div>
+      </div>
+      <div class="seam-row">
+        <span style="font-family: var(--font-mono); font-size: var(--t-xs); color: var(--type-mid); width: 8ch">error</span>
+        <div class="seam-line" style="background: var(--proof-red)"></div>
+      </div>
+      <p style="font-family: var(--font-mono); font-size: var(--t-xs); color: var(--type-lo)">
+        * static swatch only -- the seam's actual travelling-gradient animation is task 2.3.
+      </p>
+    </section>
+
+    <script>
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const root = document.documentElement;
+        root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
+      });
+    </script>
+  </body>
+</html>

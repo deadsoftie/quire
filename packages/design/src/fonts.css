@@ -1,0 +1,52 @@
+/*
+ * Fonts — QUIRE_SPEC.md Section 7 typography table.
+ *
+ * IBM Plex Mono / IBM Plex Sans (SIL OFL-1.1) are vendored via
+ * @fontsource, which self-hosts the actual woff2/woff files under an
+ * unambiguous OFL license -- see package.json's dependency on
+ * @fontsource/ibm-plex-{mono,sans} and that package's own LICENSE file
+ * (`node_modules/@fontsource/ibm-plex-mono/LICENSE`).
+ *
+ * Latin Modern Roman is deliberately NOT vendored here. Its real license
+ * (GUST Font License) is fine per Section 2's table, but no npm
+ * repackaging of it with unambiguous, verifiable provenance was available
+ * to bundle at the time this was written -- shipping a binary whose
+ * license chain can't actually be checked defeats the point of having
+ * done the license diligence at all. Instead this uses a system-font
+ * fallback chain: Latin Modern ships with every common TeX distribution
+ * (TeX Live, MacTeX, MiKTeX), which this app's users need installed
+ * anyway (Tectonic aside, `--font-serif` is chrome text, not compiled
+ * output). Worst case on a machine with no TeX distribution and no LM
+ * fonts, titles fall back to the platform serif -- acceptable given
+ * Section 7's own "used with restraint: titles and outline only, never
+ * body UI." Revisit if/when a verified-license LM Roman webfont source
+ * is available to vendor instead.
+ */
+
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
+:root {
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Latin Modern Roman", "LM Roman 10", "CMU Serif", Georgia, serif;
+
+  /* Editor: source. */
+  --editor-font: var(--font-mono);
+  --editor-size: 14px;
+  --editor-line-height: 1.65;
+
+  /* UI: labels, menus, palette. */
+  --ui-font: var(--font-sans);
+  --ui-size: var(--t-sm);
+
+  /* Document titles: project name, outline headings, template names --
+     the one place chrome borrows the document's own typographic voice. */
+  --title-font: var(--font-serif);
+
+  /* Prose (focus mode, task 2.8): optional serif editing mode. */
+  --prose-font: var(--font-serif);
+  --prose-size: 17px;
+  --prose-line-height: 1.7;
+}

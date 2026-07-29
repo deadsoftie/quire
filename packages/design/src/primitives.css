@@ -1,0 +1,78 @@
+/*
+ * Cross-cutting primitives that every later 2.x task builds on top of --
+ * not a component library. Component-level work (the seam, panels,
+ * command palette, ...) belongs to its own task; this is only the
+ * foundational rules those components can all assume are already in
+ * place.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ink-900);
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--ui-size);
+}
+
+/* Quality floor (Section 7): visible keyboard focus rings, non-repro
+   blue, 2px, on every focusable element -- not just form controls. */
+:focus-visible {
+  outline: 2px solid var(--nonrepro);
+  outline-offset: 2px;
+}
+
+/* Quality floor: all interactive targets >=28px desktop / >=44px iPad. */
+:root {
+  --target-min: 28px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --target-min: 44px;
+  }
+}
+
+.hit-target {
+  min-width: var(--target-min);
+  min-height: var(--target-min);
+}
+
+/* Quality floor: prefers-reduced-motion respected everywhere, including
+   the seam's compile-state animation (task 2.3). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* A raised surface: panels, popovers, summoned overlays (file tree,
+   outline, problems, command palette). */
+.surface {
+  background: var(--ink-800);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+}
+
+.surface--raised {
+  background: var(--ink-700);
+}
+
+/* Document titles / outline headings: the one place chrome borrows the
+   document's own typographic voice (Section 7). Used with restraint --
+   apply this class only to those, never to body UI. */
+.title {
+  font-family: var(--title-font);
+}
