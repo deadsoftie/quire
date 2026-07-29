@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CompileReason, CoreEvent, Diagnostic, FileNode } from "@quire/client";
+import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
 import { Editor, INITIAL_SOURCE } from "./Editor";
@@ -7,11 +8,11 @@ import { buildFileTree } from "./panels/fileTree";
 import { FileTreePanel } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
-import { SummonedPanel } from "./panels/SummonedPanel";
 import type { PanelKind } from "./panels/types";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
+import { Sidebar } from "./Sidebar";
 import { normalizeSession, type SessionState } from "./session";
 import { TopBar } from "./TopBar";
 import "./App.css";
@@ -45,23 +46,16 @@ function basename(p: string): string {
 }
 
 const PANEL_TITLES: Record<PanelKind, string> = {
-  "file-tree": "File Tree",
+  "file-tree": "Explorer",
   outline: "Outline",
   problems: "Problems",
-};
-
-// File tree pinned by default -- the fallback when there's no saved session to restore it from.
-const DEFAULT_PINNED: Record<PanelKind, boolean> = {
-  "file-tree": true,
-  outline: false,
-  problems: false,
+  packages: "Packages",
 };
 
 const DEFAULT_SESSION: SessionState = {
   projectPath: null,
   openUri: null,
   splitFraction: 0.5,
-  pinned: DEFAULT_PINNED,
   focusMode: false,
   typewriterMode: false,
   proseMode: false,
@@ -90,9 +84,9 @@ function AppShell() {
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
-  // Pinned: docked in the sidebar. Not pinned: at most one shows as the ephemeral overlay (overlayPanel).
-  const [pinned, setPinned] = useState<Record<PanelKind, boolean>>(DEFAULT_PINNED);
-  const [overlayPanel, setOverlayPanel] = useState<PanelKind | null>(null);
+  // Persistent (Section 7), not summoned -- null means collapsed. Open on Explorer by default.
+  const [sidebarSection, setSidebarSection] = useState<PanelKind | null>("file-tree");
+  const [sidebarWidth, setSidebarWidth] = useState(240);
   // Lifted above Editor (not local state there) so they survive the remount that happens when switching files/projects.
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
@@ -242,7 +236,6 @@ function AppShell() {
 
       if (session) {
         setSplitFraction(session.splitFraction);
-        setPinned(session.pinned);
         setFocusMode(session.focusMode);
         setTypewriterMode(session.typewriterMode);
         setProseMode(session.proseMode);
@@ -308,7 +301,6 @@ function AppShell() {
       projectPath: project && project.engineAvailable !== null ? project.projectId : null,
       openUri: project && project.engineAvailable !== null ? project.uri : null,
       splitFraction,
-      pinned,
       focusMode,
       typewriterMode,
       proseMode,
@@ -316,7 +308,7 @@ function AppShell() {
       pdfInverted,
     };
     scheduleSaveSession();
-  }, [project, splitFraction, pinned, focusMode, typewriterMode, proseMode, theme, pdfInverted, scheduleSaveSession]);
+  }, [project, splitFraction, focusMode, typewriterMode, proseMode, theme, pdfInverted, scheduleSaveSession]);
 
   // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {
@@ -384,57 +376,41 @@ function AppShell() {
     run: () => setPdfInverted((v) => !v),
   });
 
-  // A pinned panel is already permanently visible; nothing for the shortcut to do.
-  const togglePanel = useCallback(
-    (kind: PanelKind) => {
-      if (pinned[kind]) return;
-      setOverlayPanel((current) => (current === kind ? null : kind));
-    },
-    [pinned],
-  );
-
-  // Unpinning demotes to fully closed, not back to "open as overlay."
-  const pinPanel = useCallback((kind: PanelKind) => {
-    setPinned((p) => ({ ...p, [kind]: true }));
-    setOverlayPanel((current) => (current === kind ? null : current));
-  }, []);
-
-  const unpinPanel = useCallback((kind: PanelKind) => {
-    setPinned((p) => ({ ...p, [kind]: false }));
+  // Selecting the already-open section collapses the sidebar; selecting any other section
+  // switches to it (opening the sidebar if it was collapsed). No separate "pinned" state --
+  // the sidebar is either open on a section or fully collapsed.
+  const toggleSidebarSection = useCallback((kind: PanelKind) => {
+    setSidebarSection((current) => (current === kind ? null : kind));
   }, []);
 
   useCommand({
     id: "panel.file-tree",
-    title: "Show File Tree",
+    title: "Show Explorer",
     shortcut: "⌘1",
     keybinding: { key: "1", meta: true },
-    run: () => togglePanel("file-tree"),
+    run: () => toggleSidebarSection("file-tree"),
   });
   useCommand({
     id: "panel.outline",
     title: "Show Outline",
     shortcut: "⌘2",
     keybinding: { key: "2", meta: true },
-    run: () => togglePanel("outline"),
+    run: () => toggleSidebarSection("outline"),
   });
   useCommand({
     id: "panel.problems",
     title: "Show Problems",
     shortcut: "⌘3",
     keybinding: { key: "3", meta: true },
-    run: () => togglePanel("problems"),
+    run: () => toggleSidebarSection("problems"),
   });
-
-  // Escape dismisses only the ephemeral overlay, never a pinned panel.
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && overlayPanel !== null) {
-        setOverlayPanel(null);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [overlayPanel]);
+  // No keybinding -- same as the other three had none reserved beyond ⌘1-3; still reachable
+  // from the palette, matching "every action is reachable from the palette" (Section 8, 2.4).
+  useCommand({
+    id: "panel.packages",
+    title: "Show Packages",
+    run: () => toggleSidebarSection("packages"),
+  });
 
   function renderPanelBody(kind: PanelKind) {
     switch (kind) {
@@ -443,40 +419,38 @@ function AppShell() {
           <FileTreePanel
             tree={buildFileTree(project?.files ?? [], project?.projectId ?? "")}
             activeUri={project?.uri ?? null}
-            onSelectFile={(uri) => {
-              switchToFile(uri);
-              setOverlayPanel(null);
-            }}
+            onSelectFile={switchToFile}
           />
         );
       case "outline":
         return <OutlinePanel projectId={project?.projectId ?? ""} uri={project?.uri ?? ""} refreshToken={compileVersion} />;
       case "problems":
         return <ProblemsPanel diagnostics={diagnostics} />;
+      case "packages":
+        return (
+          <p className="panel-empty">
+            Package management isn't built yet. When it is, installed packages, search, and cache
+            size will live here.
+          </p>
+        );
     }
   }
-
-  const pinnedKinds = (Object.keys(pinned) as PanelKind[]).filter((kind) => pinned[kind]);
 
   return (
     <div className="app">
       <CommandPalette />
       <TopBar projectLabel={project?.label ?? "Untitled"} engineAvailable={project?.engineAvailable ?? null} />
       <div className="app__body">
-        {pinnedKinds.length > 0 && (
-          <aside className="app__sidebar">
-            {pinnedKinds.map((kind) => (
-              <SummonedPanel
-                key={kind}
-                pinned
-                title={PANEL_TITLES[kind]}
-                caption={kind === "file-tree" ? "Files reachable from the root document." : undefined}
-                onTogglePin={() => unpinPanel(kind)}
-              >
-                {renderPanelBody(kind)}
-              </SummonedPanel>
-            ))}
-          </aside>
+        <ActivityBar active={sidebarSection} onSelect={toggleSidebarSection} problemCount={diagnostics.length} />
+        {sidebarSection && (
+          <Sidebar
+            title={PANEL_TITLES[sidebarSection]}
+            caption={sidebarSection === "file-tree" ? "Files reachable from the root document." : undefined}
+            width={sidebarWidth}
+            onWidthChange={setSidebarWidth}
+          >
+            {renderPanelBody(sidebarSection)}
+          </Sidebar>
         )}
         <div
           className="app__panes"
@@ -498,15 +472,6 @@ function AppShell() {
                 onChange={scheduleCompile}
                 onCursorActivity={handleCursorActivity}
               />
-            )}
-            {overlayPanel && !pinned[overlayPanel] && (
-              <SummonedPanel
-                title={PANEL_TITLES[overlayPanel]}
-                caption={overlayPanel === "file-tree" ? "Files reachable from the root document." : undefined}
-                onTogglePin={() => pinPanel(overlayPanel)}
-              >
-                {renderPanelBody(overlayPanel)}
-              </SummonedPanel>
             )}
           </div>
           <Seam

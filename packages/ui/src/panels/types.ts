@@ -1,1 +1,1 @@
-export type PanelKind = "file-tree" | "outline" | "problems";
+export type PanelKind = "file-tree" | "outline" | "problems" | "packages";

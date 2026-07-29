@@ -1,0 +1,41 @@
+.panel-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.panel-shell__header {
+  flex-shrink: 0;
+  padding: var(--s-3);
+  border-bottom: var(--seam) solid var(--ink-600);
+}
+
+.panel-shell__title {
+  display: block;
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--type-mid);
+}
+
+.panel-shell__caption {
+  display: block;
+  margin-top: var(--s-1);
+  font-size: var(--t-xs);
+  color: var(--type-lo);
+}
+
+.panel-shell__body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--s-2);
+}
+
+.panel-empty {
+  margin: 0;
+  padding: var(--s-3);
+  color: var(--type-lo);
+  font-size: var(--t-sm);
+}

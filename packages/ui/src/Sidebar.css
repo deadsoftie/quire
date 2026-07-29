@@ -1,0 +1,23 @@
+.sidebar {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  min-width: 0;
+  background: var(--ink-800);
+  border-right: var(--seam) solid var(--ink-600);
+}
+
+.sidebar > .panel-shell {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar__resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
