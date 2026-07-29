@@ -74,6 +74,12 @@ pub struct ProjectIndex {
     citations: Vec<CitationEntry>,
     macros: Vec<MacroDef>,
     packages: HashSet<String>,
+    /// Project-relative, forward-slash paths for every real `.tex` file under the project
+    /// directory -- the `\input`/`\include` completion candidate set (task 3.4).
+    tex_paths: Vec<String>,
+    /// Same, but every file matching [`project::GRAPHIC_EXTENSIONS`] -- the `\includegraphics`
+    /// completion candidate set.
+    graphic_paths: Vec<String>,
 }
 
 impl ProjectIndex {
@@ -120,7 +126,13 @@ impl ProjectIndex {
         let mut macros: Vec<MacroDef> = macros.into_values().collect();
         macros.sort_by(|a, b| a.name.cmp(&b.name));
 
-        ProjectIndex { files, citations, macros, packages }
+        // Unlike everything above, these come from a filesystem walk, not FileGraph -- the whole
+        // point is offering files *not yet* \input/\includegraphics'd, which FileGraph (only
+        // what's already referenced) can't provide.
+        let tex_paths = find_path_candidates(base_dir, &["tex"]);
+        let graphic_paths = find_path_candidates(base_dir, project::GRAPHIC_EXTENSIONS);
+
+        ProjectIndex { files, citations, macros, packages, tex_paths, graphic_paths }
     }
 
     /// `outline()`'s real implementation: just this one file's section tree, `[]` if it isn't
@@ -150,6 +162,17 @@ impl ProjectIndex {
     /// available," Section 9.4).
     pub fn packages(&self) -> impl Iterator<Item = &str> {
         self.packages.iter().map(|s| s.as_str())
+    }
+
+    /// `\input`/`\include` path completion candidates -- every `.tex` file in the project, as a
+    /// project-relative path.
+    pub fn tex_paths(&self) -> impl Iterator<Item = &str> {
+        self.tex_paths.iter().map(|s| s.as_str())
+    }
+
+    /// `\includegraphics` path completion candidates -- every image file in the project.
+    pub fn graphic_paths(&self) -> impl Iterator<Item = &str> {
+        self.graphic_paths.iter().map(|s| s.as_str())
     }
 }
 
@@ -721,6 +744,47 @@ fn find_packages(stripped: &str) -> Vec<String> {
     packages
 }
 
+/// Project-relative, forward-slash-normalized paths of every real file under `base_dir` whose
+/// extension (case-insensitive) is in `extensions`. Unlike everything else in this module, this
+/// walks the filesystem directly rather than scanning `.tex` source -- the candidate set is "what
+/// files exist," not "what's already referenced." Skips [`project::SKIP_NAMES`] and guards
+/// against symlink cycles the same way `project::root`'s own directory walk does; kept as a
+/// separate implementation (not reusing that private, `.tex`-specific one) to avoid risking a
+/// regression in already-shipped root-detection code for a DRY win.
+fn find_path_candidates(base_dir: &Path, extensions: &[&str]) -> Vec<String> {
+    let mut visited = HashSet::new();
+    let mut results = Vec::new();
+    walk_project_files(base_dir, base_dir, &mut visited, extensions, &mut results);
+    results.sort();
+    results
+}
+
+fn walk_project_files(base_dir: &Path, dir: &Path, visited: &mut HashSet<PathBuf>, extensions: &[&str], results: &mut Vec<String>) {
+    let Ok(real_dir) = dir.canonicalize() else {
+        return;
+    };
+    if !visited.insert(real_dir) {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if project::SKIP_NAMES.contains(&name.to_string_lossy().as_ref()) {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            walk_project_files(base_dir, &path, visited, extensions, results);
+        } else if path.extension().is_some_and(|e| extensions.iter().any(|ext| e.eq_ignore_ascii_case(ext))) {
+            if let Ok(rel) = path.strip_prefix(base_dir) {
+                results.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+}
+
 /// Byte offset -> `Position` (0-based line, 0-based UTF-16 code units per Section 6's Position --
 /// matches CodeMirror/LSP convention). O(n) per call, fine here: called a handful of times per
 /// file (once per label/heading), never in a hot loop.
@@ -823,10 +887,40 @@ fn enclosing_command(text: &str, position: &Position) -> Option<String> {
                     depth -= 1;
                     continue;
                 }
-                let prefix = &before[..i];
+                // An optional [options] block can sit between the command name and this brace --
+                // \includegraphics[width=5cm]{...} and even plain LaTeX's \cite[p. 5]{...} both
+                // do this. Skip backward over it before looking for the command name.
+                let mut prefix = &before[..i];
+                if prefix.ends_with(']') {
+                    let open = find_matching_open_bracket(prefix)?;
+                    prefix = &prefix[..open];
+                }
                 let backslash = prefix.rfind('\\')?;
                 let name = &prefix[backslash + 1..];
                 return (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphabetic())).then(|| name.to_string());
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `prefix` ends with `]`; finds the byte offset of its matching `[`, scanning backward and
+/// honoring nesting -- mirrors [`matching_brace`]'s logic but for `[...]` and in reverse. No
+/// escape handling: `[key=value]`-style option blocks don't realistically contain `\[`/`\]`.
+fn find_matching_open_bracket(prefix: &str) -> Option<usize> {
+    let bytes = prefix.as_bytes();
+    let mut depth = 0i32;
+    let mut i = prefix.len();
+    while i > 0 {
+        i -= 1;
+        match bytes[i] {
+            b']' => depth += 1,
+            b'[' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
             }
             _ => {}
         }
@@ -859,6 +953,18 @@ pub fn is_command_completion_context(text: &str, position: &Position) -> bool {
         return false;
     };
     before[backslash + 1..].chars().all(|c| c.is_ascii_alphabetic())
+}
+
+/// Trigger context for `\input`/`\include` file-path completion (task 3.4). Both take only
+/// `.tex` files (Section 9.4), so they share one context check.
+pub fn is_input_completion_context(text: &str, position: &Position) -> bool {
+    matches!(enclosing_command(text, position).as_deref(), Some("input") | Some("include"))
+}
+
+/// Trigger context for `\includegraphics` file-path completion (task 3.4) -- a separate check
+/// from [`is_input_completion_context`] since it filters to a different extension set.
+pub fn is_includegraphics_completion_context(text: &str, position: &Position) -> bool {
+    enclosing_command(text, position).as_deref() == Some("includegraphics")
 }
 
 #[cfg(test)]
@@ -1138,6 +1244,54 @@ mod tests {
     fn find_packages_handles_options_and_comma_lists() {
         let packages = find_packages("\\usepackage[utf8]{inputenc}\n\\usepackage{tikz,amsmath}\n");
         assert_eq!(packages, vec!["inputenc", "tikz", "amsmath"]);
+    }
+
+    #[test]
+    fn enclosing_command_skips_an_optional_bracket_before_the_brace() {
+        for cmd in ["\\includegraphics[width=5cm]{", "\\includegraphics[width=5cm]{fig"] {
+            assert!(is_includegraphics_completion_context(cmd, &end_position(cmd)), "{cmd:?} should be an includegraphics context");
+        }
+        // Plain LaTeX's own \cite takes an optional note argument too, not just natbib/biblatex.
+        let cite_with_note = "\\cite[p. 5]{";
+        assert!(is_cite_completion_context(cite_with_note, &end_position(cite_with_note)));
+    }
+
+    #[test]
+    fn input_and_includegraphics_contexts_are_distinct_and_do_not_overlap_with_ref_or_cite() {
+        for cmd in ["\\input{", "\\include{"] {
+            assert!(is_input_completion_context(cmd, &end_position(cmd)), "{cmd:?} should be an input context");
+            assert!(!is_includegraphics_completion_context(cmd, &end_position(cmd)));
+        }
+        let graphic = "\\includegraphics{";
+        assert!(is_includegraphics_completion_context(graphic, &end_position(graphic)));
+        assert!(!is_input_completion_context(graphic, &end_position(graphic)));
+
+        for cmd in ["\\ref{", "\\cite{"] {
+            assert!(!is_input_completion_context(cmd, &end_position(cmd)));
+            assert!(!is_includegraphics_completion_context(cmd, &end_position(cmd)));
+        }
+    }
+
+    #[test]
+    fn find_path_candidates_filters_by_extension_skips_dotfolders_and_normalizes_separators() {
+        let dir = std::env::temp_dir().join(format!("quire-index-path-candidates-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("chapters")).unwrap();
+        fs::create_dir_all(dir.join("figures")).unwrap();
+        fs::create_dir_all(dir.join("node_modules")).unwrap();
+        fs::write(dir.join("main.tex"), "").unwrap();
+        fs::write(dir.join("chapters").join("intro.tex"), "").unwrap();
+        fs::write(dir.join("figures").join("plot.pdf"), "").unwrap();
+        fs::write(dir.join("figures").join("plot.PNG"), "").unwrap(); // extension case shouldn't matter
+        fs::write(dir.join("node_modules").join("ignored.tex"), "").unwrap();
+
+        let tex = find_path_candidates(&dir, &["tex"]);
+        assert_eq!(tex, vec!["chapters/intro.tex", "main.tex"], "sorted, node_modules excluded, forward slashes even if built on a platform that uses '\\'");
+
+        let graphics = find_path_candidates(&dir, project::GRAPHIC_EXTENSIONS);
+        assert_eq!(graphics, vec!["figures/plot.PNG", "figures/plot.pdf"]);
+
+        fs::remove_dir_all(&dir).ok();
     }
 
 }

@@ -66,7 +66,9 @@ impl FileGraph {
 }
 
 /// Extensions graphicx itself searches for an extensionless `\includegraphics`.
-const GRAPHIC_EXTENSIONS: &[&str] = &["pdf", "png", "jpg", "jpeg", "eps"];
+/// `pub(crate)`: `crate::index` reuses this for `\includegraphics` path completion (task 3.4)
+/// rather than redefining the same list a second time.
+pub(crate) const GRAPHIC_EXTENSIONS: &[&str] = &["pdf", "png", "jpg", "jpeg", "eps"];
 
 /// Relative paths resolve against `root`'s directory, not the referencing file's own -- matching TeX's actual behavior. Cycles can't infinite-loop: each file is parsed at most once.
 pub fn build_file_graph(root: &Path) -> FileGraph {

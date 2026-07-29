@@ -217,15 +217,18 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
 }
 
 /// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion), 3.2 (`\cite{` citation
-/// completion), and 3.3 (bare-command macro completion) -- every other trigger context (`\input{`,
-/// math symbols, snippets) returns `[]` until 3.4/3.7/3.8 land their own extraction sources onto
-/// the same [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the
-/// whole project index for a keystroke inside an argument none of the three triggers recognize.
+/// completion), 3.3 (bare-command macro completion), and 3.4 (`\input`/`\include`/
+/// `\includegraphics` file-path completion) -- every other trigger context (math symbols,
+/// snippets) returns `[]` until 3.7/3.8 land their own extraction sources onto the same
+/// [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the whole
+/// project index for a keystroke inside an argument none of these triggers recognize.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
     let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);
     let is_command = crate::index::is_command_completion_context(&req.text, &req.position);
-    if !is_ref && !is_cite && !is_command {
+    let is_input = crate::index::is_input_completion_context(&req.text, &req.position);
+    let is_graphic = crate::index::is_includegraphics_completion_context(&req.text, &req.position);
+    if !is_ref && !is_cite && !is_command && !is_input && !is_graphic {
         return Vec::new();
     }
 
@@ -240,8 +243,12 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
         label_completions(&index)
     } else if is_cite {
         citation_completions(&index)
-    } else {
+    } else if is_command {
         macro_completions(&index)
+    } else if is_input {
+        path_completions(index.tex_paths())
+    } else {
+        path_completions(index.graphic_paths())
     }
 }
 
@@ -275,6 +282,27 @@ fn citation_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionIte
             kind: CompletionKind::Citation,
             insert: c.key.clone(),
             detail: c.detail.clone(),
+            documentation: None,
+            symbol_preview: None,
+            sort_priority: PROJECT_LOCAL_PRIORITY,
+        })
+        .collect();
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+    items
+}
+
+/// Shared by `\input`/`\include` and `\includegraphics` completion -- both just offer a
+/// project-relative path, with the extension already filtered by which one `paths` came from.
+/// The full path (extension included) is inserted rather than an idiomatic extension-less form:
+/// unambiguous even if two candidates share a basename with different extensions (`plot.pdf` and
+/// `plot.png`), and always valid LaTeX either way.
+fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionItem> {
+    let mut items: Vec<CompletionItem> = paths
+        .map(|p| CompletionItem {
+            label: p.to_string(),
+            kind: CompletionKind::Path,
+            insert: p.to_string(),
+            detail: None,
             documentation: None,
             symbol_preview: None,
             sort_priority: PROJECT_LOCAL_PRIORITY,

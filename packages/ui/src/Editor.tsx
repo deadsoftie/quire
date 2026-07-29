@@ -77,19 +77,21 @@ const baseEditorTheme = EditorView.theme(
   { dark: true },
 );
 
-// Completions come from quire-core's own index as of 3.1-3.3 (label/\ref, citation/\cite, and
-// bare-command macro completion; texlab is no longer called at all -- packages/client/src/
-// texlabClient.ts is inert scaffolding pending 3.12's deletion). Two trigger shapes feed the same
-// request: typing inside a recognized command's brace argument (currently \ref/\eqref/\autoref/
-// \cite, extended by 3.4 rather than rewritten when path completion lands), or a bare backslash
-// for command-name completion (macros as of 3.3; 3.5's CTAN commands merge into the same
-// server-side response later, ranked below project-local macros -- no client change needed for
-// that either). Each trigger request spawns a fresh quire-sidecar process (see sidecarProcess.ts's
-// runOnce) -- fine once per word/argument, since CM6 filters locally against the already-fetched
-// list as more of it is typed, not on every keystroke.
+// Completions come from quire-core's own index as of 3.1-3.4 (label/\ref, citation/\cite,
+// bare-command macro, and file-path completion; texlab is no longer called at all --
+// packages/client/src/texlabClient.ts is inert scaffolding pending 3.12's deletion). Two trigger
+// shapes feed the same request: typing inside a recognized command's brace argument
+// (\ref/\eqref/\autoref/\cite/\input/\include/\includegraphics -- the optional `(\[...\])?` group
+// tolerates \includegraphics[width=5cm]{ and even plain LaTeX's own \cite[note]{, both of which
+// take an optional bracket before the brace), or a bare backslash for command-name completion
+// (macros as of 3.3; 3.5's CTAN commands merge into the same server-side response later, ranked
+// below project-local macros -- no client change needed for that either). Each trigger request
+// spawns a fresh quire-sidecar process (see sidecarProcess.ts's runOnce) -- fine once per
+// word/argument, since CM6 filters locally against the already-fetched list as more of it is
+// typed, not on every keystroke.
 function makeCompletionSource(projectId: string, uri: string) {
   return async function coreCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
-    const argMatch = context.matchBefore(/\\(ref|eqref|autoref|cite)\{[^{}\n]*/);
+    const argMatch = context.matchBefore(/\\(ref|eqref|autoref|cite|input|include|includegraphics)(\[[^\]]*\])?\{[^{}\n]*/);
     const wordMatch = context.matchBefore(/\\[a-zA-Z]*/);
 
     let from: number;

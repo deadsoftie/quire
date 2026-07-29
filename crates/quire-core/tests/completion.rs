@@ -1,6 +1,7 @@
-//! Tasks 3.1-3.3's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
-//! completes with readable entries," and "Custom macros appear with correct tabstops." Exercises
-//! the real `outline`/`complete` handlers (crate::index::ProjectIndex) against multi-file fixtures.
+//! Tasks 3.1-3.4's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
+//! completes with readable entries," "Custom macros appear with correct tabstops," and "Relative
+//! paths complete, extensions filtered by command." Exercises the real `outline`/`complete`
+//! handlers (crate::index::ProjectIndex) against multi-file fixtures.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -142,6 +143,45 @@ fn cite_completion_reads_the_bib_file_the_bibliography_command_points_at() {
 
     let lamport_detail = by_key["lamport1994"].detail.as_deref().unwrap();
     assert!(lamport_detail.starts_with("Lamport, Leslie,"), "an author field's own internal comma (Last, First) must survive intact: {lamport_detail:?}");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn input_completion_offers_tex_files_not_yet_referenced_and_only_tex_files() {
+    let project_dir = fresh_project_copy("paths", "complete-input");
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    let position = position_after(&text, "\\input{ch");
+
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
+
+    assert!(items.iter().all(|i| i.kind == CompletionKind::Path));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(labels.contains(&"chapters/intro.tex"), "already-\\input'd files must still complete: {labels:?}");
+    assert!(labels.contains(&"chapters/appendix.tex"), "candidates come from a filesystem walk, not just what's already referenced: {labels:?}");
+    assert!(!labels.iter().any(|l| l.ends_with(".pdf") || l.ends_with(".png")), "\\input must only offer .tex files: {labels:?}");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn includegraphics_completion_offers_only_image_files() {
+    let project_dir = fresh_project_copy("paths", "complete-graphic");
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    let position = position_after(&text, "\\includegraphics{fig");
+
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
+
+    assert!(items.iter().all(|i| i.kind == CompletionKind::Path));
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(labels.contains(&"figures/plot.pdf") && labels.contains(&"figures/diagram.png"), "{labels:?}");
+    assert!(!labels.iter().any(|l| l.ends_with(".tex")), "\\includegraphics must only offer image files: {labels:?}");
 
     fs::remove_dir_all(&project_dir).ok();
 }
