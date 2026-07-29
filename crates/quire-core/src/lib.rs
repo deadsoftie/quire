@@ -1,4 +1,5 @@
 pub mod project;
+pub mod rerun;
 pub mod synctex;
 
 use tectonic::driver::{OutputFormat, ProcessingSessionBuilder};
@@ -30,6 +31,15 @@ impl std::error::Error for CompileError {}
 
 impl From<tectonic::Error> for CompileError {
     fn from(e: tectonic::Error) -> Self {
+        CompileError {
+            message: e.to_string(),
+            log: None,
+        }
+    }
+}
+
+impl From<std::io::Error> for CompileError {
+    fn from(e: std::io::Error) -> Self {
         CompileError {
             message: e.to_string(),
             log: None,

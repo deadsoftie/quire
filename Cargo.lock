@@ -2359,6 +2359,9 @@ dependencies = [
  "flate2",
  "notify",
  "tectonic",
+ "tectonic_bridge_core",
+ "tectonic_bundles",
+ "tectonic_engine_xdvipdfmx",
 ]
 
 [[package]]
