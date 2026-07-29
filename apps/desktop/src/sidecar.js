@@ -12,9 +12,36 @@ const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "
 // the caller cancels via the returned `cancel()` function -- used by
 // SidecarClient.compile() for real cancellation; forwardSync/inverseSync
 // don't need it, they're cheap, stateless, and never cancelled.
+//
+// `detached: true` (POSIX) makes the child the leader of its own process
+// group, so killing happens via `process.kill(-pid)` (negative PID = the
+// whole group) rather than `child.kill()` (that one PID only). This
+// matters because Tectonic itself spawns `biber` as a subprocess when
+// biblatex needs it (confirmed during the 0.9 gate test) -- SIGKILLing
+// only the sidecar would leave biber running as an orphan. Verified
+// directly: in one run biber happened to die anyway (likely SIGPIPE from
+// its output pipe closing), but that's incidental, not a guarantee --
+// "no zombie processes" needs an explicit one.
 function runOnce(method, params, cwd) {
-  const proc = spawn(SIDECAR_PATH, [], { cwd, stdio: ["pipe", "pipe", "inherit"] });
+  const proc = spawn(SIDECAR_PATH, [], {
+    cwd,
+    stdio: ["pipe", "pipe", "inherit"],
+    detached: process.platform !== "win32",
+  });
   let cancelled = false;
+
+  function killProcessTree() {
+    if (process.platform !== "win32") {
+      try {
+        process.kill(-proc.pid, "SIGKILL");
+        return;
+      } catch {
+        // group already gone (e.g. process exited on its own just before
+        // this ran) -- fall through to the plain kill as a backstop.
+      }
+    }
+    proc.kill("SIGKILL");
+  }
 
   const promise = new Promise((resolve, reject) => {
     let settled = false;
@@ -65,7 +92,7 @@ function runOnce(method, params, cwd) {
     promise,
     kill() {
       cancelled = true;
-      proc.kill("SIGKILL");
+      killProcessTree();
     },
   };
 }
@@ -91,9 +118,13 @@ class SidecarClient {
 
     const call = runOnce("compile", { source }, cwd);
     this.current = call;
+    // `.finally()` returns a *new* promise that inherits call.promise's
+    // rejection -- if we don't catch on it too, a legitimate compile error
+    // becomes an unhandled rejection here (a separate promise from the one
+    // callers actually await below) and crashes the process.
     call.promise.finally(() => {
       if (this.current === call) this.current = null;
-    });
+    }).catch(() => {});
     return call.promise;
   }
 
@@ -112,6 +143,18 @@ class SidecarClient {
 
   inverseSync(synctexBase64, page, x, y, searchDir) {
     return runOnce("inverseSync", { synctexBase64, page, x, y, searchDir }).promise;
+  }
+
+  // Called from main.js's `will-quit` handler. `detached: true` (above) lets
+  // a killed process's group survive independently of this one on purpose --
+  // but that same independence means an in-flight compile (and any biber
+  // grandchild) would otherwise be orphaned if the app quits without ever
+  // calling compile()'s own cancellation path.
+  stop() {
+    if (this.current) {
+      this.current.kill();
+      this.current = null;
+    }
   }
 }
 

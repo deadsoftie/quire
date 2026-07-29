@@ -247,6 +247,7 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   completion?.stop();
   projectWatcher?.stop();
+  sidecar?.stop();
 });
 
 app.on("activate", () => {
