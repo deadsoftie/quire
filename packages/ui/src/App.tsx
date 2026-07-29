@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CompileReason, CoreEvent } from "@quire/client";
+import { CommandPalette } from "./commands/CommandPalette";
+import { CommandProvider, useCommand } from "./commands/CommandContext";
 import { Editor, INITIAL_SOURCE } from "./Editor";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
@@ -24,6 +26,17 @@ function basename(p: string): string {
 }
 
 export function App() {
+  return (
+    <CommandProvider>
+      <AppShell />
+    </CommandProvider>
+  );
+}
+
+// Split out from App() so useCommand() below has a CommandProvider
+// ancestor to register into -- a component can't consume a context it
+// provides in that same render.
+function AppShell() {
   const [project, setProject] = useState<Project | null>(null);
   const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
@@ -144,22 +157,27 @@ export function App() {
     });
   }, [runCompile]);
 
-  // No "Open Project" button -- Section 7's top bar has none (just "⌘K"
-  // and "Project ◦"). Reachable by shortcut until 2.4's command palette
-  // gives ⌘K a real command to register this into.
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        openProjectFlow();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openProjectFlow]);
+  // No "Open Project" button in the top bar (Section 7's layout has
+  // none) -- every action in the app has to be reachable some other way
+  // instead, which for this one is both a real keybinding and a palette
+  // entry, registered once here.
+  useCommand({
+    id: "project.open",
+    title: "Open Project…",
+    shortcut: "⌘O",
+    keybinding: { key: "o", meta: true },
+    run: openProjectFlow,
+  });
+
+  useCommand({
+    id: "layout.reset-split",
+    title: "Reset Editor/Preview Split",
+    run: () => setSplitFraction(0.5),
+  });
 
   return (
     <div className="app">
+      <CommandPalette />
       <TopBar projectLabel={project?.label ?? "Untitled"} engineAvailable={project?.engineAvailable ?? null} />
       <div className="app__panes" ref={containerRef} style={{ gridTemplateColumns: `${splitFraction}fr var(--s-2) ${1 - splitFraction}fr` }}>
         <div className="app__pane">

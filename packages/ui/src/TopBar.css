@@ -13,8 +13,21 @@
 }
 
 .top-bar__hint {
+  border: none;
+  background: none;
+  padding: var(--s-1) var(--s-2);
+  margin: 0 calc(var(--s-2) * -1);
+  border-radius: var(--radius);
+  color: inherit;
   font-family: var(--font-mono);
+  font-size: inherit;
   letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.top-bar__hint:hover {
+  background: var(--ink-700);
+  color: var(--type-hi);
 }
 
 .top-bar__project {

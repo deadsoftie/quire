@@ -1,0 +1,77 @@
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  z-index: 100;
+}
+
+.command-palette {
+  width: min(560px, 90vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.command-palette__input {
+  border: none;
+  border-bottom: var(--seam) solid var(--ink-600);
+  background: transparent;
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-md);
+  padding: var(--s-4);
+  outline: none;
+}
+
+/* Quality floor's focus ring is meant for discrete focusable controls
+   moving between them, not a single text input the palette auto-focuses
+   on open -- an outline here would just flash uselessly. */
+.command-palette__input:focus-visible {
+  outline: none;
+}
+
+.command-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-2);
+  overflow-y: auto;
+}
+
+.command-palette__empty {
+  padding: var(--s-3) var(--s-3);
+  color: var(--type-lo);
+  font-size: var(--t-sm);
+}
+
+.command-palette__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.command-palette__item--active {
+  background: var(--nonrepro-dim);
+  color: var(--nonrepro);
+}
+
+.command-palette__shortcut {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--type-mid);
+}
+
+.command-palette__item--active .command-palette__shortcut {
+  color: var(--nonrepro);
+}
