@@ -105,9 +105,8 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
         message: "LaTeX didn't report failure, but no PDF was created".to_string(),
         log: None,
     })?;
-    let synctex_gz = fs::read(build_dir.join("texput.synctex.gz")).ok();
 
-    Ok(CompileOutput { pdf, synctex_gz })
+    Ok(CompileOutput { pdf })
 }
 
 fn run_tex_pass(
@@ -136,7 +135,6 @@ fn run_tex_pass(
         .keep_intermediates(true)
         .keep_logs(false)
         .print_stdout(false)
-        .synctex(true)
         // Not `Pdf`: `PassSetting::Tex` never runs the XDV->PDF conversion
         // step regardless of `output_format` (that only happens inside the
         // private `default_pass`, which this deliberately avoids -- see

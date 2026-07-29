@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { autocompletion } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
@@ -26,41 +26,16 @@ async function texlabCompletionSource(context: CompletionContext): Promise<Compl
   };
 }
 
-export interface EditorHandle {
-  /** Selects the given 1-indexed source line and scrolls it into view. */
-  jumpToLine: (line: number) => void;
-}
-
 interface EditorProps {
   initialDoc: string;
   onChange: (text: string) => void;
-  onCursorLine: (line: number) => void;
 }
 
-export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { initialDoc, onChange, onCursorLine },
-  ref,
-) {
+export function Editor({ initialDoc, onChange }: EditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const onCursorLineRef = useRef(onCursorLine);
-  onCursorLineRef.current = onCursorLine;
-
-  useImperativeHandle(ref, () => ({
-    jumpToLine(line) {
-      const view = viewRef.current;
-      if (!view) return;
-      const clamped = Math.min(Math.max(line, 1), view.state.doc.lines);
-      const lineInfo = view.state.doc.line(clamped);
-      view.dispatch({
-        selection: { anchor: lineInfo.from, head: lineInfo.to },
-        scrollIntoView: true,
-      });
-      view.focus();
-    },
-  }));
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -73,10 +48,6 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
-          }
-          if (update.selectionSet) {
-            const line = update.state.doc.lineAt(update.state.selection.main.head).number;
-            onCursorLineRef.current(line);
           }
         }),
       ],
@@ -94,4 +65,4 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   }, []);
 
   return <div ref={hostRef} style={{ height: "100%" }} />;
-});
+}

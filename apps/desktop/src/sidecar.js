@@ -10,8 +10,7 @@ const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "
 // Spawns one sidecar process, sends one JSON-RPC request, resolves with
 // its result (or rejects on error/unexpected exit). `onKill` is called if
 // the caller cancels via the returned `cancel()` function -- used by
-// SidecarClient.compile() for real cancellation; forwardSync/inverseSync
-// don't need it, they're cheap, stateless, and never cancelled.
+// SidecarClient.compile() for real cancellation.
 //
 // `detached: true` (POSIX) makes the child the leader of its own process
 // group, so killing happens via `process.kill(-pid)` (negative PID = the
@@ -126,23 +125,6 @@ class SidecarClient {
       if (this.current === call) this.current = null;
     }).catch(() => {});
     return call.promise;
-  }
-
-  // Stateless, independent of compile()'s cancellation: each call spawns
-  // its own short-lived process and parses the given synctex blob fresh.
-  //
-  // `path`+`searchDir` resolve against whichever file is actually open
-  // (a project's real content almost always lives in \input/\subfile'd
-  // files, not the root document -- each gets its own synctex tag, so
-  // there's no single fixed tag once a project has more than one file).
-  // Omit them (or pass `tag` directly) for the no-project-open case,
-  // where the buffer is always Tectonic's primary input, tag 1.
-  forwardSync(synctexBase64, { tag, path, searchDir, line }) {
-    return runOnce("forwardSync", { synctexBase64, tag, path, searchDir, line }).promise;
-  }
-
-  inverseSync(synctexBase64, page, x, y, searchDir) {
-    return runOnce("inverseSync", { synctexBase64, page, x, y, searchDir }).promise;
   }
 
   // Called from main.js's `will-quit` handler. `detached: true` (above) lets

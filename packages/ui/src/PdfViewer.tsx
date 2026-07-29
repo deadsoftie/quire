@@ -2,12 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
-import type { SyncRect } from "./quire-bridge";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-// Matches the sync coordinates spec-quoted as "PDF pts" 1:1 -- no separate
-// unit conversion needed between the highlight overlay and the canvas.
 const SCALE = 1.5;
 
 interface RenderTask {
@@ -49,11 +46,9 @@ async function renderPageOnto(
 
 interface PdfViewerProps {
   data: Uint8Array | null;
-  highlightRects: SyncRect[] | null;
-  onInverseSync: (page: number, x: number, y: number) => void;
 }
 
-export function PdfViewer({ data, highlightRects, onInverseSync }: PdfViewerProps) {
+export function PdfViewer({ data }: PdfViewerProps) {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>());
   const renderTasks = useRef(new Map<number, RenderTask>());
@@ -101,12 +96,6 @@ export function PdfViewer({ data, highlightRects, onInverseSync }: PdfViewerProp
     if (pdfDoc) renderPageOnto(pdfDoc, pageNumber, el, renderTasks.current);
   }
 
-  function handleClick(pageNumber: number, e: React.MouseEvent<HTMLCanvasElement>) {
-    const x = e.nativeEvent.offsetX / SCALE;
-    const y = e.nativeEvent.offsetY / SCALE;
-    onInverseSync(pageNumber, x, y);
-  }
-
   const numPages = pdfDoc?.numPages ?? 0;
   const pageNumbers = Array.from({ length: numPages }, (_, i) => i + 1);
 
@@ -116,27 +105,8 @@ export function PdfViewer({ data, highlightRects, onInverseSync }: PdfViewerProp
         <div key={pageNumber} style={{ position: "relative", marginBottom: 8 }}>
           <canvas
             ref={(el) => setCanvasRef(pageNumber, el)}
-            onClick={(e) => handleClick(pageNumber, e)}
-            style={{ display: "block", margin: "0 auto", cursor: "text" }}
+            style={{ display: "block", margin: "0 auto" }}
           />
-          {(highlightRects ?? [])
-            .filter((r) => r.page === pageNumber)
-            .map((r, i) => (
-              <div
-                key={i}
-                className="quire-sync-highlight"
-                style={{
-                  position: "absolute",
-                  left: r.x * SCALE,
-                  top: r.y * SCALE,
-                  width: Math.max(r.w * SCALE, 2),
-                  height: Math.max(r.h * SCALE, 2),
-                  background: "rgba(80,150,255,0.35)",
-                  outline: "1px solid rgba(80,150,255,0.7)",
-                  pointerEvents: "none",
-                }}
-              />
-            ))}
         </div>
       ))}
     </div>

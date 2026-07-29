@@ -1,14 +1,11 @@
 pub mod project;
 pub mod rerun;
-pub mod synctex;
 
 use tectonic::driver::{OutputFormat, ProcessingSessionBuilder};
 use tectonic::status::NoopStatusBackend;
 
 pub struct CompileOutput {
     pub pdf: Vec<u8>,
-    /// Raw gzip-compressed bytes, exactly as Tectonic writes them.
-    pub synctex_gz: Option<Vec<u8>>,
 }
 
 /// Unlike `tectonic::Error` (whose `Display` is often just a generic
@@ -51,8 +48,8 @@ pub fn compile_latex_to_pdf(source: &str) -> Result<Vec<u8>, CompileError> {
     compile_latex(source).map(|out| out.pdf)
 }
 
-/// Same underlying session as [`compile_latex_to_pdf`], but with SyncTeX
-/// enabled and both output files captured instead of just the PDF.
+/// Same underlying session as [`compile_latex_to_pdf`], but returns the
+/// full [`CompileOutput`] instead of just the PDF bytes.
 pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
     let mut status = NoopStatusBackend::default();
 
@@ -69,7 +66,6 @@ pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
         .keep_logs(false)
         .keep_intermediates(false)
         .print_stdout(false)
-        .synctex(true)
         .output_format(OutputFormat::Pdf)
         .do_not_write_output_files();
 
@@ -89,7 +85,6 @@ pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
         message: "LaTeX didn't report failure, but no PDF was created".to_string(),
         log: None,
     })?;
-    let synctex_gz = files.remove("texput.synctex.gz").map(|f| f.data);
 
-    Ok(CompileOutput { pdf, synctex_gz })
+    Ok(CompileOutput { pdf })
 }
