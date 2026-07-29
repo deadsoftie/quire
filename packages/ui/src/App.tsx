@@ -66,6 +66,7 @@ function AppShell() {
   const [project, setProject] = useState<Project | null>(null);
   const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
+  const [changedPages, setChangedPages] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [seamState, setSeamState] = useState<SeamState>("idle");
   const [splitFraction, setSplitFraction] = useState(0.5);
@@ -98,6 +99,7 @@ function AppShell() {
         if (result.status === "ok" && result.pdfPath) {
           const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
           setPdfData(bytes);
+          setChangedPages(result.changedPages);
           setError(null);
           setCompileVersion((v) => v + 1);
         } else {
@@ -369,7 +371,11 @@ function AppShell() {
             onReset={() => setSplitFraction(0.5)}
           />
           <div className="app__pane">
-            {error ? <pre className="app__error">{error}</pre> : <PdfViewer data={pdfData} />}
+            {error ? (
+              <pre className="app__error">{error}</pre>
+            ) : (
+              <PdfViewer data={pdfData} changedPages={changedPages} />
+            )}
           </div>
         </div>
       </div>
