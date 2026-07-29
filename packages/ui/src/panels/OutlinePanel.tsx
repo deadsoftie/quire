@@ -1,22 +1,16 @@
 import { useEffect, useState } from "react";
 import type { OutlineNode } from "@quire/client";
-// Reuses file-tree's row/name classes -- same recursive indented-list
-// look for both, no need for a second near-identical stylesheet.
+// Reuses file-tree's row/name classes for the same indented-list look.
 import "./FileTreePanel.css";
 
 interface OutlinePanelProps {
   projectId: string;
   uri: string;
-  /** Bumped after every successful compile so the outline can refetch --
-   * meaningless today (see below) but wired for when it isn't. */
+  /** Bumped after every successful compile to refetch; meaningless until M3's completion index exists. */
   refreshToken: number;
 }
 
-// `outline()` is a frozen-shape stub (CONTRACT.md): it always resolves
-// to `[]` until M3 builds the real completion index behind it. This
-// fetches and renders the real shape now anyway, so nothing has to
-// change here when that lands -- only the empty state below is
-// guaranteed to be what anyone sees for the moment.
+// outline() is a frozen-shape stub, always [] until M3; renders the real shape now regardless.
 export function OutlinePanel({ projectId, uri, refreshToken }: OutlinePanelProps) {
   const [nodes, setNodes] = useState<OutlineNode[]>([]);
 

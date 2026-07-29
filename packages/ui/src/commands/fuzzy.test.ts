@@ -33,8 +33,6 @@ describe("fuzzyScore", () => {
   });
 
   it("rewards matches that land on word-boundary letters", () => {
-    // "op" as the leading letters of "Open" + "Project" vs. the same two
-    // letters occurring mid-word.
     const boundary = fuzzyScore("op", "Open Project")!;
     const midWord = fuzzyScore("op", "Dropdown")!; // matches inside "Dropdown"
     expect(boundary).toBeGreaterThan(midWord);

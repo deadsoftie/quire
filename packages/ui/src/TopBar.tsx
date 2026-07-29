@@ -3,18 +3,11 @@ import "./TopBar.css";
 
 interface TopBarProps {
   projectLabel: string;
-  /** `null` when unknown (the scratch/placeholder project never calls the
-   * real `openProject`, so this is genuinely unavailable, not just
-   * unchecked) -- the dot only ever renders on a real `false`. */
+  /** `null` when unknown (the scratch project never calls real `openProject`) -- the dot only renders on a real `false`. */
   engineAvailable: boolean | null;
 }
 
-// Section 7's layout: "36px, drag region" with "⌘K" at the left and
-// "Project ◦" at the right -- no sidebar, no tab bar, no toolbar. The
-// frameless-window drag-region part of "36px, drag region" is NOT
-// implemented -- this is an in-content bar under the OS's own title bar,
-// not a custom titlebar replacement; a deliberate scope cut from task
-// 2.3, not an oversight.
+// Not a frameless-window drag region (Section 7's "36px, drag region") -- an in-content bar under the OS title bar instead, a deliberate scope cut.
 export function TopBar({ projectLabel, engineAvailable }: TopBarProps) {
   const { openPalette } = useCommandRegistry();
   return (

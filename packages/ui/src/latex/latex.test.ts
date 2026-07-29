@@ -6,7 +6,6 @@ function parse(source: string): Tree {
   return latexLanguage.parser.parse(source);
 }
 
-// All nodes of a given type, in document order, as {from, to, text}.
 function nodesOf(tree: Tree, source: string, name: string) {
   const found: { from: number; to: number; text: string }[] = [];
   tree.iterate({
@@ -29,8 +28,6 @@ function hasErrorNodes(tree: Tree) {
   return found;
 }
 
-// True if `child` (matched by name+text) has an ancestor matched by
-// `ancestorName`+`ancestorText` somewhere above it in the tree.
 function isNestedIn(
   tree: Tree,
   source: string,
@@ -73,9 +70,7 @@ describe("LaTeX grammar", () => {
     const tree = parse(source);
     expect(hasErrorNodes(tree)).toBe(false);
 
-    // \% is an escaped percent sign -- it must not start a comment.
     expect(nodesOf(tree, source, "Command").map((n) => n.text)).toEqual(["\\%"]);
-    // Only the second, truly bare % starts a comment.
     expect(nodesOf(tree, source, "Comment").map((n) => n.text)).toEqual([
       "% But this is a comment",
     ]);
@@ -131,9 +126,6 @@ describe("LaTeX grammar", () => {
     expect(body).toHaveLength(1);
     expect(body[0].text).toBe("\\no{command}[parsing]$here$ % not a comment\n");
 
-    // None of the raw content's LaTeX-looking substrings were actually
-    // interpreted -- there's nothing but the VerbatimBody node between
-    // \begin{verbatim} and \end{verbatim}.
     expect(nodesOf(tree, source, "Command")).toHaveLength(0);
     expect(nodesOf(tree, source, "Comment")).toHaveLength(0);
     expect(nodesOf(tree, source, "InlineMath")).toHaveLength(0);

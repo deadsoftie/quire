@@ -3,12 +3,7 @@ import { VerbatimBody } from "./parser.terms";
 
 const END_ENV = "\\end{";
 
-// Scans raw (unparsed) verbatim content up to the next literal "\end{",
-// without consuming it. `fallback: true` is required here: the regular
-// (non-external) tokenizer will happily produce ordinary Command/Text
-// tokens for whatever's inside a verbatim block, and those aren't valid
-// wherever VerbatimBody is expected -- fallback lets this tokenizer run
-// anyway instead of the parser just erroring on the first one.
+// `fallback: true` is required: without it, the regular tokenizer's Command/Text tokens (invalid here) would win before this ever runs.
 export const verbatimTokenizer = new ExternalTokenizer(
   (input) => {
     if (input.next < 0) return;

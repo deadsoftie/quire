@@ -35,8 +35,7 @@ function FileTreeItem({
 }) {
   const [expanded, setExpanded] = useState(true);
   const isDirectory = node.kind === "directory";
-  // Only .tex sources are switchable into the editor -- graphics are
-  // real content in the tree, but there's nothing to open them into yet.
+  // Graphics show in the tree but have nothing to open them into yet.
   const isSelectable = node.kind === "tex";
 
   return (

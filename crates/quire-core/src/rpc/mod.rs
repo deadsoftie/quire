@@ -1,76 +1,18 @@
-//! The `CoreApi` contract (task 1.8), matching QUIRE_SPEC.md Section 6
-//! field-for-field. This is the single source of truth for every
-//! request/response/event shape that crosses the platform boundary:
-//! `quire-sidecar` deserializes/serializes these exact types for its
-//! JSON-RPC methods (no separate hand-typed param structs), and
-//! `packages/client/src/contract.ts` is generated from them via `ts-rs`
-//! (see the crate-level `#[ts(export)]` wiring and
-//! `.cargo/config.toml`'s `TS_RS_EXPORT_DIR`) -- so the two platforms
-//! cannot drift out of sync with each other or with the spec.
+//! The CoreApi contract (QUIRE_SPEC.md Section 6): source of truth for every request/response/event shape, generated into packages/client/src/contract.ts via ts-rs so the two platforms can't drift.
 //!
-//! **Frozen at the end of M1 (task 1.9).** Section 6 covers methods for
-//! features that don't exist yet -- `outline` (M3's completion index),
-//! `prefetchPackages`/`bundleStatus` (M4's package bundle strategy), and
-//! `CoreEvent::IndexUpdated`/`BundleFetch` (same). Per the M1_TASKS.md 1.8
-//! decision, those are still defined here with the real shape Section 6
-//! specifies -- the wire contract is what's frozen, not full functional
-//! coverage -- and their actual handlers (in `quire-sidecar`) honestly
-//! report "not implemented yet" rather than faking a result. `SyncTeX`'s
-//! `forwardSync`/`inverseSync` are the opposite case and are absent
-//! entirely: that feature was cut from v1 scope (see QUIRE_SPEC.md 9.2),
-//! so the current Section 6 this module mirrors never mentions them.
-//!
-//! **Naming/shape judgment calls, since Section 6 doesn't spell out
-//! everything:**
-//! - `ProjectId`/`DocUri` are plain `String` aliases, not distinct
-//!   newtypes -- `ts-rs` can't `#[derive]` on a type alias, and a newtype
-//!   wrapper would generate an awkward tuple-shaped TS type instead of a
-//!   clean `string`. The semantic distinction is documentation-only, same
-//!   as the spec's own `type ProjectId = string` is for engineers, not the
-//!   type checker.
-//! - `FileNode` (in `OpenProjectResponse.files`) is a flat list derived
-//!   from [`crate::project::FileGraph`] (1.1's *LaTeX dependency graph* --
-//!   files actually reachable via `\input`/`\include`/`\includegraphics`),
-//!   not a general recursive filesystem directory tree. A real file-tree
-//!   *browser* (arbitrary nested directories, everything on disk) is a
-//!   different, unbuilt feature (M2.5's summoned file-tree panel) --
-//!   reusing the already-real, already-tested file graph here is honest
-//!   about what actually exists today, not a stand-in for that panel.
-//! - `prefetchPackages`/`bundleStatus`'s return types are anonymous inline
-//!   object shapes in Section 6 (`Promise<{ fetched: string[]; ... }>`);
-//!   `ts-rs` needs a named type to derive from, so they're named
-//!   [`PrefetchPackagesResponse`]/[`BundleStatusResponse`] here --
-//!   structurally identical to the spec's inline shape, just named.
-//! - Every method also gets a named `*Request` struct for its params
-//!   (`CloseProjectRequest`, `CancelCompileRequest`, ...), even where
-//!   Section 6 shows a positional/simple argument (e.g.
-//!   `closeProject(projectId: ProjectId)`) -- our JSON-RPC transport always
-//!   sends an object, and a named, `ts-rs`-derived struct for every
-//!   request keeps "no hand-written duplication" literal: nothing on the
-//!   wire is ever a hand-typed object shape on either side.
+//! Frozen since M1 (task 1.9); methods for unbuilt features (outline, prefetchPackages/bundleStatus) keep Section 6's real shape with handlers that honestly report "not implemented" rather than faking a result.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub mod handlers;
 
-/// Where every contract type's generated TypeScript lands. `ts-rs` merges
-/// multiple types that share an `export_to` path into one well-formed file
-/// (see `export_and_merge` in the `ts-rs` source) rather than overwriting
-/// each other, which is what makes a single combined `contract.ts` --
-/// matching Section 6's "mirror it in `packages/client/src/contract.ts`"
-/// literally -- possible at all.
+/// ts-rs merges every type sharing this `export_to` path into one file.
 const CONTRACT_TS: &str = "contract.ts";
 
 // ---------- Identity ----------
 
-/// `type ProjectId = string;` in Section 6 -- see the module docs for why
-/// this is a plain alias, not a `#[derive(TS)]` newtype.
 pub type ProjectId = String;
-
-/// `type DocUri = string;` in Section 6 (absolute path on desktop,
-/// `bookmark-id://` on iPad once M5 exists). Same reasoning as
-/// [`ProjectId`].
 pub type DocUri = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -119,8 +61,7 @@ pub enum FileNodeKind {
     Graphic,
 }
 
-/// See the module docs: derived from [`crate::project::FileGraph`] (the
-/// LaTeX dependency graph), not a general directory walk.
+/// Flat list from [`crate::project::FileGraph`] (the LaTeX dependency graph), not a directory walk.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -195,18 +136,11 @@ pub struct CompileRequest {
 pub enum CompileStatus {
     Ok,
     Errors,
-    /// Never produced by `quire-core` today -- cancellation happens by the
-    /// caller killing the sidecar process before it responds (1.4's
-    /// decision), so a cancelled compile never reaches the point of
-    /// constructing a `CompileResponse` at all. Kept in the frozen wire
-    /// shape for callers that want to represent "was cancelled" uniformly
-    /// alongside a real response, e.g. if a future in-process cancellation
-    /// path (M5/M6) ever needs it.
+    /// Never produced: the caller kills the process before a response is built.
     Cancelled,
-    /// Never produced today -- no package-availability detection exists
-    /// yet (M4, Section 9.6).
+    /// Never produced yet -- no package/engine availability detection exists (M4).
     EngineMissing,
-    /// Never produced today, same reason.
+    /// Never produced yet, same reason.
     PackagesMissing,
 }
 
@@ -216,26 +150,17 @@ pub enum CompileStatus {
 pub struct CompileResponse {
     pub compile_id: String,
     pub status: CompileStatus,
-    /// In the shadow dir. `null` when the compile produced no PDF (an
-    /// error before typesetting started, for example).
+    /// In the shadow dir; `null` if the compile produced no PDF.
     pub pdf_path: Option<String>,
-    /// For incremental re-render (task 1.7).
+    /// For incremental re-render.
     pub changed_pages: Vec<u32>,
     pub page_count: u32,
     pub duration_ms: u32,
-    /// Always empty today -- log parsing / plain-English translation is
-    /// M3.10 (Section 9.5). A compile error's message still reaches the
-    /// caller, just via the JSON-RPC error object, not this list.
+    /// Always empty today -- log translation is M3.10.
     pub diagnostics: Vec<Diagnostic>,
-    /// Populated when `status` is `"packages-missing"` -- so always empty
-    /// today, since that status is never produced (see [`CompileStatus`]).
+    /// Populated only when `status` is `"packages-missing"`, so always empty today.
     pub missing_packages: Vec<String>,
-    /// The active Tectonic bundle's digest, formatted as hex. Real and
-    /// meaningful today (every compile already resolves a bundle via
-    /// `PersistentConfig::default_bundle`) even though the curated,
-    /// versioned bundle *strategy* from Section 9.6 (M4) doesn't exist
-    /// yet -- this is "which set of packages was actually used," not
-    /// "which named release of quire's own bundle."
+    /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* (M4) doesn't exist yet.
     pub bundle_version: String,
 }
 
@@ -257,11 +182,7 @@ pub enum CompilePhase {
     Rerun,
 }
 
-/// Emitted, not returned -- subscribed to via `onEvent`. `IndexUpdated`
-/// and `BundleFetch` are never emitted today: no completion index (M3) or
-/// bundle/package-fetch system (M4) exists yet to emit them. Kept in the
-/// frozen shape for the same reason as [`CompileStatus`]'s unreachable
-/// variants.
+/// Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet (M3/M4 don't exist).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -322,9 +243,7 @@ pub struct CompletionItem {
 
 // ---------- Outline ----------
 
-/// M3 scaffolding -- see the module docs. `outline` never returns anything
-/// but an empty list today; this shape is what a real implementation would
-/// need to fill in.
+/// M3 scaffolding; `outline` never returns more than an empty list today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -396,7 +315,7 @@ pub struct Diagnostic {
 
 // ---------- Packages ----------
 
-/// M4 scaffolding -- see the module docs.
+/// M4 scaffolding; not implemented yet.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]

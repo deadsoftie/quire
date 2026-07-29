@@ -18,19 +18,12 @@ function useCommandRegistryValue(): CommandRegistry {
   return ctx;
 }
 
-// The single source of truth for "every action in the app": both the
-// palette's own list and every command's actual keybinding dispatch come
-// from this one registry, so a command registered once (task 2.4's own
-// "all commands registered from day one" instruction) is reachable both
-// ways without a second, parallel place to keep in sync.
+// Single source of truth for both the palette's list and every command's keybinding dispatch, so nothing can drift out of sync.
 export function CommandProvider({ children }: { children: ReactNode }) {
   const [commands, setCommands] = useState<Command[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  // Mirrors of the latest state for the one keydown listener below, which
-  // is installed once on mount -- re-subscribing it on every command
-  // registration/palette toggle would be wasteful and isn't needed since
-  // this ref is always current by the time a keydown actually fires.
+  // Mirrors for the one keydown listener below, installed once on mount.
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
   const paletteOpenRef = useRef(paletteOpen);
@@ -51,9 +44,7 @@ export function CommandProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // The palette owns the keyboard while it's open (typing into the
-      // search box, arrow-key navigation, Enter/Escape) -- don't also
-      // fire some other command's shortcut underneath it.
+      // The palette owns the keyboard while it's open.
       if (paletteOpenRef.current) return;
 
       for (const command of commandsRef.current) {
@@ -93,10 +84,7 @@ export function usePaletteCommands() {
   return useCommandRegistryValue().commands;
 }
 
-// Registers `command` for as long as the calling component stays
-// mounted. `run` doesn't need a stable identity across renders (it's
-// always invoked through a ref to the latest closure) -- only a change
-// to id/title/shortcut/keybinding re-registers.
+// `run` doesn't need a stable identity across renders -- it's always invoked through a ref to the latest closure.
 export function useCommand(command: Command) {
   const { register } = useCommandRegistryValue();
   const runRef = useRef(command.run);

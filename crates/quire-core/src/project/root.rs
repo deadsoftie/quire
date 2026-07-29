@@ -43,15 +43,7 @@ pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
         };
     }
 
-    // Ambiguous at the documentclass level (zero or several candidates) --
-    // fall back to whichever file includes the most others. This is the
-    // spec table's "most-included file"; read literally that's passive
-    // ("the file most often included BY others"), but that would tend to
-    // pick a shared macros/preamble file every chapter \input's, not the
-    // root. A project's actual root is the one that DOES the including
-    // (the highest \input/\include/\subfile out-degree), which is the
-    // interpretation implemented here -- flag this if it turns out wrong
-    // against real projects.
+    // Fallback: the file with the highest \input/\include/\subfile out-degree, not literally "most included" (that would tend to pick a shared preamble file).
     let search_scope: Vec<PathBuf> = if documentclass_files.is_empty() {
         tex_files.clone()
     } else {
@@ -114,12 +106,7 @@ fn find_all_tex_files(dir: &Path) -> Vec<PathBuf> {
     results
 }
 
-/// `% !TEX root = <path>` (TeXShop/TeXWorks convention), path relative to
-/// the file containing the comment -- that file is saying "when you edit
-/// me, actually compile this instead." Scans every file in the project;
-/// if the (possibly several) markers found all resolve to the same file,
-/// that's the explicit root. Disagreeing markers don't count as explicit
-/// -- better to fall through to inference than confidently pick wrong.
+/// `% !TEX root = <path>` markers (TeXShop/TeXWorks convention); disagreeing markers fall through to inference rather than guessing.
 fn detect_explicit(tex_files: &[PathBuf]) -> Option<PathBuf> {
     let mut resolved: HashSet<PathBuf> = HashSet::new();
 
@@ -157,17 +144,7 @@ fn detect_explicit(tex_files: &[PathBuf]) -> Option<PathBuf> {
     }
 }
 
-/// Files with a `\documentclass` whose class is *not* `subfiles`. Each
-/// chapter in a `subfiles`-based project (e.g. `\documentclass[main]{subfiles}`)
-/// also has its own `\documentclass` line -- confirmed directly against
-/// the real paper used for the 0.9 gate test, where every chapter file
-/// had one. Counting those as documentclass candidates would make a
-/// subfiles project always look ambiguous at this step, when the real
-/// root (using an actual document class) is usually unambiguous.
-///
-/// Comments are stripped first (same as 1.1's reference parsing) so a
-/// commented-out `\documentclass{...}` -- a real thing people leave in
-/// documents when trying an alternate class -- doesn't get counted.
+/// Excludes `subfiles`-classed files -- each subfiles chapter has its own `\documentclass` too, which would otherwise make such a project always look ambiguous.
 fn files_with_real_documentclass(tex_files: &[PathBuf]) -> Vec<PathBuf> {
     tex_files
         .iter()
@@ -262,11 +239,7 @@ mod tests {
 
     #[test]
     fn commented_out_documentclass_does_not_count() {
-        // documentclass_name itself has no comment awareness -- callers
-        // (files_with_real_documentclass) strip comments first. Test that
-        // combination, not the raw function in isolation, since testing
-        // it alone would just prove it doesn't strip comments, not that
-        // detection overall handles them.
+        // Tests strip_comments + documentclass_name together, since documentclass_name alone has no comment awareness.
         let commented_out = strip_comments("% \\documentclass{article}\nplain text");
         assert_eq!(documentclass_name(&commented_out), None);
 

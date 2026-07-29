@@ -1,8 +1,4 @@
-// Regenerates src/latex/parser.ts and src/latex/parser.terms.ts from
-// src/latex/latex.grammar. Run via `pnpm generate` whenever the grammar
-// changes -- the two output files are committed (not built on the fly),
-// same as CodeMirror's own @codemirror/lang-* packages do it, so a
-// consumer of this package doesn't need @lezer/generator at all.
+// Regenerates parser.ts/parser.terms.ts from latex.grammar; run via `pnpm generate` after editing the grammar. Output is committed, not built on the fly.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { buildParserFile } from "@lezer/generator";

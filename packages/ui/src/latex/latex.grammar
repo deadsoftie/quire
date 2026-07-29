@@ -1,20 +1,8 @@
-// LaTeX grammar for CodeMirror 6, compiled by @lezer/generator (see
-// vite.config.ts's `lezer()` plugin -- this file is a build input, not
-// hand-transpiled output).
+// LaTeX grammar for CodeMirror 6, compiled by `pnpm generate` (scripts/generate-latex-parser.mjs) into parser.ts/parser.terms.ts -- not hand-transpiled.
 //
-// Environment/math-mode dispatch is name-based, not nesting-based: \begin
-// and \end aren't required to carry matching names at the grammar level
-// (Environment/MathEnvironment/VerbatimEnvironment are three separate
-// productions selected by which specialized name token follows \begin{),
-// so a mismatched \begin{foo}...\end{bar} still parses (as whichever kind
-// \begin{foo} implies) rather than erroring -- this is a syntax highlighter,
-// not a validator.
+// Environment/math dispatch is name-based, not nesting-based, so a mismatched \begin{foo}...\end{bar} still parses -- this is a highlighter, not a validator.
 //
-// Math mode does not literally nest ($ inside $ is invalid LaTeX and not
-// representable here); the one legitimate way back into a math/text
-// distinction is a text-mode-switching command (\text, \mbox, ...), whose
-// brace argument is parsed as ordinary `content` again -- which is how
-// `$a + \text{$b$}$` produces a nested InlineMath.
+// Math doesn't literally nest; \text{$b$}-style nested math works because \text's brace argument is parsed as ordinary `content` again.
 
 @top Document { content* }
 
@@ -34,9 +22,7 @@ content {
   Text
 }
 
-// Same as `content`, minus the things that only make sense in text mode
-// (nested environments, argument-taking groups aren't distinguished from
-// plain grouping in math, so `Group` is `MathGroup` instead).
+// Same as `content` minus text-mode-only constructs; `Group` becomes `MathGroup`.
 mathContent {
   Command |
   TextCommand TextArg |
@@ -60,8 +46,7 @@ VerbatimEnvironment { BeginKw "{" VerbatimEnvName "}" VerbatimBody? EndKw "{" Ve
 @tokens {
   space { std.whitespace+ }
 
-  // `%` starts a comment to end of line; `\%` (escaped) is a Command token
-  // instead (backslash binds the `%` first), so this never fires for it.
+  // `\%` is a Command token instead (backslash binds first), so this never fires for it.
   Comment { "%" ![\n]* }
 
   Command { "\\" ($[a-zA-Z]+ | ![a-zA-Z]) }
@@ -79,11 +64,7 @@ VerbatimEnvironment { BeginKw "{" VerbatimEnvName "}" VerbatimBody? EndKw "{" Ve
   @precedence { Text, space }
 }
 
-// Environment/command names and math delimiters are carved out of the
-// generic Command/EnvName tokens by exact text, rather than given their
-// own token rules -- two token rules matching the same characters (e.g. a
-// literal "\[" token alongside Command's generic "\" + non-letter branch)
-// is a lexical conflict Lezer can't resolve on its own.
+// Specialized by exact text out of Command/EnvName, not given their own token rules -- two rules matching the same characters is a lexical conflict Lezer can't resolve.
 TextCommand { @specialize<Command, "\\text" | "\\mbox" | "\\textrm" | "\\textbf" | "\\textit" | "\\textsf" | "\\texttt" | "\\emph" | "\\textnormal" | "\\intertext" | "\\caption"> }
 
 BeginKw { @specialize<Command, "\\begin"> }
@@ -97,8 +78,5 @@ MathParenClose { @specialize<Command, "\\)"> }
 MathEnvName { @specialize<EnvName, "equation" | "equation*" | "align" | "align*" | "gather" | "gather*" | "multline" | "multline*" | "eqnarray" | "eqnarray*" | "math" | "displaymath" | "flalign" | "flalign*"> }
 VerbatimEnvName { @specialize<EnvName, "verbatim" | "verbatim*" | "lstlisting" | "minted"> }
 
-// Consumes raw content inside \begin{verbatim}/\begin{lstlisting}/... up
-// to (not including) the next literal "\end{" -- see tokens.ts. Doesn't
-// verify the name inside that "\end{...}" matches; good enough for
-// highlighting, not meant to catch mismatched verbatim environments.
+// Consumes raw content up to the next literal "\end{" -- see tokens.ts. Doesn't verify the name matches.
 @external tokens verbatimTokenizer from "./tokens" { VerbatimBody }

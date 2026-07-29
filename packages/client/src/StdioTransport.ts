@@ -17,13 +17,7 @@ import { ProjectWatcher } from "./projectWatcher";
 import { runOnce, type SidecarCall } from "./sidecarProcess";
 import { TexlabClient } from "./texlabClient";
 
-/**
- * Desktop's {@link CoreApi} implementation: `quire-sidecar` over stdio
- * (task 1.4's spawn-per-request model) for most methods, plus two things
- * that don't go through it at all -- see `quire-core`'s
- * `rpc::handlers` module docs for why `cancelCompile` and `complete` are
- * transport-layer concerns.
- */
+/** Desktop's {@link CoreApi}: `quire-sidecar` over stdio, plus `cancelCompile`/`complete` which are transport-layer concerns handled entirely here. */
 export class StdioTransport implements CoreApi {
   private texlab = new TexlabClient();
   private watcher: ProjectWatcher | null = null;
@@ -60,17 +54,9 @@ export class StdioTransport implements CoreApi {
     }
   }
 
-  // `compileId` has to exist *before* the sidecar responds -- it's how
-  // `cancelCompile` finds the right in-flight process, and how a
-  // `compile-started` event can carry one at all. `quire-core`'s own
-  // handler mints its own id purely for internal uniqueness (nothing on
-  // the Rust side ever needs to correlate against it), so this generates
-  // one client-side instead and relabels the response with it before
-  // anyone sees it -- one real id per compile, known from the start,
-  // rather than two that would otherwise silently disagree.
+  // compileId is minted client-side (not by quire-core, which only needs uniqueness internally) so it exists before the sidecar responds, for cancelCompile/compile-started to reference.
   async compile(r: CompileRequest): Promise<CompileResponse> {
-    // Single-flight (1.4): a new compile kills whatever's still running,
-    // exactly like the old `SidecarClient.compile()` did.
+    // Single-flight: a new compile kills whatever's still running.
     this.currentCompile?.call.kill();
     this.currentCompile = null;
 
@@ -79,9 +65,7 @@ export class StdioTransport implements CoreApi {
 
     const call = runOnce("compile", r);
     this.currentCompile = { compileId, call };
-    // `.finally()` returns a *new* promise that inherits `call.promise`'s
-    // rejection; catch on it too so a legitimate error doesn't become an
-    // unhandled rejection on a promise nobody else is holding.
+    // .finally()'s returned promise inherits call.promise's rejection; catch it too or it becomes unhandled.
     call.promise
       .finally(() => {
         if (this.currentCompile?.call === call) this.currentCompile = null;
@@ -131,8 +115,7 @@ export class StdioTransport implements CoreApi {
     return () => this.listeners.delete(handler);
   }
 
-  /** Not part of {@link CoreApi} -- called from `apps/desktop`'s
-   * `will-quit` handler, same as the old `SidecarClient.stop()`. */
+  /** Not part of {@link CoreApi} -- called from `apps/desktop`'s `will-quit` handler. */
   stop() {
     this.currentCompile?.call.kill();
     this.currentCompile = null;

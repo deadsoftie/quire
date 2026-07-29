@@ -9,20 +9,11 @@ use tectonic::status::NoopStatusBackend;
 pub struct CompileOutput {
     pub pdf: Vec<u8>,
     pub page_count: u32,
-    /// 1-indexed page numbers that changed since the previous compile.
-    /// This function has no notion of a "previous compile" (it's a pure,
-    /// stateless, one-shot call) -- every page is reported changed, same
-    /// as [`rerun::compile_latex_in_dir`] does for a project's first-ever
-    /// compile. Callers that actually want incremental re-render need
-    /// [`rerun::compile_latex_in_dir`], which persists page hashes across
-    /// calls and reports real diffs.
+    /// Always all pages: this call is stateless, so real diffing lives in [`rerun::compile_latex_in_dir`].
     pub changed_pages: Vec<u32>,
 }
 
-/// Unlike `tectonic::Error` (whose `Display` is often just a generic
-/// "the LaTeX engine failed"), this carries the engine's actual captured
-/// log output when available, so failures are diagnosable instead of
-/// opaque.
+/// Carries the engine's captured log, unlike `tectonic::Error`'s generic message.
 #[derive(Debug)]
 pub struct CompileError {
     pub message: String,
@@ -59,8 +50,7 @@ pub fn compile_latex_to_pdf(source: &str) -> Result<Vec<u8>, CompileError> {
     compile_latex(source).map(|out| out.pdf)
 }
 
-/// Same underlying session as [`compile_latex_to_pdf`], but returns the
-/// full [`CompileOutput`] instead of just the PDF bytes.
+/// Same as [`compile_latex_to_pdf`] but returns the full [`CompileOutput`].
 pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
     let mut status = NoopStatusBackend::default();
 

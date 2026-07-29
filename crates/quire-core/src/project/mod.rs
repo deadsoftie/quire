@@ -8,17 +8,10 @@ pub use root::{detect_root, RootConfidence, RootDetectionResult};
 mod watcher;
 pub use watcher::FileWatcher;
 
-/// Directory names skipped when walking a project (build artifacts, VCS
-/// metadata, our own shadow dir) -- shared between the file graph, root
-/// detection's directory walk, and the file watcher's exclusions.
+/// Shared by the file graph, root detection, and the file watcher.
 pub(crate) const SKIP_NAMES: &[&str] = &[".git", ".quire", "node_modules"];
 
-/// Which command produced a reference. `Subfile` isn't in task 1.1's
-/// literal wording (only `\input`/`\include`/`\includegraphics` are), but
-/// it behaves identically for graph purposes and is extremely common in
-/// practice -- the real multi-file paper used for the 0.9 gate test
-/// relied on it throughout, so a graph that ignores it would be
-/// incomplete for exactly the kind of document this is meant to support.
+/// Which command produced a reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IncludeCommand {
     Input,
@@ -33,16 +26,12 @@ pub enum FileKind {
     Graphic,
 }
 
-/// One `\input`/`\include`/`\includegraphics`/`\subfile` reference found
-/// in a file, and whatever it resolved to (or didn't).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {
     pub command: IncludeCommand,
     /// Exactly as written in the source, e.g. `"chapters/intro"`.
     pub raw_arg: String,
-    /// `None` when nothing on disk matched -- a dangling reference,
-    /// which is a real state a document can be in, not something to
-    /// treat as a hard error while just building the graph.
+    /// `None` for a dangling reference -- a real document state, not an error.
     pub resolved: Option<PathBuf>,
 }
 
@@ -61,9 +50,7 @@ pub struct FileGraph {
 }
 
 impl FileGraph {
-    /// All references across the whole graph that didn't resolve to a
-    /// real file -- useful for surfacing "missing file" diagnostics later
-    /// without having to walk `files` by hand.
+    /// References across the whole graph that didn't resolve to a real file.
     pub fn unresolved(&self) -> Vec<&Reference> {
         self.files
             .iter()
@@ -78,22 +65,10 @@ impl FileGraph {
     }
 }
 
-/// Common image extensions graphicx itself searches when `\includegraphics`
-/// is given a name with no extension.
+/// Extensions graphicx itself searches for an extensionless `\includegraphics`.
 const GRAPHIC_EXTENSIONS: &[&str] = &["pdf", "png", "jpg", "jpeg", "eps"];
 
-/// Builds the full file graph starting from `root`, following
-/// `\input`/`\include`/`\subfile` transitively and recording
-/// `\includegraphics` targets as leaves. All relative paths resolve
-/// against `root`'s own directory, matching TeX's actual behavior: a
-/// nested file's `\input` is *not* relative to that file's own location,
-/// it's relative to the main document's directory (the same reason
-/// Tectonic's cwd-based resolution -- one shared cwd regardless of
-/// nesting depth -- works at all). Confirmed empirically against a real
-/// multi-file paper during the 0.9 gate test.
-///
-/// Cyclic references (a document bug, but a real one) don't cause
-/// infinite recursion -- each file is parsed at most once.
+/// Relative paths resolve against `root`'s directory, not the referencing file's own -- matching TeX's actual behavior. Cycles can't infinite-loop: each file is parsed at most once.
 pub fn build_file_graph(root: &Path) -> FileGraph {
     let base_dir = root.parent().unwrap_or_else(|| Path::new("."));
     let mut files = Vec::new();
@@ -106,9 +81,7 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         }
 
         let Ok(content) = fs::read_to_string(&path) else {
-            // Referenced but unreadable (e.g. the root itself doesn't
-            // exist) -- still record it as a node with no references,
-            // rather than silently dropping it from the graph.
+            // Unreadable (e.g. root doesn't exist) -- record it anyway, don't drop it silently.
             files.push(FileNode {
                 path,
                 kind: FileKind::Tex,
@@ -133,9 +106,7 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         });
     }
 
-    // Graphics are leaves: record them as their own nodes too (so
-    // `resolved_paths`/watchers see the full real file set) without
-    // parsing them for further references.
+    // Graphics are leaves: recorded as nodes, not parsed for further references.
     let graphic_paths: Vec<PathBuf> = files
         .iter()
         .flat_map(|f| &f.references)
@@ -159,12 +130,7 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
     }
 }
 
-/// Strips TeX comments (an unescaped `%` to end of line) before scanning,
-/// so a commented-out `\input` doesn't get followed. Doesn't attempt
-/// verbatim-environment awareness (`\begin{verbatim}` etc.) -- a real
-/// TeX tokenizer is a lot more machinery than this task needs; comments
-/// are the common, cheap case worth handling, verbatim blocks containing
-/// literal `\input`-looking text are not.
+/// Strips unescaped `%`-to-end-of-line comments so a commented-out `\input` isn't followed; doesn't special-case verbatim blocks.
 fn strip_comments(content: &str) -> String {
     let mut out = String::with_capacity(content.len());
     for line in content.lines() {

@@ -29,9 +29,7 @@
   outline: none;
 }
 
-/* Quality floor's focus ring is meant for discrete focusable controls
-   moving between them, not a single text input the palette auto-focuses
-   on open -- an outline here would just flash uselessly. */
+/* An auto-focused single input doesn't need the usual focus ring. */
 .command-palette__input:focus-visible {
   outline: none;
 }

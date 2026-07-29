@@ -13,8 +13,6 @@ fn resolves_a_real_multi_file_project_fully() {
 
     assert_eq!(graph.root, root);
 
-    // main.tex, chapters/intro.tex, chapters/middle.tex, chapters/nested.tex
-    // (via intro's \subfile), plus figures/plot.pdf as a graphic leaf.
     let tex_paths: Vec<&Path> = graph
         .files
         .iter()
@@ -39,13 +37,9 @@ fn resolves_a_real_multi_file_project_fully() {
         .collect();
     assert_eq!(graphic_paths, vec![base_dir.join("figures/plot.pdf").as_path()]);
 
-    // Commented-out references (in main.tex and middle.tex) must not be
-    // followed, and a literal escaped `\%` must not be mistaken for a
-    // comment marker that would truncate real content.
     assert!(!tex_paths.contains(&base_dir.join("chapters/commented_out.tex").as_path()));
     assert!(!tex_paths.contains(&base_dir.join("chapters/should_not_be_followed.tex").as_path()));
 
-    // The dangling \includegraphics{figures/missing} reference.
     let unresolved = graph.unresolved();
     assert_eq!(unresolved.len(), 1, "{unresolved:?}");
     assert_eq!(unresolved[0].command, IncludeCommand::IncludeGraphics);

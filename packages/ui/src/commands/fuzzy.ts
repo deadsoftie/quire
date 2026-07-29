@@ -1,23 +1,6 @@
 import type { Command } from "./types";
 
-// Subsequence-based fuzzy match: every character of `query` must appear
-// in `target`, in order, case-insensitively -- but *not* necessarily
-// contiguously ("cmdp" still matches "Command Palette"). Returns `null`
-// for no match at all; otherwise a score where higher is a better match.
-//
-// A plain substring/`includes()` filter was the easy path here, but the
-// task calls out that it hides ranking problems that only show up once
-// there are many more commands to search over (M3+) -- so this scores,
-// rather than just filters, on:
-//  - contiguous runs (a run of N consecutive matched chars is worth more
-//    than N separate isolated ones)
-//  - word-boundary starts (start of string, after a space/-/_//, or a
-//    lower-to-upper camelCase transition) -- rewards e.g. "op" matching
-//    the "O" and "P" of "Open Project" over matching two letters buried
-//    mid-word
-//  - an earlier first-match position
-//  - a shorter overall target, as a final tie-breaker (prefer the more
-//    precise/specific title when two commands match equally well)
+// Subsequence match (chars of `query` appear in `target`, in order, not necessarily contiguous), scored by contiguous-run length, word-boundary starts, earlier first-match, and shorter target -- not a plain substring filter, so ranking stays meaningful as more commands are added.
 export function fuzzyScore(query: string, target: string): number | null {
   if (query.length === 0) return 0;
 
@@ -62,8 +45,7 @@ export interface RankedCommand {
   score: number;
 }
 
-// Empty query: alphabetical, so the palette isn't just "whatever order
-// commands happened to register in" before the user types anything.
+// Empty query: alphabetical, not registration order.
 export function rankCommands(commands: Command[], query: string): RankedCommand[] {
   if (query.trim().length === 0) {
     return [...commands]

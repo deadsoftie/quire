@@ -2,14 +2,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 import type { CompletionItem } from "./contract";
 
-// M0/M1 scaffolding only -- see tools/scaffold/texlab/README.md and D7
-// (QUIRE_SPEC.md Section 2). GPL-3.0, never a production dependency,
-// removed in M3 (task 3.12) once quire-core has its own completion index.
-// Ported from `apps/desktop/src/completion.js`.
+// M0/M1 scaffolding only (D7); GPL-3.0, removed once M3 has its own completion index.
 const DOC_URI = "file:///quire-buffer.tex";
 
-// Standard LSP framing (Content-Length header), distinct from the
-// newline-delimited JSON-RPC the compile sidecar speaks.
+// Standard LSP framing (Content-Length header), unlike the sidecar's newline-delimited JSON-RPC.
 function encode(message: unknown): string {
   const json = JSON.stringify(message);
   return `Content-Length: ${Buffer.byteLength(json, "utf8")}\r\n\r\n${json}`;
@@ -47,23 +43,12 @@ interface LspCompletionItem {
   kind?: number;
 }
 
-// texlab's completions are only ever requested right after a `\`
-// (`Editor.tsx`'s trigger is `\[a-zA-Z]*`), so in this scaffolding's
-// actual usage every result is a LaTeX command -- LSP's
-// `CompletionItemKind` is a number with 25 possible values covering
-// generic-IDE concepts (Method, Class, Interface, ...) that don't map
-// cleanly onto our command/environment/label/citation/... union, and
-// verifying texlab's exact kind-per-completion-type behavior isn't
-// practical without a live session. `"command"` is honest about what
-// this scaffolding actually returns today; a real mapping (or, more
-// likely, no LSP kind numbers at all) arrives with M3's own index.
+// Every result here is a LaTeX command in practice (triggered only after `\`); LSP's numeric CompletionItemKind doesn't map cleanly onto our kind union, so this stays honestly "command" until M3's own index.
 function mapKind(_lspKind: number | undefined): CompletionItem["kind"] {
   return "command";
 }
 
-// One persistent texlab process per app run. Completion isn't cancelled
-// or superseded the way compile is -- it's just request/response against
-// a session kept in sync via didOpen/didChange.
+// One persistent texlab process per app run, kept in sync via didOpen/didChange.
 export class TexlabClient {
   private proc: ChildProcess | null = null;
   private nextId = 1;
@@ -85,8 +70,7 @@ export class TexlabClient {
 
       proc.on("error", () => resolve(false));
 
-      // If texlab dies mid-session, reject everything pending rather than
-      // leaving those promises (and whatever awaits them) hanging forever.
+      // Reject everything pending rather than leaving it hanging forever.
       proc.on("exit", () => {
         this.proc = null;
         for (const { reject } of this.pending.values()) {

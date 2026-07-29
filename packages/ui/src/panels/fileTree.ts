@@ -2,24 +2,15 @@ import type { FileNode, FileNodeKind } from "@quire/client";
 
 export interface TreeNode {
   name: string;
-  /** Path segments joined from the project root, e.g. "/chapters/intro.tex"
-   * -- unique per node, used as a React key. */
+  /** Path segments joined from the project root, e.g. "/chapters/intro.tex" -- unique per node, used as a React key. */
   path: string;
   kind: FileNodeKind | "directory";
-  /** Only present on file (non-directory) leaves -- the real absolute
-   * uri to hand to `readFile`/`compile`'s dirty buffers. */
+  /** Only present on file leaves -- the real absolute uri. */
   uri?: string;
   children: TreeNode[];
 }
 
-// `OpenProjectResponse.files` is a flat list -- task 1.8's own documented
-// judgment call: derived from the LaTeX dependency graph (files reachable
-// via \input/\include/\includegraphics), not a general directory walk.
-// This reconstructs a nested tree from it purely client-side, by
-// splitting each file's absolute `uri` relative to `projectId`. Same
-// data, just organized for display -- not a contract change, and not a
-// substitute for a real directory walk if one turns out to be needed
-// later (that would still be a contract change to propose explicitly).
+// Reconstructs a nested tree client-side from OpenProjectResponse.files' flat, dependency-graph-derived list -- same data, just organized for display, not a contract change.
 export function buildFileTree(files: FileNode[], projectId: string): TreeNode[] {
   const root: TreeNode = { name: "", path: "", kind: "directory", children: [] };
 

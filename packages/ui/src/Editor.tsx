@@ -7,15 +7,7 @@ import { latex } from "./latex/language";
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-// M0/M1 scaffolding: completions come from texlab (GPL-3.0, spawned by
-// apps/desktop/src/completion.js) until quire-core grows its own index
-// (M3). Only replaces the word after the last backslash -- texlab's own
-// textEdit ranges aren't used, this is a simpler stand-in good enough to
-// prove the popup works end to end.
-//
-// `projectId`/`uri` close over whatever Editor was mounted with -- fine
-// because Editor is remounted (via `key`) whenever the caller switches
-// projects, same reasoning as `initialDoc` below.
+// M0/M1 scaffolding: completions come from texlab (GPL-3.0) until quire-core grows its own index (M3).
 function makeCompletionSource(projectId: string, uri: string) {
   return async function texlabCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
     const word = context.matchBefore(/\\[a-zA-Z]*/);
@@ -73,8 +65,7 @@ export function Editor({ initialDoc, projectId, uri, onChange }: EditorProps) {
       view.destroy();
       viewRef.current = null;
     };
-    // initialDoc/projectId/uri only seed the view on mount; the caller
-    // remounts (via `key`) when any of them should actually change.
+    // Props only seed the view on mount; the caller remounts (via `key`) to change them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

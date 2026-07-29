@@ -14,32 +14,23 @@ export type CompileRequest = { projectId: string, dirtyBuffers: Array<DirtyBuffe
 
 export type CompileResponse = { compileId: string, status: CompileStatus, 
 /**
- * In the shadow dir. `null` when the compile produced no PDF (an
- * error before typesetting started, for example).
+ * In the shadow dir; `null` if the compile produced no PDF.
  */
 pdfPath: string | null, 
 /**
- * For incremental re-render (task 1.7).
+ * For incremental re-render.
  */
 changedPages: Array<number>, pageCount: number, durationMs: number, 
 /**
- * Always empty today -- log parsing / plain-English translation is
- * M3.10 (Section 9.5). A compile error's message still reaches the
- * caller, just via the JSON-RPC error object, not this list.
+ * Always empty today -- log translation is M3.10.
  */
 diagnostics: Array<Diagnostic>, 
 /**
- * Populated when `status` is `"packages-missing"` -- so always empty
- * today, since that status is never produced (see [`CompileStatus`]).
+ * Populated only when `status` is `"packages-missing"`, so always empty today.
  */
 missingPackages: Array<string>, 
 /**
- * The active Tectonic bundle's digest, formatted as hex. Real and
- * meaningful today (every compile already resolves a bundle via
- * `PersistentConfig::default_bundle`) even though the curated,
- * versioned bundle *strategy* from Section 9.6 (M4) doesn't exist
- * yet -- this is "which set of packages was actually used," not
- * "which named release of quire's own bundle."
+ * The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* (M4) doesn't exist yet.
  */
 bundleVersion: string, };
 
@@ -68,11 +59,7 @@ export type CompletionKind = "command" | "environment" | "label" | "citation" | 
 export type CompletionRequest = { projectId: string, uri: string, position: Position, text: string, };
 
 /**
- * Emitted, not returned -- subscribed to via `onEvent`. `IndexUpdated`
- * and `BundleFetch` are never emitted today: no completion index (M3) or
- * bundle/package-fetch system (M4) exists yet to emit them. Kept in the
- * frozen shape for the same reason as [`CompileStatus`]'s unreachable
- * variants.
+ * Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet (M3/M4 don't exist).
  */
 export type CoreEvent = { "kind": "compile-started", compileId: string, } | { "kind": "compile-progress", compileId: string, phase: CompilePhase, pass: number, } | { "kind": "compile-finished", result: CompileResponse, } | { "kind": "files-changed", projectId: string, uris: Array<string>, } | { "kind": "index-updated", projectId: string, } | { "kind": "bundle-fetch", package: string, bytes: number, done: boolean, };
 
@@ -107,8 +94,7 @@ export type DirtyBuffer = { uri: string,
 text: string, };
 
 /**
- * See the module docs: derived from [`crate::project::FileGraph`] (the
- * LaTeX dependency graph), not a general directory walk.
+ * Flat list from [`crate::project::FileGraph`] (the LaTeX dependency graph), not a directory walk.
  */
 export type FileNode = { uri: string, name: string, kind: FileNodeKind, };
 
@@ -129,9 +115,7 @@ candidates: Array<string>, files: Array<FileNode>, engineAvailable: boolean, };
 export type OutlineNode = { label: string, kind: OutlineNodeKind, position: Position, children: Array<OutlineNode>, };
 
 /**
- * M3 scaffolding -- see the module docs. `outline` never returns anything
- * but an empty list today; this shape is what a real implementation would
- * need to fill in.
+ * M3 scaffolding; `outline` never returns more than an empty list today.
  */
 export type OutlineNodeKind = "part" | "chapter" | "section" | "subsection" | "subsubsection" | "label";
 
@@ -148,7 +132,7 @@ line: number,
 column: number, };
 
 /**
- * M4 scaffolding -- see the module docs.
+ * M4 scaffolding; not implemented yet.
  */
 export type PrefetchPackagesRequest = { projectId: string, };
 

@@ -1,37 +1,10 @@
-//! Real logic behind the [`crate::rpc`] contract types (task 1.8).
+//! Real logic behind the [`crate::rpc`] contract types; `quire-sidecar` is a thin JSON-RPC dispatcher over these (D6), so a future `quire-ffi` can reuse them with a different transport.
 //!
-//! `quire-sidecar` is a thin JSON-RPC dispatcher over these functions --
-//! per D6 ("Core logic: Rust, one crate, two transports"), the actual work
-//! lives here so a future `quire-ffi` (M5, Capacitor) can call the exact
-//! same functions with a different transport wrapped around them.
+//! No `cancel_compile` here: `quire-sidecar` is one process per compile with no in-process handle to interrupt -- the caller kills the OS process instead, a transport-layer concern.
 //!
-//! **No `cancel_compile` here, deliberately.** There's nothing at this
-//! layer to cancel: `quire-sidecar` is one process per compile (1.4's
-//! decision) that reads one request, blocks synchronously inside Tectonic,
-//! and writes one response -- there's no second channel to send a "cancel"
-//! message down while that's happening, and no in-process compile handle
-//! to interrupt even if there were (Tectonic exposes none, also 1.4).
-//! Cancellation is real today because the *caller* kills the OS process;
-//! that's a transport-layer concern (`packages/client`), not something
-//! `quire-core` can implement a function for.
+//! No `complete` here either: it's still texlab (GPL-3.0, D7), kept out of this binary since it will eventually ship on iOS.
 //!
-//! **No `complete` here either.** Completion is still texlab (D7's M0/M1
-//! scaffolding, GPL-3.0, spawned directly from JS) -- routing it through
-//! `quire-sidecar`/Rust would mean linking GPL-3.0 code into the same
-//! binary that will eventually ship on iOS, exactly what D7 exists to
-//! prevent. `packages/client`'s desktop transport talks to texlab
-//! directly, same as `apps/desktop/src/completion.js` already did.
-//!
-//! **Statelessness, and what `ProjectId` actually is:** `quire-core` holds
-//! no project registry -- every call here is self-contained, because nothing
-//! could persist server-side state across calls anyway (fresh process per
-//! request). So `ProjectId` *is* the project's root directory's absolute
-//! path, not an opaque handle into some session table; every function below
-//! that needs "the project" just re-derives what it needs (re-running
-//! [`crate::project::detect_root`] is cheap and deterministic) from that
-//! path directly. The caller (`apps/desktop/src/main.js` today) is the one
-//! long-lived process that actually needs to remember "which project is
-//! open," and it already does.
+//! `quire-core` holds no project registry -- `ProjectId` is the project's root directory path itself, and every function re-derives what it needs from that.
 
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -44,22 +17,11 @@ use crate::rerun::compile_latex_in_dir;
 use crate::rpc::*;
 use crate::CompileError;
 
-/// `req.path` doesn't have to already exist as a `.tex`-containing folder
-/// for a valid `OpenProjectRequest` to error out at the type level -- this
-/// is where that gets checked for real, so building a [`FileNode`] tree
-/// out of it below (or [`detect_root`](project::detect_root) finding
-/// nothing) fails with an honest message instead of a confusing one from
-/// deeper in the pipeline.
 pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, CompileError> {
     let project_dir = Path::new(&req.path);
     let detection = project::detect_root(project_dir);
 
-    // `root_confidence: "ambiguous"` still needs *some* `root` value (the
-    // contract's `root: DocUri` isn't optional) -- best guess is the first
-    // (sorted) candidate, same as a human skimming the list top-to-bottom
-    // would likely try first. `candidates` still carries the full list so
-    // the UI can prompt properly; this is just what compiles by default
-    // until they do.
+    // `root: DocUri` isn't optional, so an ambiguous result still needs a best guess -- the first sorted candidate; `candidates` carries the full list for the UI to prompt with.
     let root = detection
         .root
         .clone()
@@ -84,28 +46,18 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
         .collect();
 
     Ok(OpenProjectResponse {
-        // The project's own root *directory* (not the detected root
-        // *document* -- that's the `root` field below), so every later
-        // call can rebuild everything it needs from this one string.
+        // The project's root *directory*, not the detected root *document* (that's `root` below).
         project_id: req.path.clone(),
         root: root.display().to_string(),
         root_confidence: detection.confidence.into(),
         candidates: detection.candidates.iter().map(|p| p.display().to_string()).collect(),
         files,
-        // Tectonic is embedded as a library (D1) -- it's always "available"
-        // in the sense this field is meant to capture (is there an engine
-        // to even try compiling with, as opposed to e.g. a broken system
-        // TeX install for D2's fallback). Whether a *specific* compile can
-        // actually reach the network for an uncached package is a
-        // per-compile concern already surfaced through `compile`'s own
-        // error handling, not something to predict here.
+        // Tectonic is embedded (D1), so an engine always exists; per-compile network/package issues surface through compile()'s own errors instead.
         engine_available: true,
     })
 }
 
-/// No server-side state to update (see the module docs) -- this only
-/// validates that `uri` is real, so the caller can trust what it's about
-/// to remember.
+/// No server-side state to update -- just validates `uri` so the caller can trust what it's about to remember.
 pub fn set_root(req: &SetRootRequest) -> Result<(), CompileError> {
     if !Path::new(&req.uri).is_file() {
         return Err(CompileError {
@@ -116,27 +68,12 @@ pub fn set_root(req: &SetRootRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// No-op -- there is no server-side resource tied to a project to release.
-/// Exists so the interface is complete and callers don't need to special-
-/// case "should I call this."
+/// No-op -- no server-side resource is tied to a project to release.
 pub fn close_project(_req: &CloseProjectRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// Mirrors the project's real files into the shadow dir at
-/// `<projectId>/.quire/build/`, using [`crate::project::FileGraph`] rather
-/// than a blind whole-directory copy (M0's `mirrorProjectToShadow`) -- only
-/// files actually reachable from the root via
-/// `\input`/`\include`/`\includegraphics`/`\subfile` get mirrored. Dirty
-/// buffers override the on-disk content for whichever file(s) they cover;
-/// everything else is read fresh from the real project files, so external
-/// edits (task 1.3) are picked up automatically on the next compile.
-///
-/// Never propagates a LaTeX compile failure as an `Err` -- a compile that
-/// fails because the *document* has an error is a normal, structured
-/// outcome (`status: "errors"`), not an exceptional one; `Err` here is
-/// reserved for things that mean the request itself couldn't be serviced
-/// (e.g. `projectId` doesn't point at a real, readable project).
+/// Mirrors only the files reachable from the root (per [`crate::project::FileGraph`]) into the shadow dir; dirty buffers override on-disk content, everything else is read fresh. A LaTeX failure is a normal `status: "errors"` result, never an `Err` -- `Err` is reserved for the request itself being unserviceable.
 pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let start = Instant::now();
     let project_dir = PathBuf::from(&req.project_id);
@@ -172,9 +109,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
         write_into_shadow(&project_dir, &shadow_dir, &file.path, content.as_bytes())?;
     }
 
-    // Graphics never come from dirty buffers (the editor doesn't edit
-    // them) -- copy the real bytes across so `\includegraphics` resolves
-    // inside the shadow dir exactly like every other reference.
+    // Graphics never come from dirty buffers -- copy the real bytes across.
     for file in graph.files.iter().filter(|f| f.kind == FileKind::Graphic) {
         let bytes = fs::read(&file.path).unwrap_or_default();
         write_into_shadow(&project_dir, &shadow_dir, &file.path, &bytes)?;
@@ -207,9 +142,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             changed_pages: Vec::new(),
             page_count: 0,
             duration_ms: start.elapsed().as_millis() as u32,
-            // No log-parsing/plain-English translation yet (M3.10, Section
-            // 9.5) -- this is the real error, honestly surfaced through
-            // the real Diagnostic shape rather than invented structure.
+            // No log-parsing/translation yet (M3.10) -- the real error, as-is.
             diagnostics: vec![Diagnostic {
                 uri: None,
                 range: None,
@@ -253,26 +186,17 @@ fn bundle_digest_hex() -> Result<String, CompileError> {
     Ok(bundle.get_digest()?.to_string())
 }
 
-/// M3 scaffolding (Section 9.4's completion index hasn't been built yet --
-/// see the crate-level `rpc` module docs). Always empty; the shape exists
-/// so M2's UI can be written against it now.
+/// M3 scaffolding; always empty until the completion index (Section 9.4) exists.
 pub fn outline(_req: &OutlineRequest) -> Vec<OutlineNode> {
     Vec::new()
 }
 
-/// M4 scaffolding (Section 9.6's package bundle/cache system hasn't been
-/// built yet). Always reports nothing fetched, nothing failed -- honest
-/// about doing no work, not a silent success.
+/// M4 scaffolding; always reports nothing fetched, nothing failed -- honest about doing no work.
 pub fn prefetch_packages(_req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
     PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() }
 }
 
-/// `version` is real (the same Tectonic bundle digest [`compile`] reports
-/// as `bundleVersion`); `offlinePackages`/`cacheBytes` are always `0` --
-/// both are M4 (Section 9.6) concepts (a curated, *tracked* set of
-/// installed packages) that don't exist yet. Raw disk usage of Tectonic's
-/// own cache directory isn't the same thing and would be misleading to
-/// report in its place.
+/// `version` is real; `offlinePackages`/`cacheBytes` are always `0` -- both are M4 concepts that don't exist yet.
 pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
     Ok(BundleStatusResponse { version: bundle_digest_hex()?, offline_packages: 0, cache_bytes: 0 })
 }

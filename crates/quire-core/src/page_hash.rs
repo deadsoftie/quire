@@ -1,45 +1,17 @@
-//! Page hashing (task 1.7).
-//!
-//! Hash each rendered page's content stream and diff against the previous
-//! compile, so the UI can re-render only the pages that actually changed
-//! (`changedPages` in `CompileResponse`, Section 6) instead of the whole
-//! document on every keystroke.
-//!
-//! "Content stream," not "page object" or "whole file": a page's PDF
-//! object also carries things like font resource references and
-//! annotation dictionaries that can shift between compiles (a resource
-//! gets renumbered, a font subset changes) without anything actually
-//! *drawn* on that page changing. Hashing just the content stream --
-//! the sequence of drawing operators -- is what makes an untouched page
-//! hash identically across compiles.
-//!
-//! Uses `lopdf` rather than hand-rolling a parser: inspecting a real
-//! compiled PDF from this project's own pipeline showed Tectonic's
-//! xdvipdfmx output uses PDF 1.5+ cross-reference *streams* (not a classic
-//! `xref` table) and packs page objects into compressed object streams by
-//! default -- `/Type/Page` doesn't even appear as plaintext in the raw
-//! file, it's inside a compressed `/Type/ObjStm`. A byte-scanning
-//! approach can't find pages at all under those conditions; correctly
-//! resolving object references needs real xref-stream and object-stream
-//! decoding per the PDF spec, which is well-trodden generic infrastructure
-//! (like gzip or JSON parsing elsewhere in this codebase), not something
-//! worth re-implementing by hand.
+//! Hashes each page's content stream (not the whole page object, since resource renumbering can shift that without any drawn content changing) to diff pages across compiles.
 
 use tectonic::digest::{self, Digest};
 
 use crate::CompileError;
 
-/// Hashes each page's content stream, in page order (1-indexed pages,
-/// though the index itself isn't in the returned list -- position in the
-/// vec *is* the page number, `hashes[0]` is page 1).
+/// Position in the returned vec is the page number: `hashes[0]` is page 1.
 pub fn hash_pages(pdf_bytes: &[u8]) -> Result<Vec<String>, CompileError> {
     let doc = lopdf::Document::load_mem(pdf_bytes).map_err(|e| CompileError {
         message: format!("failed to parse compiled PDF for page hashing: {e}"),
         log: None,
     })?;
 
-    // BTreeMap<page_number, ObjectId>, so this iterates in page order
-    // already -- no separate sort needed.
+    // get_pages() returns a BTreeMap<page_number, ObjectId>, already in page order.
     Ok(doc
         .get_pages()
         .into_iter()
@@ -52,16 +24,7 @@ pub fn hash_pages(pdf_bytes: &[u8]) -> Result<Vec<String>, CompileError> {
         .collect())
 }
 
-/// Compares a previous compile's page hashes against the current one and
-/// returns the 1-indexed page numbers that changed.
-///
-/// `previous: None` (no prior compile to diff against -- e.g. the very
-/// first compile of a project) reports every page as changed, same as a
-/// page-count change: if the page count itself shifted, there's no
-/// reliable page-to-page correspondence to diff against (an edit on page 3
-/// can push everything after it forward or back by a page), so this falls
-/// back to "everything changed" rather than guessing at an alignment and
-/// risking silently wrong incremental rendering.
+/// No previous hashes, or a page-count change, reports everything changed -- there's no reliable page alignment to diff against otherwise.
 pub fn diff_pages(previous: Option<&[String]>, current: &[String]) -> Vec<u32> {
     let all_changed = || (1..=current.len() as u32).collect();
 

@@ -1,12 +1,4 @@
-// Acceptance test for task 1.7: "Editing page 3 of 40 reports exactly [3]"
-// -- uses 5 pages rather than 40 (irrelevant to the mechanism, which
-// diffs page-by-page regardless of count) with explicit \newpage breaks
-// so page boundaries are fixed and a same-length edit on one page can't
-// reflow content into its neighbors, which would make the acceptance
-// criterion's "allow ±1 for reflow" caveat necessary. Getting an exact
-// [3] here (not just "within ±1") proves the diffing itself is precise;
-// the ±1 tolerance in the spec is about reflow, a separate concern this
-// fixture deliberately avoids.
+// Explicit \newpage breaks fix page boundaries so a same-length edit can't reflow into neighbors, keeping the exact-page-number assertions below meaningful.
 
 use std::fs;
 

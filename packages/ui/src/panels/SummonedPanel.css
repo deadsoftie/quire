@@ -27,9 +27,7 @@
   }
 }
 
-/* Pinned: a normal stacked flex child inside `.app__sidebar`, not an
-   absolute overlay -- the sidebar itself provides the background/border,
-   so panels just get a separator between them. */
+/* A normal stacked flex child inside .app__sidebar, not an absolute overlay. */
 .summoned-panel--pinned {
   position: static;
   width: auto;

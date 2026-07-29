@@ -3,26 +3,15 @@ import "./SummonedPanel.css";
 
 interface SummonedPanelProps {
   title: string;
-  /** A short, permanent descriptor of what this panel shows -- not an
-   * empty-state message, shown whether or not there's content (e.g. the
-   * file tree's "reachable from the root document, not a full directory
-   * listing" caveat needs to be visible either way). */
+  /** A permanent descriptor, shown whether or not there's content -- not an empty-state message. */
   caption?: string;
-  /** Docked in the sidebar (`app__sidebar`), a normal flex child that
-   * stays in the layout -- vs. the default ephemeral overlay that slides
-   * in over the editor and disappears on Escape/re-toggling. */
+  /** Docked in the sidebar vs. the default ephemeral overlay. */
   pinned?: boolean;
   onTogglePin: () => void;
   children: ReactNode;
 }
 
-// The shared shell for all three of Section 7's summoned panels (file
-// tree ⌘1, outline ⌘2, problems ⌘3) -- "they overlay or slide, then
-// dismiss on Escape" -- plus the pin/unpin toggle every panel supports
-// (added on top of Section 7's spec, per direct request): pinning
-// promotes a panel from the ephemeral overlay into a permanent sidebar
-// slot; unpinning demotes it back to closed (not back to "open as
-// overlay" -- that would just be a confusing third state).
+// Shared shell for all three summoned panels (file tree ⌘1, outline ⌘2, problems ⌘3), plus the pin/unpin toggle.
 export function SummonedPanel({ title, caption, pinned = false, onTogglePin, children }: SummonedPanelProps) {
   return (
     <div

@@ -1,46 +1,23 @@
-/*
- * Quire design tokens — QUIRE_SPEC.md Section 7.
- *
- * Dark is the base palette (`:root` and `[data-theme="dark"]`); light is
- * an explicit override block. Task 2.9 is what actually wires a toggle to
- * `[data-theme]` on <html> -- these tokens just need to already exist in
- * both flavors so 2.9 can flip an attribute instead of computing a palette.
- *
- * Section 7 only gives exact hex values for two light-mode surfaces
- * (`#F7F8FA`, `#DDE1E7` -- the lightest and the border) and says text
- * "darkens"; the intermediate surface steps and the three text stops
- * below are this file's own interpolation toward those anchors, not
- * values lifted directly from the spec.
- */
+/* Quire design tokens (QUIRE_SPEC.md Section 7). Dark is the base palette; [data-theme="light"] below overrides it -- task 2.9 just flips the attribute. */
 
 :root,
 [data-theme="dark"] {
-  /* Surfaces — cool, desaturated, never pure black */
-  --ink-900: #16181d; /* app background */
-  --ink-800: #1c1f26; /* panels */
-  --ink-700: #252932; /* raised, hover */
-  --ink-600: #333944; /* borders */
+  --ink-900: #16181d;
+  --ink-800: #1c1f26;
+  --ink-700: #252932;
+  --ink-600: #333944;
 
-  /* Text. --type-lo is ~3.3:1 against --ink-900 here (and ~3.65:1 for its
-     light-mode counterpart below) -- under WCAG AA's 4.5:1 for normal
-     text, though over the 3:1 large-text/UI-component threshold. That's
-     the value QUIRE_SPEC.md Section 7 gives directly, not a rounding
-     choice made here; treat --type-lo as unsuitable for body-weight text
-     that needs to individually clear AA, not as a bug in this file. */
+  /* --type-lo is ~3.3:1 against --ink-900, under WCAG AA's 4.5:1 for text -- the value Section 7 gives directly, not suitable for body text. */
   --type-hi: #e8eaed;
   --type-mid: #9ba3b0;
   --type-lo: #626b79;
 
-  /* Accent — non-repro blue. Same in both themes: it's the one color that
-     is never supposed to read as "themed chrome." */
   --nonrepro: #8fc7e8;
   --nonrepro-dim: #8fc7e833;
 
-  /* Proofreader's marks */
   --proof-red: #e5534b;
   --proof-amber: #d9a03c;
 
-  /* Paper — the PDF surface. Never tinted, in either theme. */
   --paper: #ffffff;
 }
 
@@ -57,12 +34,7 @@
   --nonrepro: #8fc7e8;
   --nonrepro-dim: #8fc7e833;
 
-  /* Unlike the accent, these aren't held fixed across themes: Section 7's
-     dark-mode reds/ambers (#e5534b, #d9a03c) drop to ~3.5:1 and ~2.2:1
-     against the light surfaces above -- below WCAG AA's 4.5:1 for normal
-     text. These are the same hue, darkened just enough (~4.5:1 against
-     --ink-900 light) to stay legible as diagnostic *text*, not just as a
-     gutter-mark color where the weaker ratio would still be fine. */
+  /* Darker than dark mode's #e5534b/#d9a03c -- those drop under WCAG AA's 4.5:1 against these lighter surfaces. */
   --proof-red: #dc2920;
   --proof-amber: #966a1d;
 
@@ -70,7 +42,6 @@
 }
 
 :root {
-  /* Type scale — 1.25 ratio */
   --t-xs: 11px;
   --t-sm: 13px;
   --t-base: 14px;
@@ -78,7 +49,6 @@
   --t-lg: 22px;
   --t-xl: 27px;
 
-  /* Space — 4px base */
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;

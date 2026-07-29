@@ -1,10 +1,4 @@
-// Acceptance test for task 1.6: "Body-only edit does not invoke biber"
-// (adapted to classic BibTeX per M1_TASKS.md 1.6's decision -- biber is
-// unusable today regardless of rerun scheduling, see the Tectonic/biber BCF
-// version-mismatch note there). Uses `.bbl` mtime as the observable signal
-// for "did BibTeX actually run," since `compile_latex_in_dir` doesn't
-// (yet) surface that as structured output -- real diagnostics are 1.8/
-// contract territory.
+// Uses .bbl mtime as the observable signal for "did BibTeX actually run" -- compile_latex_in_dir doesn't surface that as structured output.
 
 use std::fs;
 use std::path::Path;
@@ -73,8 +67,7 @@ fn body_only_edit_does_not_invoke_bibtex() {
     assert!(out1.pdf.starts_with(b"%PDF-"));
     let mtime_after_first = bbl_mtime(&build_dir).expect(".bbl should exist after a compile with citations");
 
-    // Real filesystems commonly have 1s mtime resolution (e.g. HFS+); sleep
-    // past that so an unwanted rewrite would actually be observable.
+    // 1s+ sleep: some filesystems (e.g. HFS+) only have 1s mtime resolution.
     std::thread::sleep(std::time::Duration::from_millis(1100));
 
     let out2 = compile_latex_in_dir(SRC_ONE_CITE_BODY_EDITED, &build_dir).expect("body-only edit compile");

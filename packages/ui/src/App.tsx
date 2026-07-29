@@ -21,12 +21,9 @@ interface Project {
   projectId: string;
   uri: string;
   label: string;
-  /** `null` for the scratch/placeholder project, which never calls the
-   * real `openProject` and so has no real answer for this. */
+  /** `null` for the scratch project, which never calls real `openProject`. */
   engineAvailable: boolean | null;
-  /** `[]` for the scratch project (which never calls `openProject`, so
-   * there's genuinely no file list for it) -- real once a project has
-   * actually been opened. */
+  /** `[]` for the scratch project, same reason. */
   files: FileNode[];
 }
 
@@ -41,10 +38,7 @@ const PANEL_TITLES: Record<PanelKind, string> = {
   problems: "Problems",
 };
 
-// File tree pinned by default (direct request, ahead of/overriding
-// 2.5's original "default state shows none of them" -- this supersedes
-// that for file-tree specifically). Not persisted across launches yet;
-// that's session-restore's job (task 2.10), not this one's.
+// File tree pinned by default; not persisted across launches yet (that's session-restore's job).
 const DEFAULT_PINNED: Record<PanelKind, boolean> = {
   "file-tree": true,
   outline: false,
@@ -59,9 +53,7 @@ export function App() {
   );
 }
 
-// Split out from App() so useCommand() below has a CommandProvider
-// ancestor to register into -- a component can't consume a context it
-// provides in that same render.
+// Split from App() so useCommand() below has a CommandProvider ancestor.
 function AppShell() {
   const [project, setProject] = useState<Project | null>(null);
   const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
@@ -72,9 +64,7 @@ function AppShell() {
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
-  // Pinned: docked permanently in the sidebar. Not pinned: at most one at
-  // a time shows as the ephemeral overlay (`overlayPanel`), exactly as
-  // before pinning existed.
+  // Pinned: docked in the sidebar. Not pinned: at most one shows as the ephemeral overlay (overlayPanel).
   const [pinned, setPinned] = useState<Record<PanelKind, boolean>>(DEFAULT_PINNED);
   const [overlayPanel, setOverlayPanel] = useState<PanelKind | null>(null);
 
@@ -84,9 +74,7 @@ function AppShell() {
   const errorTimeoutRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // A new compile request kills whatever the sidecar is still running
-  // (single-flight, task 1.4), so a superseded call's promise never
-  // settles -- no risk of a stale result overwriting a newer one here.
+  // Single-flight: a superseded compile's promise never settles, so a stale result can't overwrite a newer one.
   const runCompile = useCallback(
     async (projectId: string, uri: string, source: string, reason: CompileReason) => {
       try {
@@ -149,9 +137,7 @@ function AppShell() {
     }
   }, [runCompile]);
 
-  // File tree ⌘1: switches which file of the *current* project is open
-  // in the editor. Only ever called with a `.tex` leaf's real uri (see
-  // FileTreePanel) -- graphics have nothing to switch into.
+  // Only ever called with a .tex leaf's uri (see FileTreePanel) -- graphics have nothing to switch into.
   const switchToFile = useCallback(
     async (uri: string) => {
       const current = projectRef.current;
@@ -172,9 +158,7 @@ function AppShell() {
     [runCompile],
   );
 
-  // Scratch project: a disposable one-file project backing the
-  // placeholder doc shown before the user opens anything (task 1.8's
-  // scratch mechanism). Runs once; openProjectFlow() replaces it later.
+  // Disposable one-file project backing the placeholder doc; runs once, openProjectFlow() replaces it later.
   useEffect(() => {
     (async () => {
       const scratch = await window.quireDesktop.createScratchProject();
@@ -192,11 +176,7 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The seam's compile state, and reacting to an externally-triggered
-  // recompile (another editor, `git pull`, ... -- task 1.3, now driven by
-  // `files-changed`), both come from the same real CoreEvent stream
-  // (task 2.3) instead of a bespoke IPC event apps/desktop used to invent
-  // for this.
+  // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
       if (event.kind === "compile-started") {
@@ -219,10 +199,7 @@ function AppShell() {
     });
   }, [runCompile]);
 
-  // No "Open Project" button in the top bar (Section 7's layout has
-  // none) -- every action in the app has to be reachable some other way
-  // instead, which for this one is both a real keybinding and a palette
-  // entry, registered once here.
+  // No "Open Project" button in the top bar -- reachable via keybinding/palette instead.
   useCommand({
     id: "project.open",
     title: "Open Project…",
@@ -237,8 +214,7 @@ function AppShell() {
     run: () => setSplitFraction(0.5),
   });
 
-  // ⌘1/⌘2/⌘3 toggle the ephemeral overlay; a pinned panel is already
-  // permanently visible, so there's nothing left for the shortcut to do.
+  // A pinned panel is already permanently visible; nothing for the shortcut to do.
   const togglePanel = useCallback(
     (kind: PanelKind) => {
       if (pinned[kind]) return;
@@ -247,9 +223,7 @@ function AppShell() {
     [pinned],
   );
 
-  // Pinning promotes the current overlay into the sidebar; unpinning
-  // demotes it back to fully closed, not back to "open as overlay" --
-  // that would just be a confusing third state to land in.
+  // Unpinning demotes to fully closed, not back to "open as overlay."
   const pinPanel = useCallback((kind: PanelKind) => {
     setPinned((p) => ({ ...p, [kind]: true }));
     setOverlayPanel((current) => (current === kind ? null : current));
@@ -281,12 +255,7 @@ function AppShell() {
     run: () => togglePanel("problems"),
   });
 
-  // Section 7: summoned panels "dismiss on Escape" -- separate from the
-  // command registry's own keydown dispatch (Escape isn't a discoverable
-  // named command, it's a universal modal-dismiss key, same as the
-  // command palette's own Escape handling). Only ever touches the
-  // ephemeral overlay -- Escape doesn't rip a deliberately pinned panel
-  // out of the layout.
+  // Escape dismisses only the ephemeral overlay, never a pinned panel.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && overlayPanel !== null) {

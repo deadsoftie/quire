@@ -2,10 +2,7 @@ import "./fonts.css";
 import "./tokens.css";
 import "./primitives.css";
 
-// Mirrors tokens.css's color values for the rare JS-side consumer that
-// can't just read a CSS custom property (e.g. a <canvas> drawing call).
-// Keep these in sync with tokens.css by hand -- there are only two
-// palettes and they change rarely.
+// Mirrors tokens.css for JS consumers that can't read a CSS custom property (e.g. <canvas>); keep in sync by hand.
 export const palettes = {
   dark: {
     ink900: "#16181d",
@@ -31,8 +28,7 @@ export const palettes = {
     typeLo: "#7a828f",
     nonrepro: "#8fc7e8",
     nonreproDim: "#8fc7e833",
-    // Darkened from dark mode's #e5534b/#d9a03c to stay >=4.5:1 against
-    // light surfaces -- see tokens.css for the full explanation.
+    // See tokens.css: darkened to stay >=4.5:1 against light surfaces.
     proofRed: "#dc2920",
     proofAmber: "#966a1d",
     paper: "#ffffff",

@@ -49,12 +49,7 @@ fn main() {
     }
 }
 
-/// Unlike the request/response JSON-RPC loop above, this mode never reads
-/// stdin -- it runs until killed, printing one JSON notification line per
-/// debounced batch of changes (task 1.3). A separate long-lived process
-/// rather than a request handled by the normal loop, since file watching
-/// is push-based (the caller doesn't ask for each notification), not a
-/// request/response exchange.
+/// Push-based, not request/response: runs until killed, printing one JSON notification line per debounced batch of changes.
 fn run_watch_mode(dir: &Path) {
     let watcher = match quire_core::project::FileWatcher::new(dir, std::time::Duration::from_millis(500)) {
         Ok(w) => w,
@@ -66,8 +61,6 @@ fn run_watch_mode(dir: &Path) {
 
     let mut stdout = io::stdout();
     loop {
-        // A long timeout just to periodically confirm the process is
-        // still alive in logs, not because anything times out on it.
         if let Some(batch) = watcher.recv_timeout(std::time::Duration::from_secs(3600)) {
             let paths: Vec<String> = batch.iter().map(|p| p.display().to_string()).collect();
             let notification = json!({ "event": "filesChanged", "paths": paths });
@@ -78,10 +71,7 @@ fn run_watch_mode(dir: &Path) {
     }
 }
 
-/// Method names match `CoreApi`'s method names exactly (Section 6) --
-/// `packages/client`'s transport just forwards them verbatim. No
-/// `cancelCompile` or `complete` here: see `quire_core::rpc::handlers`'
-/// module docs for why neither belongs at this layer.
+/// Method names match CoreApi exactly; no cancelCompile/complete here (see quire_core::rpc::handlers).
 fn handle_request(req: Request) -> Value {
     match req.method.as_str() {
         "openProject" => dispatch(req.id, req.params, |p| handlers::open_project(&p)),
@@ -109,10 +99,7 @@ fn invalid_params(id: &Value, e: impl std::fmt::Display) -> Value {
     })
 }
 
-/// Unlike `tectonic::Error` (whose `Display` is often just a generic
-/// "the LaTeX engine failed"), `CompileError` carries the engine's actual
-/// captured log output when available -- forwarded here as `data.log` so
-/// it isn't lost on the way to the client.
+/// Forwards `CompileError`'s captured log (if any) as `data.log`.
 fn compile_error_response(id: &Value, e: CompileError) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -121,12 +108,7 @@ fn compile_error_response(id: &Value, e: CompileError) -> Value {
     })
 }
 
-/// Deserializes `params` into `P`, calls `f`, and serializes whatever it
-/// returns -- shared by every method except `openProject`'s
-/// `Vec<u8>`-adjacent free functions (there are none; every handler
-/// already returns a `Result<_, CompileError>`, `outline`/
-/// `prefetchPackages` wrapped in `Ok` at the call site above since they
-/// can't actually fail).
+/// Deserializes `params` into `P`, calls `f`, and serializes the result.
 fn dispatch<P, R, F>(id: Value, params: Value, f: F) -> Value
 where
     P: DeserializeOwned,

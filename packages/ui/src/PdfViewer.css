@@ -7,9 +7,7 @@
 .pdf-viewer__page {
   position: relative;
   margin: 0 auto var(--s-2);
-  /* The paper is the only white surface in the app (Section 7) -- an
-     unrendered placeholder shouldn't read as "blank page," so it stays
-     dark like the rest of the chrome until its canvas actually paints. */
+  /* The paper is the only white surface in the app -- stays dark until its canvas paints. */
   background: var(--ink-800);
 }
 

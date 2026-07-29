@@ -2,12 +2,7 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as readline from "node:readline";
 
-// M0/M1: the sidecar binary is expected to already be built via
-// `cargo build -p quire-sidecar`. Packaging it alongside the app is a
-// later-phase concern (see M4). Ported unchanged from
-// `apps/desktop/src/sidecar.js`'s `SIDECAR_PATH` -- `dist/` and `src/`
-// sit at the same depth under `packages/client/`, so the relative path
-// math is identical whether this runs compiled or not.
+// Expects the sidecar binary already built via `cargo build -p quire-sidecar`; packaging it is M4.
 const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
 
 export interface SidecarCall {
@@ -15,13 +10,7 @@ export interface SidecarCall {
   kill(): void;
 }
 
-// Spawns one sidecar process, sends one JSON-RPC request, resolves with
-// its result (or rejects on error/unexpected exit). Ported from
-// `apps/desktop/src/sidecar.js`'s `runOnce` -- see that file's original
-// comments (task 1.4) for why `detached: true` + process-group kill is
-// used instead of a plain `child.kill()`: Tectonic shells out to `biber`/
-// `bibtex` as a subprocess, and only a group-kill reliably takes both out
-// together.
+// Spawns one sidecar process, sends one JSON-RPC request, resolves with its result. `detached` + process-group kill (not plain child.kill()): Tectonic shells out to biber/bibtex, and only a group-kill reliably takes both out.
 export function runOnce(method: string, params: unknown, cwd?: string): SidecarCall {
   const proc = spawn(SIDECAR_PATH, [], {
     cwd,
@@ -83,15 +72,7 @@ export function runOnce(method: string, params: unknown, cwd?: string): SidecarC
 
     const payload = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
     proc.stdin.write(payload + "\n");
-    // The sidecar's stdin-read loop only terminates on EOF -- found while
-    // smoke-testing this port: without this, a sidecar process that
-    // *did* answer successfully never exits on its own (it just sits
-    // blocked waiting for a next line that never comes), leaking one
-    // zombie process per completed request. This bug predates this port
-    // (the original `apps/desktop/src/sidecar.js` has the same gap);
-    // confirmed by finding dozens of accumulated `quire-sidecar`
-    // processes from an already-running, unrelated Electron session
-    // while investigating why a standalone smoke test never exited.
+    // Without this, the sidecar's stdin-read loop never sees EOF and leaks a zombie process even after answering successfully.
     proc.stdin.end();
   });
 

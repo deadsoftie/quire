@@ -16,10 +16,7 @@
   background: var(--ink-600);
 }
 
-/* Compiling: a non-repro gradient travels along the seam, ~1.2s loop.
-   Reduced-motion clamps this to a static frame via primitives.css's
-   blanket `animation-duration` override -- no separate opt-out needed
-   here. */
+/* Reduced-motion clamps this via primitives.css's blanket animation-duration override. */
 .seam[data-state="compiling"] .seam__line {
   width: 2px;
   background: linear-gradient(180deg, transparent, var(--nonrepro), transparent);
@@ -27,9 +24,7 @@
   animation: seam-travel 1.2s linear infinite;
 }
 
-/* Error: settles to proof-red. The 800ms-then-back-to-idle timing lives
-   in App.tsx's compile-event handling, not here -- this rule only knows
-   how to render whichever state it's told. */
+/* The 800ms-then-back-to-idle timing lives in App.tsx, not here. */
 .seam[data-state="error"] .seam__line {
   width: 2px;
   background: var(--proof-red);

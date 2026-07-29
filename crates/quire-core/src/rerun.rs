@@ -1,46 +1,6 @@
-//! Dependency-aware reruns (task 1.6).
+//! Backs compiles with real files on disk (unlike `compile_latex`'s pure in-memory buffers) so repeated compiles of the same project can skip BibTeX when citations haven't changed and tell whether `.aux` is still settling -- state that can't live in process memory since each compile is a fresh spawned process.
 //!
-//! [`crate::compile_latex`] is a pure, stateless, single-process compile:
-//! buffer in, PDF out, nothing persisted anywhere. Tectonic's own automatic
-//! multi-pass pipeline (`PassSetting::Default`, which that function uses
-//! implicitly) already handles rerunning TeX until `.aux` stabilizes, but it
-//! decides whether to run BibTeX purely by checking whether `\bibdata`
-//! appears in the current pass's `.aux` -- and `\bibliography{...}` writes
-//! `\bibdata` unconditionally on *every* run, regardless of whether the
-//! citation set actually changed. So today, any document using BibTeX gets
-//! it re-run on every compile, including pure body-text edits. That's what
-//! this task exists to fix.
-//!
-//! Fixing it needs memory of "what were the citations last time," which
-//! can't live in process memory: per 1.4's decision, each compile is a
-//! fresh OS process (spawn-per-compile, chosen specifically to make
-//! cancellation and Tectonic's engine-reuse segfault risk moot), so nothing
-//! survives between compiles unless it's on disk. This compiles into a
-//! caller-provided directory instead of pure memory, writing real
-//! intermediate files (`.aux`, `.bbl`, ...) there so state naturally
-//! persists across separate invocations the same way classic
-//! latex/bibtex workflows always have -- plus one small fingerprint file of
-//! our own (`quire-citations.txt`) to remember the citation set BibTeX last
-//! saw, since `\bibdata`'s mere presence isn't enough signal on its own.
-//!
-//! Bibliography engine: classic BibTeX only (`\bibliography{...}`), not
-//! biblatex/biber -- see M1_TASKS.md 1.6 for why (upstream Tectonic/biber
-//! BCF version mismatch, tracked as tectonic#1267, makes biber unusable
-//! today regardless of rerun scheduling). Tectonic embeds classic BibTeX
-//! natively (no external binary), which is also why it's the safer
-//! foundation to build this on.
-//!
-//! Pass budget: max 4 total TeX passes per compile, matching QUIRE_SPEC.md
-//! 9.1 (Tectonic's own automatic pipeline defaults to up to 6 with no
-//! public way to lower that ceiling while keeping early-exit-on-stability,
-//! so this drives passes manually instead of using `PassSetting::Default`).
-//!
-//! Page hashing (task 1.7) piggybacks on the same disk-state mechanism:
-//! `changedPages` also means nothing without a previous compile to diff
-//! against, so it lives here rather than in the stateless
-//! [`crate::compile_latex`] too -- see [`crate::page_hash`] for the actual
-//! hashing/diffing logic, this module just persists the previous compile's
-//! hashes (`quire-page-hashes.txt`) alongside the citation fingerprint.
+//! BibTeX only, not biblatex/biber (upstream Tectonic/biber BCF mismatch, tectonic#1267). Max 4 TeX passes total (QUIRE_SPEC.md 9.1). Page hashing ([`crate::page_hash`]) also persists its state here for the same reason.
 
 use std::fs;
 use std::path::Path;
@@ -60,11 +20,7 @@ const CITATION_FINGERPRINT_FILE: &str = "quire-citations.txt";
 const PAGE_HASHES_FILE: &str = "quire-page-hashes.txt";
 const TEX_INPUT_NAME: &str = "texput.tex";
 
-/// Same compile as [`crate::compile_latex`], but backed by real files in
-/// `build_dir` instead of pure in-memory buffers, so repeated calls with the
-/// same `build_dir` (i.e. repeated compiles of the same project) can skip
-/// BibTeX when the citation set hasn't changed, and only rerun TeX while
-/// `.aux` is genuinely still settling.
+/// Same as [`crate::compile_latex`] but backed by real files in `build_dir`, so repeated calls can skip BibTeX/extra TeX passes when nothing relevant changed.
 pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOutput, CompileError> {
     fs::create_dir_all(build_dir)?;
 
@@ -85,9 +41,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
         if previous.as_deref() != Some(fingerprint.as_str()) {
             run_bibtex_pass(build_dir, &config, &format_cache_path)?;
             fs::write(&fingerprint_path, &fingerprint)?;
-            // BibTeX doesn't touch .aux (only .bbl), so the aux-diff check
-            // above can't see this -- a fresh/changed .bbl always needs at
-            // least one more TeX pass to actually get typeset in.
+            // BibTeX only touches .bbl, invisible to the aux-diff check above.
             needs_rerun = true;
         }
     }
@@ -99,14 +53,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
         needs_rerun = new_aux != last_aux;
         last_aux = new_aux;
     }
-    // If we ran out of passes and `needs_rerun` is still true, per
-    // QUIRE_SPEC.md 9.1 we show the best available output rather than
-    // looping or failing -- which is exactly what happens by just falling
-    // out of the loop here and reading whatever's on disk below. Surfacing
-    // that as a real warning to the user is 1.8/contract territory (no
-    // diagnostics channel exists yet); the behavioral requirement (don't
-    // loop, don't fail) is satisfied regardless.
-
+    // Passes exhausted and still unstable: fall through and show the best available output (QUIRE_SPEC.md 9.1), don't loop or fail.
     convert_xdv_to_pdf(build_dir, &config)?;
 
     let pdf = fs::read(build_dir.join("texput.pdf")).map_err(|_| CompileError {
@@ -141,20 +88,11 @@ fn run_tex_pass(
         .format_cache_path(format_cache_path)
         .filesystem_root(build_dir)
         .output_dir(build_dir)
-        // Without this, `.aux`'s natural access pattern once a previous
-        // pass's copy already exists on disk is read-then-written (LaTeX's
-        // kernel `\@input`s the prior `.aux` at `\begin{document}`), and
-        // Tectonic's own write_files() silently skips anything that isn't
-        // purely `Written` unless this is set -- so `.aux`/`.bbl` would
-        // never actually make it to build_dir for the next pass to see.
+        // Required or Tectonic silently skips writing back a read-then-written .aux/.bbl (LaTeX re-\@inputs the prior .aux).
         .keep_intermediates(true)
         .keep_logs(false)
         .print_stdout(false)
-        // Not `Pdf`: `PassSetting::Tex` never runs the XDV->PDF conversion
-        // step regardless of `output_format` (that only happens inside the
-        // private `default_pass`, which this deliberately avoids -- see
-        // `convert_xdv_to_pdf`). Asking for `Xdv` here is just honest about
-        // what this pass setting actually produces.
+        // PassSetting::Tex never converts XDV->PDF regardless of output_format -- see convert_xdv_to_pdf.
         .output_format(OutputFormat::Xdv)
         .pass(PassSetting::Tex);
 
@@ -170,19 +108,7 @@ fn run_tex_pass(
     Ok(())
 }
 
-/// Runs BibTeX against whatever `texput.aux` is already sitting in
-/// `build_dir` from the most recent [`run_tex_pass`] -- no TeX pass of our
-/// own. `PassSetting::BibtexFirst` + `.reruns(0)` gets there: `reruns(0)`
-/// forces Tectonic's own internal rerun loop to execute zero times (its
-/// `0..pass_count` loop is `0..0`), leaving only the unconditional BibTeX
-/// call that `BibtexFirst` always runs first. `OutputFormat::Xdv` (not
-/// `Pdf`) matters here too: with no TeX pass, no `.xdv` was produced, so
-/// asking for `Pdf` output would trigger a doomed xdvipdfmx conversion
-/// pass over a nonexistent file; `Xdv` skips that conversion step entirely
-/// while still writing every non-log intermediate (`.bbl` included) to
-/// `build_dir` the normal way. (`OutputFormat::Aux` looked promising too,
-/// but restricts written files to `.aux` only -- exactly the file `.bbl`
-/// isn't.)
+/// Runs BibTeX only, against the existing `texput.aux`: `BibtexFirst` + `reruns(0)` skips Tectonic's own TeX rerun loop; `Xdv` (not `Pdf`) avoids a doomed xdvipdfmx pass over a nonexistent `.xdv` while still writing `.bbl`.
 fn run_bibtex_pass(
     build_dir: &Path,
     config: &PersistentConfig,
@@ -218,16 +144,7 @@ fn run_bibtex_pass(
     Ok(())
 }
 
-/// [`IoProvider`] for the standalone PDF conversion below: `texput.xdv`/
-/// `texput.pdf` live in-memory (`mem`), everything else (font files --
-/// xdvipdfmx needs to embed e.g. Latin Modern into the PDF, and those come
-/// from the TeXLive bundle, not the `.xdv` itself) falls through to the
-/// same bundle a real compile uses. `tectonic_bridge_core` ships
-/// `MinimalDriver` for the single-provider case, but its wrapped provider
-/// is a private field, so there'd be no way to read the converted PDF back
-/// out of it afterward -- this is that same one-line `io()` impl, just
-/// over fields we can still reach, plus the bundle fallback `MinimalDriver`
-/// doesn't support chaining at all.
+/// `texput.xdv`/`texput.pdf` live in memory; font lookups fall through to the compile bundle. Not `tectonic_bridge_core`'s `MinimalDriver`: its wrapped provider is private, so the converted PDF couldn't be read back out.
 struct XdvipdfmxIo {
     mem: MemoryIo,
     bundle: Box<dyn Bundle>,
@@ -258,34 +175,7 @@ impl DriverHooks for XdvipdfmxDriver {
     }
 }
 
-/// Converts `build_dir/texput.xdv` (produced by the last [`run_tex_pass`])
-/// into `build_dir/texput.pdf`, standalone -- no `ProcessingSession`
-/// involved at all.
-///
-/// This exists because of a real coupling problem in Tectonic's public API:
-/// the XDV->PDF conversion step only ever runs from inside the private
-/// `default_pass` (i.e. only reachable via `PassSetting::Default` /
-/// `BibtexFirst`), and *both* of those pass settings unconditionally
-/// re-run BibTeX whenever `\bibdata` appears in that session's own
-/// freshly-generated `.aux` -- which it always does for any real
-/// `\bibliography{...}` document, with no way to override the check. So
-/// there is no `PassSetting` that both (a) produces a PDF and (b) can ever
-/// skip BibTeX. Confirmed directly: `PassSetting::Tex` reliably writes
-/// `.xdv` but never touches `.pdf`, no matter what `output_format` is set
-/// to. Routing PDF conversion through its own minimal, from-scratch
-/// `DriverHooks` (via the public `CoreBridgeLauncher`/`XdvipdfmxEngine`,
-/// exported by `tectonic_bridge_core`/`tectonic`) instead of a
-/// `ProcessingSession` sidesteps that coupling entirely: no TeX engine
-/// involved, and (see [`XdvipdfmxIo`]) only a thin bundle-backed provider
-/// for font lookups, not a full session's worth of machinery.
-///
-/// `texput.xdv`/`texput.pdf` go through `MemoryIo` rather than real files,
-/// for a real reason and not just convenience: xdvipdfmx's C side
-/// unconditionally opens a "stdout" logging handle on startup
-/// (`ttstub_output_open_stdout`, confirmed in `dpx-error.c`) and aborts the
-/// whole process if that fails -- a plain `FilesystemIo` doesn't implement
-/// `output_open_stdout` at all (it deals in named files, not a stdout
-/// concept), where `MemoryIo::new(true)` does.
+/// Converts `texput.xdv` to `texput.pdf` standalone, bypassing `ProcessingSession` entirely: every `PassSetting` that produces a PDF also unconditionally re-runs BibTeX when `\bibdata` is present, with no way to skip it.
 fn convert_xdv_to_pdf(build_dir: &Path, config: &PersistentConfig) -> Result<(), CompileError> {
     let mut status = NoopStatusBackend::default();
     let xdv = fs::read(build_dir.join("texput.xdv"))?;
@@ -321,14 +211,7 @@ fn convert_xdv_to_pdf(build_dir: &Path, config: &PersistentConfig) -> Result<(),
     Ok(())
 }
 
-/// The parts of `.aux` that determine BibTeX's output: the `\bibdata{...}`
-/// line (which `.bib` file(s)) plus every `\citation{...}` line, in the
-/// order they appear (order matters for citation-order-dependent
-/// bibliography styles like `unsrt`; duplicates from repeated `\cite` of
-/// the same key are kept rather than deduplicated, for the same reason --
-/// simplest way to never miss a real change). Returns `None` when there's
-/// no `\bibdata` at all, meaning this document has no bibliography and
-/// BibTeX should never run for it.
+/// The `\bibdata`/`\citation` lines that determine BibTeX's output, order and duplicates preserved (citation-order-dependent styles like `unsrt`); `None` means no bibliography.
 fn citation_fingerprint(aux_text: &str) -> Option<String> {
     let mut has_bibdata = false;
     let mut lines = Vec::new();

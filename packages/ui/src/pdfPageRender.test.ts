@@ -51,9 +51,7 @@ describe("shouldRenderPage", () => {
   });
 
   it("renders unconditionally when the canvas is stale from further back than the immediately preceding compile", () => {
-    // Painted for D1, but the doc has since moved through D2 to D3 --
-    // D3's own changedPages (relative to D2) says nothing about whether
-    // D1 -> D2 also left this page alone, so it can't be trusted.
+    // Painted for D1; D3's changedPages (relative to D2) says nothing about D1 -> D2.
     expect(
       shouldRenderPage({
         lastRenderedDoc: "D1",
@@ -66,9 +64,7 @@ describe("shouldRenderPage", () => {
   });
 
   it("renders a brand new canvas element even for a doc it happens to already know about", () => {
-    // Mirrors PdfViewer's setCanvasRef: a fresh DOM node never painted
-    // anything, so `lastRenderedDoc` is undefined regardless of what
-    // `currentDoc`/`previousDoc` are.
+    // Mirrors setCanvasRef: a fresh DOM node has an undefined lastRenderedDoc regardless of currentDoc/previousDoc.
     expect(
       shouldRenderPage({
         lastRenderedDoc: undefined,

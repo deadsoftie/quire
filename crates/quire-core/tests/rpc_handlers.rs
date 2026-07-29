@@ -1,11 +1,3 @@
-// End-to-end test for task 1.8's real handler logic (crate::rpc::handlers)
-// against a real multi-file project: open_project must find the right
-// root and file list, and compile must correctly mirror *every* file in
-// the graph into the shadow dir (not just the root), including honoring a
-// dirty buffer for a non-root subfile -- exactly the "multi-file projects
-// actually work through the real compile path" gap 1.1's own notes
-// flagged as still open before this task.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -80,8 +72,6 @@ fn compile_mirrors_the_whole_graph_and_produces_a_real_pdf() {
     assert!(resp.page_count >= 1);
     assert!(!resp.bundle_version.is_empty());
 
-    // Every resolved file in the graph should have made it into the
-    // shadow dir, not just the root.
     let shadow = project_dir.join(".quire").join("build");
     assert!(shadow.join("chapters/intro.tex").is_file());
     assert!(shadow.join("chapters/middle.tex").is_file());
@@ -116,7 +106,6 @@ fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
         "the shadow copy of the dirty (non-root) file should reflect the buffer, not disk: {shadow_intro:?}"
     );
 
-    // The real file on disk must never be touched by a compile.
     let real_intro = fs::read_to_string(project_dir.join("chapters/intro.tex")).unwrap();
     assert!(!real_intro.contains("Edited intro content"));
 

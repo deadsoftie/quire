@@ -13,11 +13,7 @@ interface SeamProps {
   onReset: () => void;
 }
 
-// The divider between editor and preview -- Section 7's "only structural
-// line in the application." Draggable (pointer capture, not mouse events,
-// so dragging keeps working even if the pointer leaves the seam itself
-// mid-drag) and the one place compile state is shown at all; there is no
-// spinner anywhere else in this app.
+// Draggable via pointer capture (keeps working even if the pointer leaves mid-drag) and the only place compile state renders -- no spinner anywhere else.
 export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
   const draggingRef = useRef(false);
 
