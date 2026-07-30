@@ -10,9 +10,11 @@
 //! [`crate::project::FileGraph`] -- bibliography files aren't mirrored into the compile shadow
 //! dir today, a separate, pre-existing gap this task doesn't touch). 3.3 adds `\newcommand`/`\def`/
 //! `\DeclareMathOperator` macros, and -- since something in 3.1-3.3 has to build it before 3.5
-//! needs it -- `\usepackage` tracking, which isn't a numbered task of its own. 3.4-3.5 extend
-//! [`ProjectIndex`] with their own extraction sources (file paths, CTAN commands) rather than
-//! standing up parallel machinery.
+//! needs it -- `\usepackage` tracking, which isn't a numbered task of its own. 3.4 adds file-path
+//! completion. 3.5 ([`ctan`]) is the one extension source that isn't parsed from project source at
+//! all -- a bundled command database scoped by [`ProjectIndex::packages`].
+
+pub mod ctan;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;

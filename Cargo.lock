@@ -2458,6 +2458,7 @@ dependencies = [
  "lopdf",
  "notify",
  "serde",
+ "serde_json",
  "tectonic",
  "tectonic_bridge_core",
  "tectonic_bundles",

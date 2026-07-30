@@ -217,8 +217,9 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
 }
 
 /// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion), 3.2 (`\cite{` citation
-/// completion), 3.3 (bare-command macro completion), and 3.4 (`\input`/`\include`/
-/// `\includegraphics` file-path completion) -- every other trigger context (math symbols,
+/// completion), 3.3 (bare-command macro completion), 3.4 (`\input`/`\include`/
+/// `\includegraphics` file-path completion), and 3.5 (bare-command CTAN package completion,
+/// merged into the same response as 3.3's macros) -- every other trigger context (math symbols,
 /// snippets) returns `[]` until 3.7/3.8 land their own extraction sources onto the same
 /// [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the whole
 /// project index for a keystroke inside an argument none of these triggers recognize.
@@ -244,7 +245,7 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     } else if is_cite {
         citation_completions(&index)
     } else if is_command {
-        macro_completions(&index)
+        command_completions(&index)
     } else if is_input {
         path_completions(index.tex_paths())
     } else {
@@ -252,10 +253,11 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     }
 }
 
-// Section 9.4: project-local symbols outrank everything else; every label/citation here is
-// already project-local, so a flat priority is correct until 3.5 introduces package-level items
-// that need to rank below this tier.
+// Section 9.4's ranking: project-local symbols outrank package commands, which outrank the
+// (still unbuilt) global fallback. PACKAGE_PRIORITY only matters relative to PROJECT_LOCAL_PRIORITY
+// within the same response -- command_completions is the one place both tiers appear together.
 const PROJECT_LOCAL_PRIORITY: i32 = 0;
+const PACKAGE_PRIORITY: i32 = 10;
 
 fn label_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
@@ -312,16 +314,18 @@ fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionI
     items
 }
 
-/// `label`/`insert` deliberately omit the leading backslash -- the client's bare-command trigger
-/// (`Editor.tsx`'s `wordMatch`) replaces starting right after the backslash already in the
-/// document, matching how label/citation completions already replace starting after `{`.
-fn macro_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
+/// Bare-command completion (task 3.3's macros and 3.5's CTAN package commands, merged into one
+/// response and ranked via `sort_priority`, per Section 9.4). `label`/`insert` deliberately omit
+/// the leading backslash -- the client's bare-command trigger (`Editor.tsx`'s `wordMatch`)
+/// replaces starting right after the backslash already in the document, matching how label/
+/// citation completions already replace starting after `{`.
+fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
         .macros()
         .map(|m| CompletionItem {
             label: m.name.clone(),
             kind: CompletionKind::Macro,
-            insert: insert_for_macro(m),
+            insert: insert_with_tabstops(&m.name, m.arity),
             // The raw substitution body, not a description -- there's nothing else to show, and
             // seeing what a macro actually expands to is exactly what "readable" means here too.
             detail: if m.body.is_empty() { None } else { Some(m.body.clone()) },
@@ -330,17 +334,32 @@ fn macro_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> 
             sort_priority: PROJECT_LOCAL_PRIORITY,
         })
         .collect();
+
+    let packages: Vec<&str> = index.packages().collect();
+    items.extend(crate::index::ctan::commands_for_packages(packages.into_iter()).into_iter().map(|c| CompletionItem {
+        label: c.name.clone(),
+        kind: CompletionKind::Command,
+        insert: insert_with_tabstops(&c.name, c.arity),
+        detail: c.detail,
+        documentation: None,
+        symbol_preview: None,
+        sort_priority: PACKAGE_PRIORITY,
+    }));
+
     items.sort_by(|a, b| a.label.cmp(&b.label));
     items
 }
 
-/// Arity -> tabstops: `\vect` (arity 1) becomes `vect{${1:arg1}}` (no leading backslash -- see
-/// `macro_completions`'s comment), `\greet` (arity 2) becomes `greet{${1:arg1}}{${2:arg2}}`, and
-/// arity 0 is just the bare name with no braces at all. `${N:argN}` rather than empty `${N}`
-/// fields since a macro definition carries no argument names of its own to use instead.
-fn insert_for_macro(m: &crate::index::MacroDef) -> String {
-    let mut s = m.name.clone();
-    for n in 1..=m.arity {
+/// Arity -> tabstops, shared by macro (3.3) and CTAN package command (3.5) completions: `\vect`
+/// (arity 1) becomes `vect{${1:arg1}}` (no leading backslash -- see `command_completions`'s
+/// comment), `\greet` (arity 2) becomes `greet{${1:arg1}}{${2:arg2}}`, and arity 0 is just the
+/// bare name with no braces at all -- both extraction sources already treat "doesn't cleanly
+/// take N required brace arguments" as arity 0 rather than guess. `${N:argN}` rather than empty
+/// `${N}` fields since neither a macro definition nor `data/ctan-commands.json` names its own
+/// arguments.
+fn insert_with_tabstops(name: &str, arity: u32) -> String {
+    let mut s = name.to_string();
+    for n in 1..=arity {
         s.push('{');
         s.push_str(&format!("${{{n}:arg{n}}}"));
         s.push('}');
@@ -370,17 +389,18 @@ pub fn write_file(req: &WriteFileRequest) -> Result<(), CompileError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::index::MacroDef;
 
     #[test]
-    fn insert_for_macro_produces_one_brace_group_per_arity() {
-        let zero = MacroDef { name: "greeting".to_string(), arity: 0, body: "Hello".to_string() };
-        assert_eq!(insert_for_macro(&zero), "greeting", "arity 0 must not add any braces at all");
+    fn insert_with_tabstops_produces_one_brace_group_per_arity() {
+        assert_eq!(insert_with_tabstops("greeting", 0), "greeting", "arity 0 must not add any braces at all");
+        assert_eq!(insert_with_tabstops("vect", 1), "vect{${1:arg1}}");
+        assert_eq!(insert_with_tabstops("greet", 2), "greet{${1:arg1}}{${2:arg2}}", "each argument gets its own brace group, in order");
+    }
 
-        let one = MacroDef { name: "vect".to_string(), arity: 1, body: "\\mathbf{#1}".to_string() };
-        assert_eq!(insert_for_macro(&one), "vect{${1:arg1}}");
-
-        let two = MacroDef { name: "greet".to_string(), arity: 2, body: "#1, #2!".to_string() };
-        assert_eq!(insert_for_macro(&two), "greet{${1:arg1}}{${2:arg2}}", "each argument gets its own brace group, in order");
+    #[test]
+    fn package_commands_rank_below_project_local_priority() {
+        let items = crate::index::ctan::commands_for_packages(["tikz"].into_iter());
+        assert!(!items.is_empty(), "sanity check: tikz should have commands in the bundled database");
+        assert!(PACKAGE_PRIORITY > PROJECT_LOCAL_PRIORITY, "Section 9.4: package commands must rank below project-local symbols");
     }
 }

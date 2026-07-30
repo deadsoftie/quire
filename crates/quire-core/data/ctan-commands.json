@@ -1,0 +1,35 @@
+{
+  "tikz": [
+    { "name": "draw", "arity": 0, "detail": "Draw a path" },
+    { "name": "node", "arity": 0, "detail": "Place a node" },
+    { "name": "path", "arity": 0, "detail": "Build a path without drawing it" },
+    { "name": "fill", "arity": 0, "detail": "Draw a filled path" },
+    { "name": "coordinate", "arity": 0, "detail": "Name a point for later reference" },
+    { "name": "foreach", "arity": 0, "detail": "Repeat a path for each value in a list" }
+  ],
+  "hyperref": [
+    { "name": "href", "arity": 2, "detail": "Link to an external URL" },
+    { "name": "url", "arity": 1, "detail": "Typeset a URL as a link" },
+    { "name": "autoref", "arity": 1, "detail": "Reference with an automatic type name (\"Section 2\")" },
+    { "name": "nameref", "arity": 1, "detail": "Reference by the target's own title text" }
+  ],
+  "amsmath": [
+    { "name": "boxed", "arity": 1, "detail": "Draw a box around a formula" },
+    { "name": "text", "arity": 1, "detail": "Ordinary text inside math mode" },
+    { "name": "dfrac", "arity": 2, "detail": "Display-style fraction, even inline" },
+    { "name": "tfrac", "arity": 2, "detail": "Text-style (smaller) fraction" },
+    { "name": "overset", "arity": 2, "detail": "Stack a symbol above another" },
+    { "name": "underset", "arity": 2, "detail": "Stack a symbol below another" }
+  ],
+  "graphicx": [
+    { "name": "includegraphics", "arity": 1, "detail": "Insert an image file" },
+    { "name": "rotatebox", "arity": 2, "detail": "Rotate its content by an angle" },
+    { "name": "scalebox", "arity": 2, "detail": "Scale its content by a factor" }
+  ],
+  "booktabs": [
+    { "name": "toprule", "arity": 0, "detail": "Heavy rule at the top of a table" },
+    { "name": "midrule", "arity": 0, "detail": "Rule between a table's header and body" },
+    { "name": "bottomrule", "arity": 0, "detail": "Heavy rule at the bottom of a table" },
+    { "name": "cmidrule", "arity": 1, "detail": "Partial rule spanning a column range" }
+  ]
+}

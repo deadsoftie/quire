@@ -1,7 +1,8 @@
-//! Tasks 3.1-3.4's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
-//! completes with readable entries," "Custom macros appear with correct tabstops," and "Relative
-//! paths complete, extensions filtered by command." Exercises the real `outline`/`complete`
-//! handlers (crate::index::ProjectIndex) against multi-file fixtures.
+//! Tasks 3.1-3.5's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
+//! completes with readable entries," "Custom macros appear with correct tabstops," "Relative
+//! paths complete, extensions filtered by command," and "\usepackage{tikz} unlocks TikZ commands;
+//! without it, they don't appear." Exercises the real `outline`/`complete` handlers
+//! (crate::index::ProjectIndex) against multi-file fixtures.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,8 +108,12 @@ fn macro_completion_merges_newcommand_declaremathoperator_and_def_across_files_w
 
     let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
 
-    assert!(items.iter().all(|i| i.kind == CompletionKind::Macro));
-    let by_label: std::collections::HashMap<&str, &CompletionItem> = items.iter().map(|i| (i.label.as_str(), i)).collect();
+    // This fixture also \usepackage{amsmath,tikz} (task 3.3's own setup, predating 3.5), so the
+    // bare-command response now legitimately mixes macros with those packages' CTAN commands
+    // (task 3.5) -- assert the macro-specific shape only on the Macro-kind subset.
+    assert!(items.iter().any(|i| i.kind == CompletionKind::Command), "amsmath/tikz commands should also be in the merged response: {:?}", items.iter().map(|i| &i.label).collect::<Vec<_>>());
+    let macros: Vec<&CompletionItem> = items.iter().filter(|i| i.kind == CompletionKind::Macro).collect();
+    let by_label: std::collections::HashMap<&str, &CompletionItem> = macros.iter().map(|i| (i.label.as_str(), *i)).collect();
 
     let vect = by_label.get("vect").expect("\\newcommand{\\vect}[1]{...} should complete");
     assert_eq!(vect.insert, "vect{${1:arg1}}");
@@ -182,6 +187,42 @@ fn includegraphics_completion_offers_only_image_files() {
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(labels.contains(&"figures/plot.pdf") && labels.contains(&"figures/diagram.png"), "{labels:?}");
     assert!(!labels.iter().any(|l| l.ends_with(".tex")), "\\includegraphics must only offer image files: {labels:?}");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn usepackage_tikz_unlocks_tikz_commands() {
+    let project_dir = fresh_project_copy("ctan-with-tikz", "complete-ctan-with");
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    let position = position_after(&text, "\\dr");
+
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
+
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(labels.contains(&"draw"), "\\usepackage{{tikz}} should unlock tikz's \\draw: {labels:?}");
+    let draw = items.iter().find(|i| i.label == "draw").unwrap();
+    assert_eq!(draw.kind, CompletionKind::Command);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn without_usepackage_tikz_commands_do_not_appear() {
+    let project_dir = fresh_project_copy("ctan-without-tikz", "complete-ctan-without");
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    let position = position_after(&text, "\\dr");
+
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
+
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(!labels.contains(&"draw"), "tikz was never \\usepackage'd, so \\draw must not appear: {labels:?}");
 
     fs::remove_dir_all(&project_dir).ok();
 }

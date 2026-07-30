@@ -77,18 +77,17 @@ const baseEditorTheme = EditorView.theme(
   { dark: true },
 );
 
-// Completions come from quire-core's own index as of 3.1-3.4 (label/\ref, citation/\cite,
-// bare-command macro, and file-path completion; texlab is no longer called at all --
-// packages/client/src/texlabClient.ts is inert scaffolding pending 3.12's deletion). Two trigger
-// shapes feed the same request: typing inside a recognized command's brace argument
+// Completions come from quire-core's own index as of 3.1-3.5 (label/\ref, citation/\cite,
+// bare-command macro and CTAN package, and file-path completion; texlab is no longer called at
+// all -- packages/client/src/texlabClient.ts is inert scaffolding pending 3.12's deletion). Two
+// trigger shapes feed the same request: typing inside a recognized command's brace argument
 // (\ref/\eqref/\autoref/\cite/\input/\include/\includegraphics -- the optional `(\[...\])?` group
 // tolerates \includegraphics[width=5cm]{ and even plain LaTeX's own \cite[note]{, both of which
 // take an optional bracket before the brace), or a bare backslash for command-name completion
-// (macros as of 3.3; 3.5's CTAN commands merge into the same server-side response later, ranked
-// below project-local macros -- no client change needed for that either). Each trigger request
-// spawns a fresh quire-sidecar process (see sidecarProcess.ts's runOnce) -- fine once per
-// word/argument, since CM6 filters locally against the already-fetched list as more of it is
-// typed, not on every keystroke.
+// (macros as of 3.3, merged with 3.5's CTAN package commands server-side and ranked via
+// `sortPriority` -> CM6's `boost` below). Each trigger request spawns a fresh quire-sidecar
+// process (see sidecarProcess.ts's runOnce) -- fine once per word/argument, since CM6 filters
+// locally against the already-fetched list as more of it is typed, not on every keystroke.
 function makeCompletionSource(projectId: string, uri: string) {
   return async function coreCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
     const argMatch = context.matchBefore(/\\(ref|eqref|autoref|cite|input|include|includegraphics)(\[[^\]]*\])?\{[^{}\n]*/);
@@ -114,7 +113,17 @@ function makeCompletionSource(projectId: string, uri: string) {
 
     return {
       from,
-      options: items.map((item) => ({ label: item.label, detail: item.detail ?? undefined, apply: item.insert })),
+      // sortPriority is ascending (lower = higher priority, Section 9.4); CM6's own boost is the
+      // opposite sense (higher = higher priority), -99..99. Without this, items were already
+      // ordered correctly within a single trigger's own uniform priority (labels, citations, each
+      // always the same tier), so the gap was invisible until 3.5 put two tiers -- project-local
+      // macros and package commands -- in the same response for the first time.
+      options: items.map((item) => ({
+        label: item.label,
+        detail: item.detail ?? undefined,
+        apply: item.insert,
+        boost: -item.sortPriority,
+      })),
     };
   };
 }
