@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld("quireDesktop", {
   confirmDiscard: invoke("desktop:confirmDiscard"),
   reportViewState: invoke("desktop:reportViewState"),
   readPdfFile: invoke("desktop:readPdfFile"),
+  pasteImage: invoke("desktop:pasteImage"),
   loadSession: invoke("desktop:loadSession"),
   saveSession: invoke("desktop:saveSession"),
   // Returns an unsubscribe function.

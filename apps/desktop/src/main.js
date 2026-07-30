@@ -210,6 +210,17 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:readPdfFile", (_event, pdfPath) => new Uint8Array(fs.readFileSync(pdfPath)));
 
+  // Task 4.7: writes a pasted image's raw bytes into <projectDir>/figures/, creating that
+  // directory on first use. Returns the project-relative path so the renderer can insert it
+  // straight into an \includegraphics call without knowing the absolute path.
+  ipcMain.handle("desktop:pasteImage", (_event, projectDir, bytes, extension) => {
+    const figuresDir = path.join(projectDir, "figures");
+    fs.mkdirSync(figuresDir, { recursive: true });
+    const filename = `pasted-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+    fs.writeFileSync(path.join(figuresDir, filename), Buffer.from(bytes));
+    return `figures/${filename}`;
+  });
+
   ipcMain.handle("desktop:loadSession", () => {
     try {
       return JSON.parse(fs.readFileSync(sessionFile, "utf8"));

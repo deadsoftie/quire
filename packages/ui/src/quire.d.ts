@@ -36,6 +36,8 @@ declare global {
       reportViewState: (state: ViewMenuState) => Promise<void>;
       /** CoreApi.readFile is text-only; this reads a compiled PDF's bytes. */
       readPdfFile: (path: string) => Promise<Uint8Array>;
+      /** Writes a pasted image's bytes into `<projectDir>/figures/` (created if needed); returns the project-relative path. */
+      pasteImage: (projectDir: string, bytes: Uint8Array, extension: string) => Promise<string>;
       /** `null` if there's no session file yet (or it's unreadable). */
       loadSession: () => Promise<SessionState | null>;
       saveSession: (session: SessionState) => Promise<void>;

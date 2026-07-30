@@ -23,6 +23,14 @@ import { renderSymbolPreview } from "./symbolPreview";
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
+// Chromium normalizes most clipboard images -- including a macOS screenshot-to-clipboard, this
+// feature's own acceptance case -- to `image/png` regardless of source, so `png` is the safe
+// default; only an explicit JPEG source keeps its own extension, since Tectonic reads the image
+// bytes by extension, not by sniffing content.
+export function extensionForMimeType(mimeType: string): string {
+  return mimeType === "image/jpeg" || mimeType === "image/jpg" ? "jpg" : "png";
+}
+
 // @codemirror/lint's own underline bakes a fixed color into the SVG itself (not `currentColor`),
 // so recoloring it means supplying our own copy of that same SVG rather than a plain CSS override.
 function underline(): string {
@@ -254,6 +262,34 @@ export function Editor({
             const head = editorView.state.selection.main.head;
             const line = editorView.state.doc.lineAt(head);
             onCursorActivityRef.current?.(head, editorView.scrollDOM.scrollTop, line.number, head - line.from + 1);
+          },
+          // Task 4.7: only intercepts an actual image on the clipboard -- a normal text/file paste
+          // falls through to CM6's own default handling untouched (returning false below).
+          paste: (event, editorView) => {
+            const item = Array.from(event.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
+            if (!item) return false;
+
+            event.preventDefault();
+            const file = item.getAsFile();
+            if (!file) return true;
+
+            // Captured now, not read again once the async write resolves -- the user may have
+            // moved the cursor or kept typing while the paste is still in flight.
+            const { from, to } = editorView.state.selection.main;
+            const extension = extensionForMimeType(item.type);
+
+            file
+              .arrayBuffer()
+              .then((buffer) => window.quireDesktop.pasteImage(projectId, new Uint8Array(buffer), extension))
+              .then((relativePath) => {
+                editorView.dispatch({ changes: { from, to, insert: `\\includegraphics[width=0.8\\linewidth]{${relativePath}}` } });
+              })
+              .catch(() => {
+                // Best-effort, matching 4.3's own "swallow and proceed" precedent for a failed
+                // write -- nothing inserted rather than a broken image reference.
+              });
+
+            return true;
           },
         }),
       ],
