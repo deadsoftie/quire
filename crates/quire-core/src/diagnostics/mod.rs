@@ -43,6 +43,12 @@ pub fn translate_log(log: &str, root_uri: &str, project_dir: &Path) -> Vec<Diagn
         .collect()
 }
 
+/// The bare names (no extension) of every missing `.sty`/`.cls` this log reports -- used to
+/// decide `CompileStatus::PackagesMissing` and populate `CompileResponse.missing_packages`.
+pub fn missing_packages(log: &str) -> Vec<String> {
+    rules::missing_package_or_class_names(log)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

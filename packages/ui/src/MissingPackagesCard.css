@@ -1,0 +1,56 @@
+.missing-packages-card {
+  position: absolute;
+  top: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  max-width: min(90%, 480px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: var(--seam) solid var(--nonrepro);
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.missing-packages-card[data-state="offline"] {
+  border-color: var(--proof-amber);
+}
+
+.missing-packages-card__summary {
+  margin: 0;
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+}
+
+.missing-packages-card__name {
+  color: var(--nonrepro);
+  font-family: var(--font-mono);
+}
+
+.missing-packages-card__note {
+  margin: 0;
+  color: var(--proof-amber);
+  font-size: var(--t-xs);
+}
+
+.missing-packages-card__install {
+  align-self: flex-start;
+  padding: var(--s-1) var(--s-3);
+  border: none;
+  border-radius: var(--radius);
+  background: var(--nonrepro);
+  color: var(--ink-900);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.missing-packages-card__install:disabled {
+  cursor: default;
+  opacity: 0.7;
+}

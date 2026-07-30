@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::PathBuf;
 
 use tectonic::io::{InputHandle, IoProvider, OpenResult};
@@ -110,13 +111,20 @@ pub fn missing_from_cache(candidates: &[String]) -> Vec<String> {
 }
 
 /// Actually fetches `name` through the normal bundle -> cache -> network chain, caching it
-/// permanently on success. `Ok` also covers "turned out to already be available" -- callers that
-/// only care about genuinely new fetches should check `missing_from_cache` first.
-pub fn fetch(name: &str) -> Result<(), CompileError> {
+/// permanently on success, and returns its size in bytes -- the real number the missing-package
+/// card (task 4.4) reports *after* installing, since nothing in Tectonic's `Bundle`/`FileInfo`
+/// API exposes a file's size before it's actually been read. `Ok` also covers "turned out to
+/// already be available" -- callers that only care about genuinely new fetches should check
+/// `missing_from_cache` first.
+pub fn fetch(name: &str) -> Result<u64, CompileError> {
     let mut status = NoopStatusBackend::default();
     let mut bundle = resolve_bundle()?;
     match bundle.input_open_name(name, &mut status) {
-        OpenResult::Ok(_) => Ok(()),
+        OpenResult::Ok(mut handle) => {
+            let mut buf = Vec::new();
+            handle.read_to_end(&mut buf)?;
+            Ok(buf.len() as u64)
+        }
         OpenResult::NotAvailable => Err(CompileError { message: format!("{name} was not found in any bundle"), log: None }),
         OpenResult::Err(e) => Err(CompileError { message: e.to_string(), log: None }),
     }

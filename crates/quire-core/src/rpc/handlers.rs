@@ -137,6 +137,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             bundle_version,
         },
         Err(e) => {
+            let missing_packages = e.log.as_deref().map(crate::diagnostics::missing_packages).unwrap_or_default();
             let translated = e
                 .log
                 .as_deref()
@@ -157,15 +158,19 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             } else {
                 translated
             };
+            // A missing package takes priority over generic errors -- it's the one failure mode
+            // with a real fix path (task 4.4's install-and-recompile flow), even if the same log
+            // also has unrelated errors after the point compilation gave up.
+            let status = if missing_packages.is_empty() { CompileStatus::Errors } else { CompileStatus::PackagesMissing };
             CompileResponse {
                 compile_id,
-                status: CompileStatus::Errors,
+                status,
                 pdf_path: None,
                 changed_pages: Vec::new(),
                 page_count: 0,
                 duration_ms: start.elapsed().as_millis() as u32,
                 diagnostics,
-                missing_packages: Vec::new(),
+                missing_packages,
                 bundle_version,
             }
         }
@@ -401,10 +406,10 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
         return PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() };
     }
 
-    let outcomes: Vec<(String, bool)> = std::thread::scope(|scope| {
+    let outcomes: Vec<(String, Result<u64, CompileError>)> = std::thread::scope(|scope| {
         missing_files
             .iter()
-            .map(|file| scope.spawn(move || (file.clone(), crate::bundle::fetch(file).is_ok())))
+            .map(|file| scope.spawn(move || (file.clone(), crate::bundle::fetch(file))))
             .collect::<Vec<_>>()
             .into_iter()
             .map(|handle| handle.join().expect("prefetch worker thread panicked"))
@@ -413,15 +418,14 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
 
     let mut fetched = Vec::new();
     let mut failed = Vec::new();
-    for (file, ok) in outcomes {
+    for (file, result) in outcomes {
         let name = name_for_file.get(&file).cloned().unwrap_or(file);
-        if ok {
-            fetched.push(name);
-        } else {
-            failed.push(name);
+        match result {
+            Ok(bytes) => fetched.push(FetchedPackage { name, bytes }),
+            Err(_) => failed.push(name),
         }
     }
-    fetched.sort();
+    fetched.sort_by(|a, b| a.name.cmp(&b.name));
     failed.sort();
     PrefetchPackagesResponse { fetched, failed }
 }

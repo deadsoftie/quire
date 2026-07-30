@@ -269,11 +269,31 @@ fn undefined_command_rule(log: &str) -> Vec<Hit> {
         .collect()
 }
 
+/// `\s+` everywhere a literal space would otherwise be -- Tectonic's log hard-wraps at a fixed
+/// column, and a long package/class name routinely pushes " not found" onto its own line,
+/// splitting a plain-space version of this pattern.
+const MISSING_FILE_PATTERN: &str = r"LaTeX Error:\s+File\s+`([^']+)'\s+not\s+found";
+
+/// The bare names (no extension) of every missing `.sty`/`.cls` mentioned in `log` -- used by
+/// `handlers::compile` to decide `CompileStatus::PackagesMissing` and populate
+/// `CompileResponse.missing_packages`. `Hit` (below) has no structured field for this, only the
+/// rendered message text, so this reads the log directly rather than post-processing `Hit`s.
+pub fn missing_package_or_class_names(log: &str) -> Vec<String> {
+    let trigger = Regex::new(MISSING_FILE_PATTERN).unwrap();
+    trigger
+        .captures_iter(log)
+        .filter_map(|caps| {
+            let name = &caps[1];
+            name.strip_suffix(".sty").or_else(|| name.strip_suffix(".cls")).map(str::to_string)
+        })
+        .collect()
+}
+
 /// `File 'X' not found` covers three different situations (missing package, missing class,
 /// missing project file) that share one message shape but need different codes/hints depending on
 /// what kind of file it was.
 fn missing_file_rule(log: &str) -> Vec<Hit> {
-    let trigger = Regex::new(r"LaTeX Error: File `([^']+)' not found").unwrap();
+    let trigger = Regex::new(MISSING_FILE_PATTERN).unwrap();
     trigger
         .captures_iter(log)
         .map(|caps| {
@@ -392,5 +412,11 @@ mod tests {
     fn overfull_hbox_over_5pt_is_reported() {
         let log = "Overfull \\hbox (12.3pt too wide) detected at line 3\n";
         assert_eq!(codes(log), vec!["overfull-hbox"]);
+    }
+
+    #[test]
+    fn missing_package_or_class_names_strips_extensions_and_ignores_plain_files() {
+        let log = "LaTeX Error: File `tikz.sty' not found\nLaTeX Error: File `beamer.cls' not found\nLaTeX Error: File `figure.png' not found\n";
+        assert_eq!(missing_package_or_class_names(log), vec!["tikz", "beamer"]);
     }
 }

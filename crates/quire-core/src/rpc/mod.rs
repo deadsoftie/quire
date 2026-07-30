@@ -132,9 +132,8 @@ pub enum CompileStatus {
     Errors,
     /// Never produced: the caller kills the process before a response is built.
     Cancelled,
-    /// Never produced yet -- no package/engine availability detection exists.
+    /// Never produced yet -- no system-TeX-fallback/engine availability detection exists.
     EngineMissing,
-    /// Never produced yet, same reason.
     PackagesMissing,
 }
 
@@ -149,9 +148,9 @@ pub struct CompileResponse {
     pub changed_pages: Vec<u32>,
     pub page_count: u32,
     pub duration_ms: u32,
-    /// Always empty today -- log translation isn't implemented yet.
     pub diagnostics: Vec<Diagnostic>,
-    /// Populated only when `status` is `"packages-missing"`, so always empty today.
+    /// Bare package/class names (no extension), populated only when `status` is
+    /// `"packages-missing"`.
     pub missing_packages: Vec<String>,
     /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
     pub bundle_version: String,
@@ -312,12 +311,22 @@ pub struct PrefetchPackagesRequest {
     pub project_id: ProjectId,
 }
 
-/// Package/class names, not filenames -- what the missing-package UI (task 4.4) shows.
+/// `name` is the package/class name, not a filename -- what the missing-package UI (task 4.4)
+/// shows. `bytes` is the real downloaded size, known only after the fact -- nothing in
+/// Tectonic's own bundle API exposes a file's size ahead of fetching it.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct FetchedPackage {
+    pub name: String,
+    pub bytes: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
 pub struct PrefetchPackagesResponse {
-    pub fetched: Vec<String>,
+    pub fetched: Vec<FetchedPackage>,
     pub failed: Vec<String>,
 }
 

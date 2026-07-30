@@ -16,13 +16,10 @@ export type CompileResponse = { compileId: string, status: CompileStatus,
 /**
  * In the shadow dir; `null` if the compile produced no PDF.
  */
-pdfPath: string | null, changedPages: Array<number>, pageCount: number, durationMs: number, 
+pdfPath: string | null, changedPages: Array<number>, pageCount: number, durationMs: number, diagnostics: Array<Diagnostic>, 
 /**
- * Always empty today -- log translation isn't implemented yet.
- */
-diagnostics: Array<Diagnostic>, 
-/**
- * Populated only when `status` is `"packages-missing"`, so always empty today.
+ * Bare package/class names (no extension), populated only when `status` is
+ * `"packages-missing"`.
  */
 missingPackages: Array<string>, 
 /**
@@ -74,6 +71,13 @@ export type DiagnosticRange = { start: Position, end: Position, };
 export type DirtyBuffer = { uri: string, text: string, };
 
 /**
+ * `name` is the package/class name, not a filename -- what the missing-package UI (task 4.4)
+ * shows. `bytes` is the real downloaded size, known only after the fact -- nothing in
+ * Tectonic's own bundle API exposes a file's size ahead of fetching it.
+ */
+export type FetchedPackage = { name: string, bytes: bigint, };
+
+/**
  * Flat list from [`crate::project::FileGraph`] (the LaTeX dependency graph), not a directory walk.
  */
 export type FileNode = { uri: string, name: string, kind: FileNodeKind, };
@@ -109,10 +113,7 @@ column: number, };
 
 export type PrefetchPackagesRequest = { projectId: string, };
 
-/**
- * Package/class names, not filenames -- what the missing-package UI (task 4.4) shows.
- */
-export type PrefetchPackagesResponse = { fetched: Array<string>, failed: Array<string>, };
+export type PrefetchPackagesResponse = { fetched: Array<FetchedPackage>, failed: Array<string>, };
 
 export type ReadFileRequest = { uri: string, };
 

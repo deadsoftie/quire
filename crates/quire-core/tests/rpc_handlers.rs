@@ -69,14 +69,41 @@ fn prefetch_fetches_a_package_missing_from_bundle_and_cache() {
     // depending on whether an earlier test run already cached it on this machine -- caching is
     // permanent by design (4.2), so this test has to be robust to running on an already-warm
     // cache rather than assuming a fresh one. It must not, however, have genuinely failed.
-    assert!(!resp.fetched.contains(&"article".to_string()), "{:?}", resp.fetched);
+    assert!(!resp.fetched.iter().any(|f| f.name == "article"), "{:?}", resp.fetched);
     assert!(!resp.failed.contains(&"article".to_string()), "{:?}", resp.failed);
     assert!(!resp.failed.contains(&"media9".to_string()), "media9 fetch failed: {:?}", resp.failed);
+    if let Some(media9) = resp.fetched.iter().find(|f| f.name == "media9") {
+        assert!(media9.bytes > 0, "media9 was fetched but reported 0 bytes");
+    }
 
     // Second call: whatever the first call needed (if anything) is cached now, so this must
     // report nothing missing at all -- the actual point of prefetch persisting to cache.
     let resp2 = prefetch_packages(&PrefetchPackagesRequest { project_id: project_id.clone() });
     assert!(resp2.fetched.is_empty() && resp2.failed.is_empty(), "fetched={:?} failed={:?}", resp2.fetched, resp2.failed);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn compile_reports_packages_missing_with_the_real_package_name() {
+    let project_dir = fresh_project_copy("missing_package", "missing-package");
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+    })
+    .expect("compile should not error at the RPC level even though the document itself fails");
+
+    assert_eq!(resp.status, CompileStatus::PackagesMissing);
+    assert_eq!(resp.missing_packages, vec!["this-package-definitely-does-not-exist-anywhere"]);
+    assert!(resp.pdf_path.is_none());
+
+    // Never a raw, untranslated "File `...' not found" -- the missing-package diagnostic must
+    // still be the plain-English one from 3.10, not a fallback raw dump.
+    let diagnostic = &resp.diagnostics[0];
+    assert_eq!(diagnostic.code.as_deref(), Some("missing-package"));
+    assert!(diagnostic.message.contains("this-package-definitely-does-not-exist-anywhere"));
 
     fs::remove_dir_all(&project_dir).ok();
 }

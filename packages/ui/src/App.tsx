@@ -10,6 +10,8 @@ import { FileTreePanel } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
 import type { PanelKind } from "./panels/types";
+import { MissingPackagesCard } from "./MissingPackagesCard";
+import type { PackageInstallState } from "./MissingPackagesCard";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
@@ -112,6 +114,9 @@ function AppShell() {
   const [changedPages, setChangedPages] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [seamState, setSeamState] = useState<SeamState>("idle");
+  const [missingPackages, setMissingPackages] = useState<string[] | null>(null);
+  const [packageInstallState, setPackageInstallState] = useState<PackageInstallState>("idle");
+  const [failedPackageNames, setFailedPackageNames] = useState<string[]>([]);
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
@@ -173,10 +178,19 @@ function AppShell() {
         setPdfData(bytes);
         setChangedPages(result.changedPages);
         setError(null);
+        setMissingPackages(null);
         setCompileVersion((v) => v + 1);
+      } else if (result.status === "packages-missing") {
+        // Not a raw error -- keep whatever PDF is already showing (9.6: "nothing has gone
+        // wrong"), and let the card (not the error box) own this state.
+        setError(null);
+        setMissingPackages(result.missingPackages);
+        setPackageInstallState("idle");
+        setFailedPackageNames([]);
       } else {
         const diagnostic = result.diagnostics[0];
         setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
+        setMissingPackages(null);
       }
     } catch (err) {
       const message = String((err as Error)?.message ?? err);
@@ -199,6 +213,44 @@ function AppShell() {
     },
     [runCompile],
   );
+
+  // Reuses 4.3's prefetchPackages wholesale rather than a separate "install these specific
+  // packages" RPC -- it re-scans the same project for the same \usepackage/\documentclass/
+  // \RequirePackage commands, so it naturally targets the same missing set.
+  const installMissingPackages = useCallback(async () => {
+    const proj = projectRef.current;
+    if (!proj) return;
+    if (!navigator.onLine) {
+      setPackageInstallState("offline");
+      return;
+    }
+    setPackageInstallState("installing");
+    setSeamState("compiling");
+    try {
+      const result = await window.quire.prefetchPackages(proj.projectId);
+      if (result.failed.length === 0) {
+        setMissingPackages(null);
+        setPackageInstallState("idle");
+        runCompile("edit");
+      } else {
+        setFailedPackageNames(result.failed);
+        setPackageInstallState("offline");
+        setSeamState("idle");
+      }
+    } catch {
+      setPackageInstallState("offline");
+      setSeamState("idle");
+    }
+  }, [runCompile]);
+
+  // Real reconnect signal (Chromium's own network-state detection), not a poll -- 9.6's "queued
+  // retry on reconnect".
+  useEffect(() => {
+    if (packageInstallState !== "offline") return;
+    const retry = () => installMissingPackages();
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [packageInstallState, installMissingPackages]);
 
   const scheduleCompile = useCallback(
     (text: string) => {
@@ -435,7 +487,9 @@ function AppShell() {
         if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
         setSeamState("compiling");
       } else if (event.kind === "compile-finished") {
-        if (event.result.status === "ok") {
+        // packages-missing reads as "idle," not "error" -- 9.6: nothing has gone wrong, the card
+        // owns that messaging, not a red seam flash.
+        if (event.result.status === "ok" || event.result.status === "packages-missing") {
           if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
           setSeamState("idle");
         } else {
@@ -712,11 +766,21 @@ function AppShell() {
               onChange={setSplitFraction}
               onReset={() => setSplitFraction(0.5)}
             />
-            <div className="app__pane">
+            <div className="app__pane app__pane--preview">
               {error ? (
                 <pre className="app__error">{error}</pre>
               ) : (
-                <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
+                <>
+                  <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
+                  {missingPackages && missingPackages.length > 0 && (
+                    <MissingPackagesCard
+                      packages={missingPackages}
+                      installState={packageInstallState}
+                      failedNames={failedPackageNames}
+                      onInstall={installMissingPackages}
+                    />
+                  )}
+                </>
               )}
             </div>
           </div>
