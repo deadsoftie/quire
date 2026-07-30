@@ -2,12 +2,37 @@
 
 A curated, offline LaTeX package bundle: a flat directory of every `.sty`/`.cls`/`.def`/
 `.fd`/font/`.bst` file needed to compile the document classes and packages listed in
-`manifest.json`, plus a `SHA256SUM` digest file. `crate::bundle::resolve_bundle()`
-(`crates/quire-core/src/bundle.rs`) prefers this bundle when it's present, so a compile
-never touches the network — falling back to Tectonic's own network-fetching default
-bundle only when `bundles/core/` hasn't been built yet.
+`manifest.json`, plus a `SHA256SUM` digest file.
 
 `bundles/core/` itself is generated, not hand-written — don't edit files in it directly.
+
+## Resolution: bundle → cache → network
+
+`crate::bundle::resolve_bundle()` (`crates/quire-core/src/bundle.rs`) is one real
+fallback chain, not three separate paths every caller has to know to try in order:
+
+1. **Bundle** — `bundles/core/`, when it's been built. Always available, zero network,
+   ever.
+2. **Cache** — anything ever fetched before, on local disk permanently (Tectonic's own
+   `BundleCache`, keyed by content digest).
+3. **Network** — Tectonic's own network-fetching default bundle, for whatever isn't in
+   either of the above.
+
+Tiers 2 and 3 are actually one object (`config.default_bundle(false)`) — Tectonic's own
+network bundle already checks its local disk cache before ever touching the network, and
+only fetches on a genuine cache miss. `resolve_bundle()`'s own job is just chaining tier 1
+in front of it (`TieredBundle` in `bundle.rs`), for the specific files core doesn't carry
+(`tikz`, anything a project pulls in beyond the curated set).
+
+That fallback bundle is constructed **lazily** — only the first time core actually misses
+a name, never up front. A document core fully covers must never require network access,
+or even a pre-existing cache, to compile — constructing tier 2/3 eagerly would mean every
+compile depends on *something* (network or a prior cache) existing, even when core alone
+would have been enough. `crates/quire-core/tests/network_disabled.rs` proves this by
+literally cutting network access (pointing `HTTPS_PROXY` at a closed local port — verified
+empirically to make a real fetch fail fast rather than silently succeed) and confirming a
+core-covered file still resolves, and a cached-but-not-in-core file (`tikz.sty`) resolves
+too once warm.
 
 ## Two-stage pipeline
 
