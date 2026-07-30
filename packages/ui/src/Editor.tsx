@@ -10,6 +10,7 @@ import {
   typewriterCompartment,
   typewriterScrollingExtension,
 } from "./editorModes";
+import { environmentSync } from "./environmentSync";
 import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
 import { renderSymbolPreview } from "./symbolPreview";
@@ -196,6 +197,7 @@ export function Editor({
         basicSetup,
         baseEditorTheme,
         latex(),
+        environmentSync(),
         autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] }),
         proseCompartment.of(proseMode ? proseModeExtension() : []),
         typewriterCompartment.of(typewriterMode ? typewriterScrollingExtension() : []),
