@@ -14,9 +14,33 @@ import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
 import { Sidebar } from "./Sidebar";
 import { normalizeSession, type SessionState } from "./session";
+import type { CursorPosition, CursorPositionStore } from "./StatusBar";
+import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
 import { TopBar } from "./TopBar";
 import "./App.css";
+
+// A tiny external store, not ordinary lifted state -- cursor position changes on every keystroke
+// (docChanged moves the cursor too), and StatusBar is the only thing that displays it. Routing it
+// through AppShell's own state would re-render the whole tree (file tree, tab bar, everything) on
+// every character typed; useSyncExternalStore lets only StatusBar itself re-render instead.
+function createCursorPositionStore(): CursorPositionStore & { set: (position: CursorPosition) => void } {
+  let value: CursorPosition | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    set(next) {
+      value = next;
+      listeners.forEach((listener) => listener());
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot() {
+      return value;
+    },
+  };
+}
 
 const SAVE_SESSION_DEBOUNCE_MS = 500;
 
@@ -111,6 +135,7 @@ function AppShell() {
     localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
   );
   const [pdfInverted, setPdfInverted] = useState(false);
+  const [cursorStore] = useState(() => createCursorPositionStore());
 
   const projectRef = useRef<Project | null>(null);
   // Authoritative, updated synchronously outside React state so every keystroke doesn't force a
@@ -143,17 +168,18 @@ function AppShell() {
   // session shape is 3.5.6). Doesn't call setTabs -- nothing visibly depends on these fields
   // except the tab's own Editor mount, which only reads them once, at mount time.
   const handleCursorActivity = useCallback(
-    (cursor: number, scrollTop: number) => {
+    (cursor: number, scrollTop: number, line: number, column: number) => {
       const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
       if (idx !== -1) {
         const next = tabsRef.current.slice();
         next[idx] = { ...next[idx], cursor, scrollTop };
         tabsRef.current = next;
       }
+      cursorStore.set({ line, column });
       sessionRef.current = { ...sessionRef.current, cursor, scrollTop };
       scheduleSaveSession();
     },
-    [activeUri, scheduleSaveSession],
+    [activeUri, cursorStore, scheduleSaveSession],
   );
 
   // Single-flight: a superseded compile is killed and its promise now rejects with
@@ -531,7 +557,7 @@ function AppShell() {
   return (
     <div className="app">
       <CommandPalette />
-      <TopBar projectLabel={project?.label ?? "Untitled"} engineAvailable={project?.engineAvailable ?? null} />
+      <TopBar projectLabel={project?.label ?? "Untitled"} />
       <div className="app__body">
         <ActivityBar active={sidebarSection} onSelect={toggleSidebarSection} problemCount={diagnostics.length} />
         {sidebarSection && (
@@ -590,6 +616,11 @@ function AppShell() {
           </div>
         </div>
       </div>
+      <StatusBar
+        problemCount={diagnostics.length}
+        cursorPosition={cursorStore}
+        engineAvailable={project?.engineAvailable ?? null}
+      />
     </div>
   );
 }

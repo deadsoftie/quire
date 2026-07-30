@@ -133,8 +133,11 @@ interface EditorProps {
   /** Same as `restoreCursor` but for scroll position; applied a frame after mount so the content it scrolls has actually been laid out. */
   restoreScrollTop?: number | null;
   onChange: (text: string) => void;
-  /** Fires on cursor movement and on scroll, for session restore to persist -- not on every keystroke by itself (docChanged alone doesn't move the cursor). */
-  onCursorActivity?: (cursor: number, scrollTop: number) => void;
+  /** Fires on cursor movement and on scroll, for session restore (cursor/scrollTop) and the status
+   * bar (line/column, 1-based -- StatusBar's own display convention, distinct from the 0-based
+   * UTF-16 columns Position uses on the wire) to persist -- not on every keystroke by itself
+   * (docChanged alone doesn't move the cursor). */
+  onCursorActivity?: (cursor: number, scrollTop: number, line: number, column: number) => void;
 }
 
 export function Editor({
@@ -177,12 +180,16 @@ export function Editor({
             onChangeRef.current(update.state.doc.toString());
           }
           if (update.docChanged || update.selectionSet) {
-            onCursorActivityRef.current?.(update.state.selection.main.head, update.view.scrollDOM.scrollTop);
+            const head = update.state.selection.main.head;
+            const line = update.state.doc.lineAt(head);
+            onCursorActivityRef.current?.(head, update.view.scrollDOM.scrollTop, line.number, head - line.from + 1);
           }
         }),
         EditorView.domEventHandlers({
           scroll: (_event, editorView) => {
-            onCursorActivityRef.current?.(editorView.state.selection.main.head, editorView.scrollDOM.scrollTop);
+            const head = editorView.state.selection.main.head;
+            const line = editorView.state.doc.lineAt(head);
+            onCursorActivityRef.current?.(head, editorView.scrollDOM.scrollTop, line.number, head - line.from + 1);
           },
         }),
       ],
