@@ -25,7 +25,17 @@ contextBridge.exposeInMainWorld("quire", {
 contextBridge.exposeInMainWorld("quireDesktop", {
   createScratchProject: invoke("desktop:createScratchProject"),
   chooseProjectFolder: invoke("desktop:chooseProjectFolder"),
+  createFile: invoke("desktop:createFile"),
+  chooseFile: invoke("desktop:chooseFile"),
+  confirmDiscard: invoke("desktop:confirmDiscard"),
+  reportViewState: invoke("desktop:reportViewState"),
   readPdfFile: invoke("desktop:readPdfFile"),
   loadSession: invoke("desktop:loadSession"),
   saveSession: invoke("desktop:saveSession"),
+  // Returns an unsubscribe function.
+  onMenuCommand: (handler) => {
+    const listener = (_event, id) => handler(id);
+    ipcRenderer.on("menu:command", listener);
+    return () => ipcRenderer.removeListener("menu:command", listener);
+  },
 });

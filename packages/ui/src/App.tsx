@@ -4,6 +4,7 @@ import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
 import { Editor, INITIAL_SOURCE } from "./Editor";
+import { useMenuBridge } from "./menuBridge";
 import { buildFileTree } from "./panels/fileTree";
 import { FileTreePanel } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
@@ -102,6 +103,8 @@ export function App() {
 
 // Split from App() so useCommand() below has a CommandProvider ancestor.
 function AppShell() {
+  useMenuBridge();
+
   const [project, setProject] = useState<Project | null>(null);
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeUri, setActiveUri] = useState<string | null>(null);
@@ -264,6 +267,28 @@ function AppShell() {
     [saveTab, closeTab],
   );
 
+  // Shared by the initial-launch fallback below and the "Close Folder" command -- both need the
+  // exact same fresh, empty scratch project, not two copies of this logic.
+  const createFreshScratchProject = useCallback(async (): Promise<{ project: Project; tab: OpenTab }> => {
+    const scratch = await window.quireDesktop.createScratchProject();
+    const project: Project = {
+      projectId: scratch.projectId,
+      label: "Untitled",
+      engineAvailable: null,
+      files: [],
+    };
+    const tab: OpenTab = { uri: scratch.root, text: INITIAL_SOURCE, savedText: INITIAL_SOURCE, cursor: 0, scrollTop: null };
+    return { project, tab };
+  }, []);
+
+  const applyProject = useCallback((project: Project, tabs: OpenTab[], activeUri: string) => {
+    projectRef.current = project;
+    setProject(project);
+    tabsRef.current = tabs;
+    setTabs(tabs);
+    setActiveUri(activeUri);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const loaded = await window.quireDesktop.loadSession();
@@ -325,19 +350,8 @@ function AppShell() {
         }
       }
 
-      const scratch = await window.quireDesktop.createScratchProject();
-      const next: Project = {
-        projectId: scratch.projectId,
-        label: "Untitled",
-        engineAvailable: null,
-        files: [],
-      };
-      projectRef.current = next;
-      setProject(next);
-      const tab: OpenTab = { uri: scratch.root, text: INITIAL_SOURCE, savedText: INITIAL_SOURCE, cursor: 0, scrollTop: null };
-      tabsRef.current = [tab];
-      setTabs(tabsRef.current);
-      setActiveUri(scratch.root);
+      const { project: freshProject, tab } = await createFreshScratchProject();
+      applyProject(freshProject, [tab], tab.uri);
       runCompile("open");
       initializedRef.current = true;
     })();
@@ -382,6 +396,24 @@ function AppShell() {
     scheduleSaveSession,
   ]);
 
+  // Electron menu items don't reactively bind to renderer state -- this keeps the native View
+  // menu's checkboxes (apps/desktop/src/main.js) in sync whenever any of them changes, regardless
+  // of whether the change came from the menu itself, the command palette, or a keybinding.
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    window.quireDesktop.reportViewState({
+      "file-tree": sidebarSection === "file-tree",
+      outline: sidebarSection === "outline",
+      problems: sidebarSection === "problems",
+      packages: sidebarSection === "packages",
+      focusMode,
+      typewriterMode,
+      proseMode,
+      lightTheme: theme === "light",
+      pdfInverted,
+    });
+  }, [sidebarSection, focusMode, typewriterMode, proseMode, theme, pdfInverted]);
+
   useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
       if (event.kind === "compile-started") {
@@ -405,9 +437,10 @@ function AppShell() {
 
   useCommand({
     id: "project.open",
-    title: "Open Project…",
+    title: "Open Folder…",
     shortcut: "⌘O",
-    keybinding: { key: "o", meta: true },
+    // No keybinding: the File menu's native "Open Folder…" accelerator (⌘O) dispatches through
+    // menuBridge instead -- registering both here would double-fire on the same keypress.
     run: async () => {
       const path = await window.quireDesktop.chooseProjectFolder();
       if (!path) return;
@@ -420,12 +453,8 @@ function AppShell() {
           engineAvailable: opened.engineAvailable,
           files: opened.files,
         };
-        projectRef.current = next;
-        setProject(next);
         const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
-        tabsRef.current = [tab];
-        setTabs(tabsRef.current);
-        setActiveUri(opened.root);
+        applyProject(next, [tab], opened.root);
         runCompile("open");
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
@@ -434,12 +463,94 @@ function AppShell() {
   });
 
   useCommand({
+    id: "file.new",
+    title: "New File",
+    shortcut: "⌘N",
+    run: async () => {
+      if (!project) return;
+      const path = await window.quireDesktop.createFile(project.projectId);
+      if (!path) return;
+      await openTab(path);
+    },
+  });
+
+  useCommand({
+    id: "file.open",
+    title: "Open File…",
+    shortcut: "⇧⌘O",
+    run: async () => {
+      if (!project) return;
+      const path = await window.quireDesktop.chooseFile(project.projectId);
+      if (!path) return;
+      await openTab(path);
+    },
+  });
+
+  useCommand({
+    id: "file.close",
+    title: "Close File",
+    shortcut: "⌘W",
+    run: async () => {
+      if (!activeUri) return;
+      const tab = tabsRef.current.find((t) => t.uri === activeUri);
+      if (!tab) return;
+      if (tab.text === tab.savedText) {
+        closeTab(activeUri);
+        return;
+      }
+      const choice = await window.quireDesktop.confirmDiscard(`Save changes to ${basename(activeUri)}?`);
+      if (choice === "save") await saveAndCloseTab(activeUri);
+      else if (choice === "discard") closeTab(activeUri);
+    },
+  });
+
+  useCommand({
+    id: "file.close-folder",
+    title: "Close Folder",
+    run: async () => {
+      const dirty = tabsRef.current.filter((t) => t.text !== t.savedText);
+      if (dirty.length > 0) {
+        const choice = await window.quireDesktop.confirmDiscard(
+          dirty.length === 1 ? `Save changes to ${basename(dirty[0].uri)}?` : `Save changes to ${dirty.length} files?`,
+        );
+        if (choice === "cancel") return;
+        if (choice === "save") {
+          for (const t of dirty) await saveTab(t.uri);
+        }
+      }
+      const { project: freshProject, tab } = await createFreshScratchProject();
+      applyProject(freshProject, [tab], tab.uri);
+      runCompile("open");
+    },
+  });
+
+  useCommand({
     id: "file.save",
     title: "Save",
     shortcut: "⌘S",
-    keybinding: { key: "s", meta: true },
+    // No keybinding -- see project.open's comment above; the File menu's ⌘S accelerator covers it.
     run: () => {
       if (activeUri) saveTab(activeUri);
+    },
+  });
+
+  useCommand({
+    id: "file.save-as",
+    title: "Save As…",
+    shortcut: "⇧⌘S",
+    run: async () => {
+      if (!project || !activeUri) return;
+      const path = await window.quireDesktop.createFile(project.projectId);
+      if (!path) return;
+      const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
+      if (idx === -1) return;
+      const tab = tabsRef.current[idx];
+      await window.quire.writeFile(path, tab.text);
+      const next = tabsRef.current.slice();
+      next[idx] = { ...tab, uri: path, savedText: tab.text };
+      tabsRef.current = next;
+      setTabs(next);
+      setActiveUri(path);
     },
   });
 
@@ -480,25 +591,24 @@ function AppShell() {
     setSidebarSection((current) => (current === kind ? null : kind));
   }, []);
 
+  // No keybinding on these three: the View menu's native ⌘1/⌘2/⌘3 accelerators dispatch through
+  // menuBridge instead (see project.open's comment for why -- registering both risks a double-fire).
   useCommand({
     id: "panel.file-tree",
     title: "Show Explorer",
     shortcut: "⌘1",
-    keybinding: { key: "1", meta: true },
     run: () => toggleSidebarSection("file-tree"),
   });
   useCommand({
     id: "panel.outline",
     title: "Show Outline",
     shortcut: "⌘2",
-    keybinding: { key: "2", meta: true },
     run: () => toggleSidebarSection("outline"),
   });
   useCommand({
     id: "panel.problems",
     title: "Show Problems",
     shortcut: "⌘3",
-    keybinding: { key: "3", meta: true },
     run: () => toggleSidebarSection("problems"),
   });
   useCommand({

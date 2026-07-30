@@ -2,8 +2,10 @@ import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { autocompletion, snippet } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { redo as cmRedo, undo as cmUndo } from "@codemirror/commands";
 import { linter, lintGutter, setDiagnostics as setLintDiagnostics } from "@codemirror/lint";
 import type { Diagnostic } from "@quire/client";
+import { useCommand } from "./commands/CommandContext";
 import { toEditorDiagnostics } from "./diagnostics";
 import {
   focusCompartment,
@@ -196,6 +198,27 @@ export function Editor({
   onChangeRef.current = onChange;
   const onCursorActivityRef = useRef(onCursorActivity);
   onCursorActivityRef.current = onCursorActivity;
+
+  // No keybinding: basicSetup's own historyKeymap already handles ⌘Z/⇧⌘Z as a CM6-internal keymap
+  // bound directly to the editor's contenteditable node. These commands exist purely so the
+  // native Edit menu (which can't use role: "undo"/"redo" -- see apps/desktop/src/main.js) and the
+  // command palette have something to dispatch into.
+  useCommand({
+    id: "editor.undo",
+    title: "Undo",
+    shortcut: "⌘Z",
+    run: () => {
+      if (viewRef.current) cmUndo(viewRef.current);
+    },
+  });
+  useCommand({
+    id: "editor.redo",
+    title: "Redo",
+    shortcut: "⇧⌘Z",
+    run: () => {
+      if (viewRef.current) cmRedo(viewRef.current);
+    },
+  });
 
   useEffect(() => {
     if (!hostRef.current) return;
