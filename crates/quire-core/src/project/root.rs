@@ -169,7 +169,7 @@ fn files_with_real_documentclass(tex_files: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
-fn documentclass_name(content: &str) -> Option<String> {
+pub(crate) fn documentclass_name(content: &str) -> Option<String> {
     let idx = content.find("\\documentclass")?;
     let rest = &content[idx + "\\documentclass".len()..];
     let rest = match rest.trim_start().strip_prefix('[') {

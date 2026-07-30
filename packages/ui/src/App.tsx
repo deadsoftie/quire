@@ -185,6 +185,21 @@ function AppShell() {
     }
   }, []);
 
+  // Best-effort: a prefetch failure (offline, RPC error) just means the first compile falls
+  // back to fetching on demand, mid-flight, the same as before this existed -- never a reason
+  // to block opening the project.
+  const prefetchThenCompile = useCallback(
+    async (projectId: string) => {
+      try {
+        await window.quire.prefetchPackages(projectId);
+      } catch {
+        // See above.
+      }
+      runCompile("open");
+    },
+    [runCompile],
+  );
+
   const scheduleCompile = useCallback(
     (text: string) => {
       if (!activeUri) return;
@@ -342,7 +357,7 @@ function AppShell() {
           setTabs(loadedTabs);
           const activeStillOpen = loadedTabs.some((t) => t.uri === session.activeUri);
           setActiveUri(activeStillOpen ? session.activeUri : loadedTabs[0].uri);
-          runCompile("open");
+          prefetchThenCompile(next.projectId);
           initializedRef.current = true;
           return;
         } catch {
@@ -455,7 +470,7 @@ function AppShell() {
         };
         const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
         applyProject(next, [tab], opened.root);
-        runCompile("open");
+        prefetchThenCompile(next.projectId);
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
       }

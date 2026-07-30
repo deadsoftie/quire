@@ -38,6 +38,7 @@ struct FileIndex {
     bib_resources: Vec<PathBuf>,
     macros: Vec<MacroDef>,
     packages: Vec<String>,
+    document_class: Option<String>,
 }
 
 pub struct ProjectIndex {
@@ -45,6 +46,7 @@ pub struct ProjectIndex {
     citations: Vec<CitationEntry>,
     macros: Vec<MacroDef>,
     packages: HashSet<String>,
+    document_classes: HashSet<String>,
     tex_paths: Vec<String>,
     graphic_paths: Vec<String>,
 }
@@ -59,6 +61,7 @@ impl ProjectIndex {
         // Keyed by name so a macro redefined (or duplicated across files) shows up once; last one scanned wins.
         let mut macros: HashMap<String, MacroDef> = HashMap::new();
         let mut packages: HashSet<String> = HashSet::new();
+        let mut document_classes: HashSet<String> = HashSet::new();
 
         for file in &graph.files {
             if file.kind != FileKind::Tex {
@@ -70,6 +73,7 @@ impl ProjectIndex {
             let index = index_file(&content, &file.path, base_dir);
             bib_paths.extend(index.bib_resources.iter().cloned());
             packages.extend(index.packages.iter().cloned());
+            document_classes.extend(index.document_class.iter().cloned());
             for m in index.macros.iter().cloned() {
                 macros.insert(m.name.clone(), m);
             }
@@ -89,7 +93,7 @@ impl ProjectIndex {
         // Filesystem walk, not FileGraph -- offers files not yet \input/\includegraphics'd, which FileGraph can't provide.
         let (tex_paths, graphic_paths) = find_path_candidates(base_dir);
 
-        ProjectIndex { files, citations, macros, packages, tex_paths, graphic_paths }
+        ProjectIndex { files, citations, macros, packages, document_classes, tex_paths, graphic_paths }
     }
 
     pub fn outline_for(&self, uri: &Path) -> Vec<OutlineNode> {
@@ -110,6 +114,10 @@ impl ProjectIndex {
 
     pub fn packages(&self) -> impl Iterator<Item = &str> {
         self.packages.iter().map(|s| s.as_str())
+    }
+
+    pub fn document_classes(&self) -> impl Iterator<Item = &str> {
+        self.document_classes.iter().map(|s| s.as_str())
     }
 
     pub fn tex_paths(&self) -> impl Iterator<Item = &str> {
@@ -136,8 +144,9 @@ fn index_file(content: &str, uri: &Path, base_dir: &Path) -> FileIndex {
     let bib_resources = find_bib_resources(&stripped, base_dir);
     let macros = find_macros(&stripped);
     let packages = find_packages(&stripped);
+    let document_class = crate::project::documentclass_name(&stripped);
 
-    FileIndex { outline, labels, bib_resources, macros, packages }
+    FileIndex { outline, labels, bib_resources, macros, packages, document_class }
 }
 
 struct RawEntry {
@@ -619,36 +628,43 @@ fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     Some((MacroDef { name, arity, body }, close + 1))
 }
 
+/// `\usepackage` and `\RequirePackage` share the same `[options]{name1,name2}` shape and mean
+/// the same thing for our purposes -- a package the project needs resolved.
 fn find_packages(stripped: &str) -> Vec<String> {
-    const CMD: &str = "\\usepackage";
-    let mut packages = Vec::new();
+    let mut packages = find_brace_list_command(stripped, "\\usepackage");
+    packages.extend(find_brace_list_command(stripped, "\\RequirePackage"));
+    packages
+}
+
+fn find_brace_list_command(stripped: &str, cmd: &str) -> Vec<String> {
+    let mut names = Vec::new();
     let bytes = stripped.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] != b'\\' || !stripped[i..].starts_with(CMD) {
+        if bytes[i] != b'\\' || !stripped[i..].starts_with(cmd) {
             i += 1;
             continue;
         }
 
-        let mut after = i + CMD.len();
+        let mut after = i + cmd.len();
         if bytes.get(after) == Some(&b'[') {
             if let Some(end) = stripped[after..].find(']') {
                 after += end + 1;
             }
         }
         if bytes.get(after) != Some(&b'{') {
-            i += CMD.len();
+            i += cmd.len();
             continue;
         }
         let Some(close) = matching_brace(stripped, after) else {
-            i += CMD.len();
+            i += cmd.len();
             continue;
         };
 
-        packages.extend(stripped[after + 1..close].split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string));
+        names.extend(stripped[after + 1..close].split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string));
         i = close + 1;
     }
-    packages
+    names
 }
 
 /// Walks the filesystem directly (the candidate set is "what files exist," not what's already
@@ -1133,6 +1149,15 @@ mod tests {
     fn find_packages_handles_options_and_comma_lists() {
         let packages = find_packages("\\usepackage[utf8]{inputenc}\n\\usepackage{tikz,amsmath}\n");
         assert_eq!(packages, vec!["inputenc", "tikz", "amsmath"]);
+    }
+
+    #[test]
+    fn find_packages_also_matches_requirepackage() {
+        // `\usepackage` matches are collected before `\RequirePackage` matches regardless of
+        // source order -- callers (`ProjectIndex::packages`) dedupe into a set anyway, so only
+        // this test cares about the exact ordering.
+        let packages = find_packages("\\RequirePackage{xkeyval}\n\\usepackage{amsmath}\n");
+        assert_eq!(packages, vec!["amsmath", "xkeyval"]);
     }
 
     #[test]

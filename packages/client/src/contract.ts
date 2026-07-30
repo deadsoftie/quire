@@ -107,11 +107,11 @@ line: number,
  */
 column: number, };
 
-/**
- * Not implemented yet.
- */
 export type PrefetchPackagesRequest = { projectId: string, };
 
+/**
+ * Package/class names, not filenames -- what the missing-package UI (task 4.4) shows.
+ */
 export type PrefetchPackagesResponse = { fetched: Array<string>, failed: Array<string>, };
 
 export type ReadFileRequest = { uri: string, };

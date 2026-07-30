@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use tectonic::io::{InputHandle, IoProvider, OpenResult};
-use tectonic::status::StatusBackend;
+use tectonic::status::{NoopStatusBackend, StatusBackend};
 use tectonic_bundles::{dir::DirBundle, Bundle};
 
 use crate::CompileError;
@@ -80,4 +80,44 @@ pub fn resolve_bundle() -> Result<Box<dyn Bundle>, CompileError> {
     }
 
     open_network_bundle()
+}
+
+/// The subset of `candidates` that can't be resolved right now without touching the network --
+/// neither from the curated core bundle nor from a prior fetch already sitting in local cache.
+/// This is the "diff against bundle + cache" step task 4.3 (prefetch) needs before it fetches
+/// anything -- checked here with the network tier forced into cache-only mode, so calling this
+/// never itself triggers a fetch, unlike `resolve_bundle()`'s own normal (network-allowed) path.
+pub fn missing_from_cache(candidates: &[String]) -> Vec<String> {
+    let mut status = NoopStatusBackend::default();
+
+    let core_dir = core_bundle_dir();
+    let mut core: Option<DirBundle> = core_dir.join("SHA256SUM").is_file().then(|| DirBundle::new(core_dir));
+
+    let mut cache_only: Option<Box<dyn Bundle>> =
+        tectonic::config::PersistentConfig::open(false).ok().and_then(|config| config.default_bundle(true).ok());
+
+    candidates
+        .iter()
+        .filter(|name| {
+            let in_core = core.as_mut().is_some_and(|b| matches!(b.input_open_name(name, &mut status), OpenResult::Ok(_)));
+            if in_core {
+                return false;
+            }
+            !cache_only.as_mut().is_some_and(|b| matches!(b.input_open_name(name, &mut status), OpenResult::Ok(_)))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Actually fetches `name` through the normal bundle -> cache -> network chain, caching it
+/// permanently on success. `Ok` also covers "turned out to already be available" -- callers that
+/// only care about genuinely new fetches should check `missing_from_cache` first.
+pub fn fetch(name: &str) -> Result<(), CompileError> {
+    let mut status = NoopStatusBackend::default();
+    let mut bundle = resolve_bundle()?;
+    match bundle.input_open_name(name, &mut status) {
+        OpenResult::Ok(_) => Ok(()),
+        OpenResult::NotAvailable => Err(CompileError { message: format!("{name} was not found in any bundle"), log: None }),
+        OpenResult::Err(e) => Err(CompileError { message: e.to_string(), log: None }),
+    }
 }

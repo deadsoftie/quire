@@ -373,9 +373,57 @@ fn insert_with_tabstops(name: &str, arity: u32) -> String {
     s
 }
 
-/// Always reports nothing fetched, nothing failed -- honest about doing no work.
-pub fn prefetch_packages(_req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
-    PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() }
+/// Scans every `\usepackage`/`\RequirePackage`/`\documentclass` across the project, diffs the
+/// resulting file candidates against bundle + cache (`crate::bundle::missing_from_cache`), and
+/// fetches whatever's missing in parallel -- so the first compile after opening a project never
+/// stalls mid-flight on a serial, one-at-a-time network fetch.
+pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
+    let project_dir = Path::new(&req.project_id);
+    let Some(root) = project::detect_root(project_dir).root else {
+        return PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() };
+    };
+    let graph = project::build_file_graph(&root);
+    let index = crate::index::ProjectIndex::build(&graph);
+
+    // File -> the package/class name it stands for, so the response can report names (what the
+    // eventual missing-package UI, task 4.4, actually shows) rather than raw filenames.
+    let mut name_for_file: HashMap<String, String> = HashMap::new();
+    for name in index.packages() {
+        name_for_file.insert(format!("{name}.sty"), name.to_string());
+    }
+    for name in index.document_classes() {
+        name_for_file.insert(format!("{name}.cls"), name.to_string());
+    }
+
+    let files: Vec<String> = name_for_file.keys().cloned().collect();
+    let missing_files = crate::bundle::missing_from_cache(&files);
+    if missing_files.is_empty() {
+        return PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() };
+    }
+
+    let outcomes: Vec<(String, bool)> = std::thread::scope(|scope| {
+        missing_files
+            .iter()
+            .map(|file| scope.spawn(move || (file.clone(), crate::bundle::fetch(file).is_ok())))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|handle| handle.join().expect("prefetch worker thread panicked"))
+            .collect()
+    });
+
+    let mut fetched = Vec::new();
+    let mut failed = Vec::new();
+    for (file, ok) in outcomes {
+        let name = name_for_file.get(&file).cloned().unwrap_or(file);
+        if ok {
+            fetched.push(name);
+        } else {
+            failed.push(name);
+        }
+    }
+    fetched.sort();
+    failed.sort();
+    PrefetchPackagesResponse { fetched, failed }
 }
 
 /// `version` is real; `offlinePackages`/`cacheBytes` are always `0` -- both don't exist yet.

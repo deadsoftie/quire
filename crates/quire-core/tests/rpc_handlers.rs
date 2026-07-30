@@ -1,8 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use quire_core::rpc::handlers::{compile, open_project};
-use quire_core::rpc::{CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest, RootConfidence};
+use quire_core::rpc::handlers::{compile, open_project, prefetch_packages};
+use quire_core::rpc::{
+    CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest, PrefetchPackagesRequest,
+    RootConfidence,
+};
 
 fn copy_dir(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).unwrap();
@@ -50,6 +53,30 @@ fn open_project_finds_root_and_full_file_list() {
     assert_eq!(plot.kind, FileNodeKind::Graphic);
     let main = resp.files.iter().find(|f| f.name == "main.tex").unwrap();
     assert_eq!(main.kind, FileNodeKind::Tex);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn prefetch_fetches_a_package_missing_from_bundle_and_cache() {
+    let project_dir = fresh_project_copy("prefetch", "prefetch");
+    let project_id = project_dir.display().to_string();
+
+    let resp = prefetch_packages(&PrefetchPackagesRequest { project_id: project_id.clone() });
+
+    // `article` (the documentclass) is always in the core bundle, so it must never show up as
+    // fetched or failed. `media9` (deliberately not in core) may or may not need a real fetch
+    // depending on whether an earlier test run already cached it on this machine -- caching is
+    // permanent by design (4.2), so this test has to be robust to running on an already-warm
+    // cache rather than assuming a fresh one. It must not, however, have genuinely failed.
+    assert!(!resp.fetched.contains(&"article".to_string()), "{:?}", resp.fetched);
+    assert!(!resp.failed.contains(&"article".to_string()), "{:?}", resp.failed);
+    assert!(!resp.failed.contains(&"media9".to_string()), "media9 fetch failed: {:?}", resp.failed);
+
+    // Second call: whatever the first call needed (if anything) is cached now, so this must
+    // report nothing missing at all -- the actual point of prefetch persisting to cache.
+    let resp2 = prefetch_packages(&PrefetchPackagesRequest { project_id: project_id.clone() });
+    assert!(resp2.fetched.is_empty() && resp2.failed.is_empty(), "fetched={:?} failed={:?}", resp2.fetched, resp2.failed);
 
     fs::remove_dir_all(&project_dir).ok();
 }

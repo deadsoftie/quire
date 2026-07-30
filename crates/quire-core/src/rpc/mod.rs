@@ -305,7 +305,6 @@ pub struct Diagnostic {
 
 // ---------- Packages ----------
 
-/// Not implemented yet.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -313,6 +312,7 @@ pub struct PrefetchPackagesRequest {
     pub project_id: ProjectId,
 }
 
+/// Package/class names, not filenames -- what the missing-package UI (task 4.4) shows.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
