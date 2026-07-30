@@ -126,9 +126,11 @@ interface EditorProps {
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;
-  /** Session-restore only -- a character offset, clamped to the doc. `null`/undefined starts at 0, same as before session restore existed. */
+  /** Where this tab's cursor was last -- app-launch session restore, or just switching back to an
+   * already-open tab (3.5.3), both apply this the same way: a character offset, clamped to the
+   * doc, applied fresh on every mount. `null`/undefined starts at 0. */
   restoreCursor?: number | null;
-  /** Session-restore only, applied a frame after mount so the content it scrolls has actually been laid out. */
+  /** Same as `restoreCursor` but for scroll position; applied a frame after mount so the content it scrolls has actually been laid out. */
   restoreScrollTop?: number | null;
   onChange: (text: string) => void;
   /** Fires on cursor movement and on scroll, for session restore to persist -- not on every keystroke by itself (docChanged alone doesn't move the cursor). */

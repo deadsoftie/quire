@@ -11,6 +11,15 @@
   min-height: 0;
 }
 
+/* Holds the tab bar above the editor/preview panes, as one column sitting beside the sidebar. */
+.app__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .app__panes {
   display: grid;
   flex: 1;

@@ -14,6 +14,7 @@ import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
 import { Sidebar } from "./Sidebar";
 import { normalizeSession, type SessionState } from "./session";
+import { TabBar } from "./TabBar";
 import { TopBar } from "./TopBar";
 import "./App.css";
 
@@ -32,12 +33,23 @@ const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 interface Project {
   projectId: string;
-  uri: string;
   label: string;
   /** `null` for the scratch project, which never calls real `openProject`. */
   engineAvailable: boolean | null;
   /** `[]` for the scratch project, same reason. */
   files: FileNode[];
+}
+
+// One per open document (3.5.3). `text` is the live buffer -- always what's compiled and shown,
+// regardless of whether it's been saved. `savedText` is what's actually on disk right now;
+// `text !== savedText` is the tab's entire dirty-state definition, not a separately tracked flag.
+interface OpenTab {
+  uri: string;
+  text: string;
+  savedText: string;
+  /** CM6 selection head, restored on remount whenever this tab becomes active again. */
+  cursor: number;
+  scrollTop: number | null;
 }
 
 function basename(p: string): string {
@@ -76,7 +88,8 @@ export function App() {
 // Split from App() so useCommand() below has a CommandProvider ancestor.
 function AppShell() {
   const [project, setProject] = useState<Project | null>(null);
-  const [initialDoc, setInitialDoc] = useState(INITIAL_SOURCE);
+  const [tabs, setTabs] = useState<OpenTab[]>([]);
+  const [activeUri, setActiveUri] = useState<string | null>(null);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [changedPages, setChangedPages] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -98,19 +111,16 @@ function AppShell() {
     localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
   );
   const [pdfInverted, setPdfInverted] = useState(false);
-  // Session-restore only -- see restoredUriRef below for why these apply to at most one Editor mount.
-  const [restoreCursor, setRestoreCursor] = useState<number | null>(null);
-  const [restoreScrollTop, setRestoreScrollTop] = useState<number | null>(null);
 
   const projectRef = useRef<Project | null>(null);
-  const currentSourceRef = useRef(INITIAL_SOURCE);
+  // Authoritative, updated synchronously outside React state so every keystroke doesn't force a
+  // re-render (CM6 already manages its own text uncontrolled) -- `tabs` state exists only to
+  // repaint the tab bar (dirty dot, add/remove/switch), and is refreshed from this ref only when
+  // something actually needs to be seen.
+  const tabsRef = useRef<OpenTab[]>([]);
   const debounceRef = useRef<number | undefined>(undefined);
   const errorTimeoutRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Which uri restoreCursor/restoreScrollTop belong to -- switching files sets
-  // `project.uri` to something else, so those props naturally stop applying
-  // without needing a separate "have we consumed the restore yet" flag.
-  const restoredUriRef = useRef<string | null>(null);
   const sessionRef = useRef<SessionState>(DEFAULT_SESSION);
   const saveSessionTimeoutRef = useRef<number | undefined>(undefined);
   // Guards the "watch state, save" effect below from firing on the
@@ -127,96 +137,90 @@ function AppShell() {
     }, SAVE_SESSION_DEBOUNCE_MS);
   }, []);
 
-  // Cursor/scroll come from Editor on every move, not the state watched below -- far too frequent to react to with a dependency array.
+  // Cursor/scroll come from Editor on every move -- updates the active tab's own record (so
+  // switching away and back within this session restores position) plus the session snapshot
+  // (still just "whichever tab was last active," same shape as before 3.5.3; a full per-tab
+  // session shape is 3.5.6). Doesn't call setTabs -- nothing visibly depends on these fields
+  // except the tab's own Editor mount, which only reads them once, at mount time.
   const handleCursorActivity = useCallback(
     (cursor: number, scrollTop: number) => {
+      const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
+      if (idx !== -1) {
+        const next = tabsRef.current.slice();
+        next[idx] = { ...next[idx], cursor, scrollTop };
+        tabsRef.current = next;
+      }
       sessionRef.current = { ...sessionRef.current, cursor, scrollTop };
       scheduleSaveSession();
     },
-    [scheduleSaveSession],
+    [activeUri, scheduleSaveSession],
   );
 
   // Single-flight: a superseded compile is killed and its promise now rejects with
   // SIDECAR_CALL_CANCELLED (rather than hanging forever) -- swallow that one specifically so a
   // stale/cancelled compile neither overwrites a newer result nor flashes a spurious error.
-  const runCompile = useCallback(
-    async (projectId: string, uri: string, source: string, reason: CompileReason) => {
-      try {
-        const result = await window.quire.compile({
-          projectId,
-          dirtyBuffers: [{ uri, text: source }],
-          reason,
-        });
-        setDiagnostics(result.diagnostics);
-        if (result.status === "ok" && result.pdfPath) {
-          const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
-          setPdfData(bytes);
-          setChangedPages(result.changedPages);
-          setError(null);
-          setCompileVersion((v) => v + 1);
-        } else {
-          const diagnostic = result.diagnostics[0];
-          setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
-        }
-      } catch (err) {
-        const message = String((err as Error)?.message ?? err);
-        if (message.includes(SIDECAR_CALL_CANCELLED)) return;
-        setError(message);
-      }
-    },
-    [],
-  );
-
-  const scheduleCompile = useCallback(
-    (source: string) => {
-      currentSourceRef.current = source;
-      if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(() => {
-        const current = projectRef.current;
-        if (current) runCompile(current.projectId, current.uri, source, "edit");
-      }, DEBOUNCE_MS);
-    },
-    [runCompile],
-  );
-
-  const openProjectFlow = useCallback(async () => {
-    const path = await window.quireDesktop.chooseProjectFolder();
-    if (!path) return;
-
+  // Always compiles every open tab's live buffer, not just the active one -- a project with two
+  // dirty tabs needs both reflected, and CompileRequest.dirtyBuffers already accepts an array.
+  const runCompile = useCallback(async (reason: CompileReason) => {
+    const proj = projectRef.current;
+    if (!proj) return;
+    const dirtyBuffers = tabsRef.current.map((t) => ({ uri: t.uri, text: t.text }));
     try {
-      const opened = await window.quire.openProject({ path });
-      const initialText = await window.quire.readFile(opened.root);
-      const next: Project = {
-        projectId: opened.projectId,
-        uri: opened.root,
-        label: basename(opened.projectId),
-        engineAvailable: opened.engineAvailable,
-        files: opened.files,
-      };
-      projectRef.current = next;
-      setProject(next);
-      currentSourceRef.current = initialText;
-      setInitialDoc(initialText);
-      runCompile(next.projectId, next.uri, initialText, "open");
+      const result = await window.quire.compile({ projectId: proj.projectId, dirtyBuffers, reason });
+      setDiagnostics(result.diagnostics);
+      if (result.status === "ok" && result.pdfPath) {
+        const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
+        setPdfData(bytes);
+        setChangedPages(result.changedPages);
+        setError(null);
+        setCompileVersion((v) => v + 1);
+      } else {
+        const diagnostic = result.diagnostics[0];
+        setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
+      }
     } catch (err) {
-      setError(String((err as Error)?.message ?? err));
+      const message = String((err as Error)?.message ?? err);
+      if (message.includes(SIDECAR_CALL_CANCELLED)) return;
+      setError(message);
     }
-  }, [runCompile]);
+  }, []);
 
-  // Only ever called with a .tex leaf's uri (see FileTreePanel) -- graphics have nothing to switch into.
-  const switchToFile = useCallback(
+  // Updates the active tab's live buffer (ref-only -- see tabsRef's comment) and re-renders only
+  // when dirty state actually flips, so typing doesn't repaint the tab bar on every keystroke.
+  const scheduleCompile = useCallback(
+    (text: string) => {
+      if (!activeUri) return;
+      const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
+      if (idx === -1) return;
+      const prev = tabsRef.current[idx];
+      const wasDirty = prev.text !== prev.savedText;
+      const next = tabsRef.current.slice();
+      next[idx] = { ...prev, text };
+      tabsRef.current = next;
+      const isDirty = text !== prev.savedText;
+      if (wasDirty !== isDirty) setTabs(next);
+
+      if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
+      debounceRef.current = window.setTimeout(() => runCompile("edit"), DEBOUNCE_MS);
+    },
+    [activeUri, runCompile],
+  );
+
+  // Opening a file already open activates its tab instead of adding a duplicate (FileTreePanel
+  // is the only caller today; graphics have nothing to open into, per its own selectability rule).
+  const openTab = useCallback(
     async (uri: string) => {
-      const current = projectRef.current;
-      if (!current || uri === current.uri) return;
-
+      if (tabsRef.current.some((t) => t.uri === uri)) {
+        setActiveUri(uri);
+        return;
+      }
       try {
         const text = await window.quire.readFile(uri);
-        const next: Project = { ...current, uri };
-        projectRef.current = next;
-        setProject(next);
-        currentSourceRef.current = text;
-        setInitialDoc(text);
-        runCompile(next.projectId, uri, text, "open");
+        const next: OpenTab = { uri, text, savedText: text, cursor: 0, scrollTop: null };
+        tabsRef.current = [...tabsRef.current, next];
+        setTabs(tabsRef.current);
+        setActiveUri(uri);
+        runCompile("open");
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
       }
@@ -224,11 +228,59 @@ function AppShell() {
     [runCompile],
   );
 
+  // Never closes the last tab -- there's always something open, matching every other entry point
+  // (openProjectFlow, session restore, the scratch fallback) always seeding at least one.
+  const closeTab = useCallback((uri: string) => {
+    const current = tabsRef.current;
+    if (current.length <= 1) return;
+    const idx = current.findIndex((t) => t.uri === uri);
+    if (idx === -1) return;
+    const next = current.filter((t) => t.uri !== uri);
+    tabsRef.current = next;
+    setTabs(next);
+    setActiveUri((activePrev) => {
+      if (activePrev !== uri) return activePrev;
+      // Prefer the tab that was to the right, else the one to the left -- standard tab-strip feel.
+      const neighbor = current[idx + 1] ?? current[idx - 1];
+      return neighbor.uri;
+    });
+  }, []);
+
+  const saveTab = useCallback(
+    async (uri: string) => {
+      const idx = tabsRef.current.findIndex((t) => t.uri === uri);
+      if (idx === -1) return;
+      const tab = tabsRef.current[idx];
+      try {
+        await window.quire.writeFile(uri, tab.text);
+        const next = tabsRef.current.slice();
+        next[idx] = { ...tab, savedText: tab.text };
+        tabsRef.current = next;
+        setTabs(next);
+        // Cancel a pending debounced edit-compile -- this save's own immediate compile already
+        // covers it, and letting both fire is a harmless but pointless duplicate.
+        if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
+        runCompile("save");
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+    [runCompile],
+  );
+
+  const saveAndCloseTab = useCallback(
+    async (uri: string) => {
+      await saveTab(uri);
+      closeTab(uri);
+    },
+    [saveTab, closeTab],
+  );
+
   // Restores the previous session if one exists and its project still opens;
   // otherwise (first launch, or the project has since moved/been deleted)
   // falls back to the same disposable scratch project as before session
-  // restore existed. Layout/panel/mode/theme settings restore either way --
-  // a project that's gone doesn't mean those should reset to defaults too.
+  // restore existed. Layout/mode/theme settings restore either way -- a
+  // project that's gone doesn't mean those should reset to defaults too.
   useEffect(() => {
     (async () => {
       const loaded = await window.quireDesktop.loadSession();
@@ -250,19 +302,23 @@ function AppShell() {
           const text = await window.quire.readFile(uri);
           const next: Project = {
             projectId: opened.projectId,
-            uri,
             label: basename(opened.projectId),
             engineAvailable: opened.engineAvailable,
             files: opened.files,
           };
           projectRef.current = next;
           setProject(next);
-          currentSourceRef.current = text;
-          setInitialDoc(text);
-          restoredUriRef.current = uri;
-          setRestoreCursor(session.cursor);
-          setRestoreScrollTop(session.scrollTop);
-          runCompile(next.projectId, uri, text, "open");
+          const tab: OpenTab = {
+            uri,
+            text,
+            savedText: text,
+            cursor: session.cursor ?? 0,
+            scrollTop: session.scrollTop,
+          };
+          tabsRef.current = [tab];
+          setTabs(tabsRef.current);
+          setActiveUri(uri);
+          runCompile("open");
           initializedRef.current = true;
           return;
         } catch {
@@ -273,14 +329,17 @@ function AppShell() {
       const scratch = await window.quireDesktop.createScratchProject();
       const next: Project = {
         projectId: scratch.projectId,
-        uri: scratch.root,
         label: "Untitled",
         engineAvailable: null,
         files: [],
       };
       projectRef.current = next;
       setProject(next);
-      runCompile(next.projectId, next.uri, INITIAL_SOURCE, "open");
+      const tab: OpenTab = { uri: scratch.root, text: INITIAL_SOURCE, savedText: INITIAL_SOURCE, cursor: 0, scrollTop: null };
+      tabsRef.current = [tab];
+      setTabs(tabsRef.current);
+      setActiveUri(scratch.root);
+      runCompile("open");
       initializedRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -299,7 +358,7 @@ function AppShell() {
     sessionRef.current = {
       ...sessionRef.current,
       projectPath: project && project.engineAvailable !== null ? project.projectId : null,
-      openUri: project && project.engineAvailable !== null ? project.uri : null,
+      openUri: project && project.engineAvailable !== null ? activeUri : null,
       splitFraction,
       focusMode,
       typewriterMode,
@@ -308,7 +367,7 @@ function AppShell() {
       pdfInverted,
     };
     scheduleSaveSession();
-  }, [project, splitFraction, focusMode, typewriterMode, proseMode, theme, pdfInverted, scheduleSaveSession]);
+  }, [project, activeUri, splitFraction, focusMode, typewriterMode, proseMode, theme, pdfInverted, scheduleSaveSession]);
 
   // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {
@@ -325,9 +384,8 @@ function AppShell() {
           errorTimeoutRef.current = window.setTimeout(() => setSeamState("idle"), 800);
         }
       } else if (event.kind === "files-changed") {
-        const current = projectRef.current;
-        if (current && event.projectId === current.projectId) {
-          runCompile(current.projectId, current.uri, currentSourceRef.current, "edit");
+        if (projectRef.current && event.projectId === projectRef.current.projectId) {
+          runCompile("edit");
         }
       }
     });
@@ -339,7 +397,39 @@ function AppShell() {
     title: "Open Project…",
     shortcut: "⌘O",
     keybinding: { key: "o", meta: true },
-    run: openProjectFlow,
+    run: async () => {
+      const path = await window.quireDesktop.chooseProjectFolder();
+      if (!path) return;
+      try {
+        const opened = await window.quire.openProject({ path });
+        const initialText = await window.quire.readFile(opened.root);
+        const next: Project = {
+          projectId: opened.projectId,
+          label: basename(opened.projectId),
+          engineAvailable: opened.engineAvailable,
+          files: opened.files,
+        };
+        projectRef.current = next;
+        setProject(next);
+        const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
+        tabsRef.current = [tab];
+        setTabs(tabsRef.current);
+        setActiveUri(opened.root);
+        runCompile("open");
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+  });
+
+  useCommand({
+    id: "file.save",
+    title: "Save",
+    shortcut: "⌘S",
+    keybinding: { key: "s", meta: true },
+    run: () => {
+      if (activeUri) saveTab(activeUri);
+    },
   });
 
   useCommand({
@@ -418,12 +508,12 @@ function AppShell() {
         return (
           <FileTreePanel
             tree={buildFileTree(project?.files ?? [], project?.projectId ?? "")}
-            activeUri={project?.uri ?? null}
-            onSelectFile={switchToFile}
+            activeUri={activeUri}
+            onSelectFile={openTab}
           />
         );
       case "outline":
-        return <OutlinePanel projectId={project?.projectId ?? ""} uri={project?.uri ?? ""} refreshToken={compileVersion} />;
+        return <OutlinePanel projectId={project?.projectId ?? ""} uri={activeUri ?? ""} refreshToken={compileVersion} />;
       case "problems":
         return <ProblemsPanel diagnostics={diagnostics} />;
       case "packages":
@@ -435,6 +525,8 @@ function AppShell() {
         );
     }
   }
+
+  const activeTab = tabs.find((t) => t.uri === activeUri) ?? null;
 
   return (
     <div className="app">
@@ -452,40 +544,49 @@ function AppShell() {
             {renderPanelBody(sidebarSection)}
           </Sidebar>
         )}
-        <div
-          className="app__panes"
-          ref={containerRef}
-          style={{ gridTemplateColumns: `${splitFraction}fr var(--s-2) ${1 - splitFraction}fr` }}
-        >
-          <div className="app__pane app__pane--editor">
-            {project && (
-              <Editor
-                key={project.uri}
-                initialDoc={initialDoc}
-                projectId={project.projectId}
-                uri={project.uri}
-                focusMode={focusMode}
-                typewriterMode={typewriterMode}
-                proseMode={proseMode}
-                restoreCursor={project.uri === restoredUriRef.current ? restoreCursor : null}
-                restoreScrollTop={project.uri === restoredUriRef.current ? restoreScrollTop : null}
-                onChange={scheduleCompile}
-                onCursorActivity={handleCursorActivity}
-              />
-            )}
-          </div>
-          <Seam
-            state={seamState}
-            containerRef={containerRef}
-            onChange={setSplitFraction}
-            onReset={() => setSplitFraction(0.5)}
+        <div className="app__main">
+          <TabBar
+            tabs={tabs.map((t) => ({ uri: t.uri, label: basename(t.uri), dirty: t.text !== t.savedText }))}
+            activeUri={activeUri}
+            onActivate={setActiveUri}
+            onClose={closeTab}
+            onSaveAndClose={saveAndCloseTab}
           />
-          <div className="app__pane">
-            {error ? (
-              <pre className="app__error">{error}</pre>
-            ) : (
-              <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
-            )}
+          <div
+            className="app__panes"
+            ref={containerRef}
+            style={{ gridTemplateColumns: `${splitFraction}fr var(--s-2) ${1 - splitFraction}fr` }}
+          >
+            <div className="app__pane app__pane--editor">
+              {project && activeTab && (
+                <Editor
+                  key={activeTab.uri}
+                  initialDoc={activeTab.text}
+                  projectId={project.projectId}
+                  uri={activeTab.uri}
+                  focusMode={focusMode}
+                  typewriterMode={typewriterMode}
+                  proseMode={proseMode}
+                  restoreCursor={activeTab.cursor}
+                  restoreScrollTop={activeTab.scrollTop}
+                  onChange={scheduleCompile}
+                  onCursorActivity={handleCursorActivity}
+                />
+              )}
+            </div>
+            <Seam
+              state={seamState}
+              containerRef={containerRef}
+              onChange={setSplitFraction}
+              onReset={() => setSplitFraction(0.5)}
+            />
+            <div className="app__pane">
+              {error ? (
+                <pre className="app__error">{error}</pre>
+              ) : (
+                <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
+              )}
+            </div>
           </div>
         </div>
       </div>
