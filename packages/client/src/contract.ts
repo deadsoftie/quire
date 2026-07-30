@@ -84,6 +84,15 @@ export type FileNode = { uri: string, name: string, kind: FileNodeKind, };
 
 export type FileNodeKind = "tex" | "graphic";
 
+export type InstallPackageRequest = { name: string, };
+
+/**
+ * `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number
+ * (core is one flat directory of ~50 files shared across many packages' transitive deps, not
+ * cleanly attributable one-to-one).
+ */
+export type InstalledPackage = { name: string, bytes: bigint | null, source: PackageSource, };
+
 export type OpenProjectRequest = { path: string, };
 
 export type OpenProjectResponse = { projectId: string, root: string, rootConfidence: RootConfidence, 
@@ -101,6 +110,13 @@ export type OutlineNodeKind = "part" | "chapter" | "section" | "subsection" | "s
 
 export type OutlineRequest = { projectId: string, uri: string, };
 
+/**
+ * `Core` ships in the app (task 4.1's curated bundle) and is never removable. `Cache` was
+ * fetched on demand and lives in Tectonic's own local cache -- removable, task 4.5's manager
+ * panel.
+ */
+export type PackageSource = "core" | "cache";
+
 export type Position = { 
 /**
  * 0-based.
@@ -116,6 +132,8 @@ export type PrefetchPackagesRequest = { projectId: string, };
 export type PrefetchPackagesResponse = { fetched: Array<FetchedPackage>, failed: Array<string>, };
 
 export type ReadFileRequest = { uri: string, };
+
+export type RemovePackageRequest = { name: string, };
 
 export type RootConfidence = "explicit" | "inferred" | "ambiguous";
 

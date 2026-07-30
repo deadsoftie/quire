@@ -8,6 +8,8 @@ import type {
   CompletionItem,
   CompletionRequest,
   CoreEvent,
+  FetchedPackage,
+  InstalledPackage,
   OpenProjectRequest,
   OpenProjectResponse,
   OutlineNode,
@@ -95,6 +97,18 @@ export class StdioTransport implements CoreApi {
 
   async bundleStatus(): Promise<BundleStatusResponse> {
     return (await runOnce("bundleStatus", null).promise) as BundleStatusResponse;
+  }
+
+  async listInstalledPackages(): Promise<InstalledPackage[]> {
+    return (await runOnce("listInstalledPackages", null).promise) as InstalledPackage[];
+  }
+
+  async installPackage(name: string): Promise<FetchedPackage> {
+    return (await runOnce("installPackage", { name }).promise) as FetchedPackage;
+  }
+
+  async removePackage(name: string): Promise<void> {
+    await runOnce("removePackage", { name }).promise;
   }
 
   async readFile(uri: DocUri): Promise<string> {

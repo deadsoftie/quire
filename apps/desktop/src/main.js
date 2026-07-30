@@ -160,6 +160,9 @@ app.whenReady().then(() => {
   ipcMain.handle("core:outline", (_event, projectId, uri) => client.outline(projectId, uri));
   ipcMain.handle("core:prefetchPackages", (_event, projectId) => client.prefetchPackages(projectId));
   ipcMain.handle("core:bundleStatus", () => client.bundleStatus());
+  ipcMain.handle("core:listInstalledPackages", () => client.listInstalledPackages());
+  ipcMain.handle("core:installPackage", (_event, name) => client.installPackage(name));
+  ipcMain.handle("core:removePackage", (_event, name) => client.removePackage(name));
   ipcMain.handle("core:readFile", (_event, uri) => client.readFile(uri));
   ipcMain.handle("core:writeFile", (_event, uri, text) => client.writeFile(uri, text));
 

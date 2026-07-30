@@ -2464,6 +2464,7 @@ dependencies = [
  "tectonic_bridge_core",
  "tectonic_bundles",
  "tectonic_engine_xdvipdfmx",
+ "tectonic_io_base",
  "ts-rs",
 ]
 

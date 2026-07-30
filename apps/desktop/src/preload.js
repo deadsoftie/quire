@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld("quire", {
   outline: invoke("core:outline"),
   prefetchPackages: invoke("core:prefetchPackages"),
   bundleStatus: invoke("core:bundleStatus"),
+  listInstalledPackages: invoke("core:listInstalledPackages"),
+  installPackage: invoke("core:installPackage"),
+  removePackage: invoke("core:removePackage"),
   readFile: invoke("core:readFile"),
   writeFile: invoke("core:writeFile"),
   // Returns an unsubscribe function.

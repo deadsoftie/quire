@@ -82,6 +82,9 @@ fn handle_request(req: Request) -> Value {
         "outline" => dispatch(req.id, req.params, |p| Ok(handlers::outline(&p))),
         "prefetchPackages" => dispatch(req.id, req.params, |p| Ok(handlers::prefetch_packages(&p))),
         "bundleStatus" => dispatch(req.id, Value::Null, |()| handlers::bundle_status()),
+        "listInstalledPackages" => dispatch(req.id, Value::Null, |()| Ok(handlers::list_installed_packages())),
+        "installPackage" => dispatch(req.id, req.params, |p| handlers::install_package(&p)),
+        "removePackage" => dispatch(req.id, req.params, |p| handlers::remove_package(&p)),
         "readFile" => dispatch(req.id, req.params, |p| handlers::read_file(&p)),
         "writeFile" => dispatch(req.id, req.params, |p| handlers::write_file(&p)),
         other => json!({

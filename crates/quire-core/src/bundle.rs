@@ -1,6 +1,8 @@
+use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use tectonic::io::{InputHandle, IoProvider, OpenResult};
 use tectonic::status::{NoopStatusBackend, StatusBackend};
 use tectonic_bundles::{dir::DirBundle, Bundle};
@@ -128,4 +130,99 @@ pub fn fetch(name: &str) -> Result<u64, CompileError> {
         OpenResult::NotAvailable => Err(CompileError { message: format!("{name} was not found in any bundle"), log: None }),
         OpenResult::Err(e) => Err(CompileError { message: e.to_string(), log: None }),
     }
+}
+
+/// The network/cache tier's own digest -- deliberately *not* `resolve_bundle()` +
+/// `TieredBundle::get_digest()`, which reports core's digest (4.2's own choice, since core
+/// defines a compile's identity). The package manager (task 4.5) needs the cache tier's digest
+/// specifically, to find *its* on-disk cache directory below.
+fn network_bundle_digest_hex() -> Result<String, CompileError> {
+    Ok(open_network_bundle()?.get_digest()?.to_string())
+}
+
+/// Tectonic's own on-disk cache root for the network bundle tier -- `get_user_cache_dir` is the
+/// exact function `tectonic_bundles::cache::BundleCache` uses internally to pick this location
+/// (confirmed by reading that crate's source), not a reimplementation of its path logic. Real
+/// files live under here at `{name}`, e.g. `tikz.sty` -- not content-hashed blobs.
+fn cache_data_dir() -> Result<PathBuf, CompileError> {
+    let root = tectonic_io_base::app_dirs::get_user_cache_dir("bundles")?;
+    Ok(root.join("data").join(network_bundle_digest_hex()?))
+}
+
+#[derive(Deserialize)]
+struct CoreManifest {
+    #[serde(rename = "documentClasses")]
+    document_classes: Vec<String>,
+    packages: Vec<String>,
+}
+
+/// The curated, human-meaningful list of what core ships (task 4.1's own manifest) -- 18 names a
+/// user would recognize from `\usepackage{}`/`\documentclass{}`, not a raw walk of
+/// `bundles/core/`'s ~50 flat files, most of which are internal transitive dependencies
+/// (`amsbsy.sty`, `amsopn.sty`, ...) nobody ever typed. Empty on a fresh clone that hasn't run
+/// `build_core_bundle` yet, matching `resolve_bundle()`'s own graceful fallback.
+pub fn core_packages() -> Vec<String> {
+    let manifest_path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles/manifest.json"));
+    let Ok(text) = fs::read_to_string(manifest_path) else { return Vec::new() };
+    let Ok(manifest) = serde_json::from_str::<CoreManifest>(&text) else { return Vec::new() };
+    let mut names = manifest.document_classes;
+    names.extend(manifest.packages);
+    names.sort();
+    names
+}
+
+/// Every `.sty`/`.cls` file actually sitting in the cache tier right now, as `(bare_name, bytes)`
+/// -- the real, removable "installed packages" list the manager panel (task 4.5) shows, distinct
+/// from `core_packages()`'s fixed, non-removable set. Empty if the cache tier has never been used.
+pub fn cached_packages() -> Vec<(String, u64)> {
+    let Ok(dir) = cache_data_dir() else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
+
+    entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_stem()?.to_str()?.to_string();
+            let ext = path.extension()?.to_str()?;
+            if ext != "sty" && ext != "cls" {
+                return None;
+            }
+            let bytes = entry.metadata().ok()?.len();
+            Some((name, bytes))
+        })
+        .collect()
+}
+
+/// Total bytes the cache tier is actually using on disk -- every file under it, not just the
+/// `.sty`/`.cls` subset `cached_packages()` lists (fonts, engine data, etc. land here too), for
+/// `bundleStatus().cacheBytes` (task 4.5).
+pub fn cache_size_bytes() -> u64 {
+    let Ok(dir) = cache_data_dir() else { return 0 };
+    fn walk(dir: &std::path::Path) -> u64 {
+        let Ok(entries) = fs::read_dir(dir) else { return 0 };
+        entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| match entry.file_type() {
+                Ok(ft) if ft.is_dir() => walk(&entry.path()),
+                Ok(_) => entry.metadata().map(|m| m.len()).unwrap_or(0),
+                Err(_) => 0,
+            })
+            .sum()
+    }
+    walk(&dir)
+}
+
+/// Removes a cache-tier package by name, trying `{name}.sty` then `{name}.cls`. Not finding
+/// either is success, not an error (already gone) -- same "success also covers already-satisfied"
+/// precedent as `fetch` above. Never touches `core_packages()`'s files -- those aren't in this
+/// directory at all, so there's nothing here for a core name to accidentally match.
+pub fn remove_cached_package(name: &str) -> Result<(), CompileError> {
+    let dir = cache_data_dir()?;
+    for candidate in [format!("{name}.sty"), format!("{name}.cls")] {
+        let path = dir.join(candidate);
+        if path.is_file() {
+            fs::remove_file(path)?;
+        }
+    }
+    Ok(())
 }

@@ -8,6 +8,7 @@ import { useMenuBridge } from "./menuBridge";
 import { buildFileTree } from "./panels/fileTree";
 import { FileTreePanel } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
+import { formatBytes, PackagesPanel } from "./panels/PackagesPanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
 import type { PanelKind } from "./panels/types";
 import { MissingPackagesCard } from "./MissingPackagesCard";
@@ -117,6 +118,8 @@ function AppShell() {
   const [missingPackages, setMissingPackages] = useState<string[] | null>(null);
   const [packageInstallState, setPackageInstallState] = useState<PackageInstallState>("idle");
   const [failedPackageNames, setFailedPackageNames] = useState<string[]>([]);
+  const [packagesCacheBytes, setPackagesCacheBytes] = useState(0);
+  const [packagesRefreshToken, setPackagesRefreshToken] = useState(0);
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
@@ -251,6 +254,19 @@ function AppShell() {
     window.addEventListener("online", retry);
     return () => window.removeEventListener("online", retry);
   }, [packageInstallState, installMissingPackages]);
+
+  // Sidebar caption's cache-size number -- only fetched while the packages section is actually
+  // visible, and refetched whenever PackagesPanel reports an install/remove (packagesRefreshToken).
+  useEffect(() => {
+    if (sidebarSection !== "packages") return;
+    let cancelled = false;
+    window.quire.bundleStatus().then((status) => {
+      if (!cancelled) setPackagesCacheBytes(status.cacheBytes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sidebarSection, packagesRefreshToken]);
 
   const scheduleCompile = useCallback(
     (text: string) => {
@@ -701,12 +717,7 @@ function AppShell() {
       case "problems":
         return <ProblemsPanel diagnostics={diagnostics} />;
       case "packages":
-        return (
-          <p className="panel-empty">
-            Package management isn't built yet. When it is, installed packages, search, and cache
-            size will live here.
-          </p>
-        );
+        return <PackagesPanel onChanged={() => setPackagesRefreshToken((t) => t + 1)} />;
     }
   }
 
@@ -722,7 +733,13 @@ function AppShell() {
         {sidebarSection && (
           <Sidebar
             title={PANEL_TITLES[sidebarSection]}
-            caption={sidebarSection === "file-tree" ? "Files reachable from the root document." : undefined}
+            caption={
+              sidebarSection === "file-tree"
+                ? "Files reachable from the root document."
+                : sidebarSection === "packages"
+                  ? `${formatBytes(packagesCacheBytes)} cached`
+                  : undefined
+            }
             width={sidebarWidth}
             onWidthChange={setSidebarWidth}
           >

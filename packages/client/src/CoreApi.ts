@@ -5,6 +5,8 @@ import type {
   CompletionItem,
   CompletionRequest,
   CoreEvent,
+  FetchedPackage,
+  InstalledPackage,
   OpenProjectRequest,
   OpenProjectResponse,
   OutlineNode,
@@ -28,6 +30,9 @@ export interface CoreApi {
 
   prefetchPackages(projectId: ProjectId): Promise<PrefetchPackagesResponse>;
   bundleStatus(): Promise<BundleStatusResponse>;
+  listInstalledPackages(): Promise<InstalledPackage[]>;
+  installPackage(name: string): Promise<FetchedPackage>;
+  removePackage(name: string): Promise<void>;
 
   readFile(uri: DocUri): Promise<string>;
   writeFile(uri: DocUri, text: string): Promise<void>;

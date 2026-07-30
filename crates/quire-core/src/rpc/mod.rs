@@ -339,6 +339,43 @@ pub struct BundleStatusResponse {
     pub cache_bytes: u32,
 }
 
+/// `Core` ships in the app (task 4.1's curated bundle) and is never removable. `Cache` was
+/// fetched on demand and lives in Tectonic's own local cache -- removable, task 4.5's manager
+/// panel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub enum PackageSource {
+    Core,
+    Cache,
+}
+
+/// `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number
+/// (core is one flat directory of ~50 files shared across many packages' transitive deps, not
+/// cleanly attributable one-to-one).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct InstalledPackage {
+    pub name: String,
+    pub bytes: Option<u64>,
+    pub source: PackageSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct InstallPackageRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct RemovePackageRequest {
+    pub name: String,
+}
+
 // ---------- Files ----------
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

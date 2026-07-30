@@ -430,9 +430,49 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
     PrefetchPackagesResponse { fetched, failed }
 }
 
-/// `version` is real; `offlinePackages`/`cacheBytes` are always `0` -- both don't exist yet.
 pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
-    Ok(BundleStatusResponse { version: bundle_digest_hex()?, offline_packages: 0, cache_bytes: 0 })
+    let offline_packages = (crate::bundle::core_packages().len() + crate::bundle::cached_packages().len()) as u32;
+    Ok(BundleStatusResponse {
+        version: bundle_digest_hex()?,
+        offline_packages,
+        cache_bytes: crate::bundle::cache_size_bytes() as u32,
+    })
+}
+
+/// Core (task 4.1's curated bundle, never removable) merged with whatever the cache tier
+/// currently holds (task 4.3/4.4's on-demand fetches, removable) -- the real list task 4.5's
+/// manager panel shows, sorted by name.
+pub fn list_installed_packages() -> Vec<InstalledPackage> {
+    let mut packages: Vec<InstalledPackage> = crate::bundle::core_packages()
+        .into_iter()
+        .map(|name| InstalledPackage { name, bytes: None, source: PackageSource::Core })
+        .collect();
+    packages.extend(
+        crate::bundle::cached_packages()
+            .into_iter()
+            .map(|(name, bytes)| InstalledPackage { name, bytes: Some(bytes), source: PackageSource::Cache }),
+    );
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    packages
+}
+
+/// Installs a package by name directly (task 4.5's manager panel), rather than 4.3's project-scan
+/// path -- a name typed here may not appear anywhere in the currently open document. Thin wrapper
+/// over the same `bundle::fetch` 4.3/4.4 already use, not a second fetch mechanism: tries it as a
+/// package first, then as a document class.
+pub fn install_package(req: &InstallPackageRequest) -> Result<FetchedPackage, CompileError> {
+    let name = req.name.clone();
+    match crate::bundle::fetch(&format!("{name}.sty")) {
+        Ok(bytes) => Ok(FetchedPackage { name, bytes }),
+        Err(_) => {
+            let bytes = crate::bundle::fetch(&format!("{name}.cls"))?;
+            Ok(FetchedPackage { name, bytes })
+        }
+    }
+}
+
+pub fn remove_package(req: &RemovePackageRequest) -> Result<(), CompileError> {
+    crate::bundle::remove_cached_package(&req.name)
 }
 
 pub fn read_file(req: &ReadFileRequest) -> Result<String, CompileError> {
