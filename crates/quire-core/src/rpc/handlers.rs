@@ -218,10 +218,10 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
 
 /// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion), 3.2 (`\cite{` citation
 /// completion), 3.3 (bare-command macro completion), 3.4 (`\input`/`\include`/
-/// `\includegraphics` file-path completion), and 3.5 (bare-command CTAN package completion,
-/// merged into the same response as 3.3's macros) -- every other trigger context (math symbols)
-/// returns `[]` until 3.8 lands its own extraction source onto the same
-/// [`crate::index::ProjectIndex`]. 3.7's snippets (`fig`/`tab`/`eq`/`itm`/`sec`/`beg`) never reach
+/// `\includegraphics` file-path completion), 3.5 (bare-command CTAN package completion, merged
+/// into the same response as 3.3's macros), and 3.8 (bare-command math symbol completion,
+/// `crate::index::symbols`, merged into that same response one tier below package commands --
+/// see `command_completions`). 3.7's snippets (`fig`/`tab`/`eq`/`itm`/`sec`/`beg`) never reach
 /// this handler at all -- see `packages/ui/src/snippets.ts`. Checked before touching disk: no
 /// reason to rebuild the whole project index for a keystroke inside an argument none of these
 /// triggers recognize.
@@ -255,11 +255,13 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     }
 }
 
-// Section 9.4's ranking: project-local symbols outrank package commands, which outrank the
-// (still unbuilt) global fallback. PACKAGE_PRIORITY only matters relative to PROJECT_LOCAL_PRIORITY
-// within the same response -- command_completions is the one place both tiers appear together.
+// Section 9.4's ranking: project-local symbols outrank package commands, which outrank the global
+// fallback -- 3.8's math symbols are that fallback tier itself (always available, never gated by
+// `\usepackage`, see `crate::index::symbols`). These constants only matter relative to each other
+// within the same response -- command_completions is the one place all three tiers appear together.
 const PROJECT_LOCAL_PRIORITY: i32 = 0;
 const PACKAGE_PRIORITY: i32 = 10;
+const SYMBOL_PRIORITY: i32 = 20;
 
 fn label_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
@@ -316,11 +318,11 @@ fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionI
     items
 }
 
-/// Bare-command completion (task 3.3's macros and 3.5's CTAN package commands, merged into one
-/// response and ranked via `sort_priority`, per Section 9.4). `label`/`insert` deliberately omit
-/// the leading backslash -- the client's bare-command trigger (`Editor.tsx`'s `wordMatch`)
-/// replaces starting right after the backslash already in the document, matching how label/
-/// citation completions already replace starting after `{`.
+/// Bare-command completion (task 3.3's macros, 3.5's CTAN package commands, and 3.8's math
+/// symbols, merged into one response and ranked via `sort_priority`, per Section 9.4). `label`/
+/// `insert` deliberately omit the leading backslash -- the client's bare-command trigger
+/// (`Editor.tsx`'s `wordMatch`) replaces starting right after the backslash already in the
+/// document, matching how label/citation completions already replace starting after `{`.
 fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
         .macros()
@@ -346,6 +348,20 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
         documentation: None,
         symbol_preview: None,
         sort_priority: PACKAGE_PRIORITY,
+    }));
+
+    // Never scoped by `\usepackage` -- see `crate::index::symbols`'s own doc comment for why these
+    // are the "global fallback" tier rather than package-gated like the block just above.
+    items.extend(crate::index::symbols::all().into_iter().map(|s| CompletionItem {
+        label: s.name.clone(),
+        kind: CompletionKind::Symbol,
+        insert: s.name.clone(),
+        detail: Some(s.detail),
+        documentation: None,
+        // KaTeX renders this client-side (`packages/ui`); the leading backslash belongs here even
+        // though `insert`/`label` omit it, since this is TeX source, not a document edit.
+        symbol_preview: Some(format!("\\{}", s.name)),
+        sort_priority: SYMBOL_PRIORITY,
     }));
 
     items.sort_by(|a, b| a.label.cmp(&b.label));
@@ -404,5 +420,21 @@ mod tests {
         let items = crate::index::ctan::commands_for_packages(["tikz"].into_iter());
         assert!(!items.is_empty(), "sanity check: tikz should have commands in the bundled database");
         assert!(PACKAGE_PRIORITY > PROJECT_LOCAL_PRIORITY, "Section 9.4: package commands must rank below project-local symbols");
+    }
+
+    #[test]
+    fn math_symbols_rank_below_package_commands() {
+        assert!(SYMBOL_PRIORITY > PACKAGE_PRIORITY, "Section 9.4: the global fallback tier must rank below package commands");
+    }
+
+    #[test]
+    fn math_symbol_completion_item_carries_a_katex_ready_preview() {
+        let index = crate::index::ProjectIndex::build(&project::FileGraph { root: PathBuf::new(), files: Vec::new() });
+        let items = command_completions(&index);
+        let alpha = items.iter().find(|i| i.label == "alpha").expect("\\alpha should be in the bundled symbol set");
+        assert_eq!(alpha.kind, CompletionKind::Symbol);
+        assert_eq!(alpha.insert, "alpha", "insert omits the leading backslash, like macros/package commands");
+        assert_eq!(alpha.symbol_preview.as_deref(), Some("\\alpha"), "symbolPreview is real TeX source, backslash included, for KaTeX to render");
+        assert_eq!(alpha.sort_priority, SYMBOL_PRIORITY);
     }
 }

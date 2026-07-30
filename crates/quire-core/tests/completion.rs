@@ -1,8 +1,9 @@
-//! Tasks 3.1-3.5's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
+//! Tasks 3.1-3.5 and 3.8's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
 //! completes with readable entries," "Custom macros appear with correct tabstops," "Relative
-//! paths complete, extensions filtered by command," and "\usepackage{tikz} unlocks TikZ commands;
-//! without it, they don't appear." Exercises the real `outline`/`complete` handlers
-//! (crate::index::ProjectIndex) against multi-file fixtures.
+//! paths complete, extensions filtered by command," "\usepackage{tikz} unlocks TikZ commands;
+//! without it, they don't appear," and "\alp shows a rendered α" (the completion-item half of it
+//! -- KaTeX's actual rendering is client-side, `packages/ui`, untestable from here). Exercises the
+//! real `outline`/`complete` handlers (crate::index::ProjectIndex) against multi-file fixtures.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -223,6 +224,30 @@ fn without_usepackage_tikz_commands_do_not_appear() {
 
     let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
     assert!(!labels.contains(&"draw"), "tikz was never \\usepackage'd, so \\draw must not appear: {labels:?}");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn math_symbol_completion_offers_alpha_with_a_katex_ready_preview() {
+    // Reuses the "labels" fixture just for a project that exists on disk -- math symbols aren't
+    // scoped by anything project-specific (no \usepackage gate, unlike tikz above), so the actual
+    // on-disk main.tex content doesn't matter here, only the in-request `text`/`position` do.
+    let project_dir = fresh_project_copy("labels", "complete-symbol");
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let text = "\\documentclass{article}\n\\begin{document}\n\\alp\n\\end{document}\n".to_string();
+    let position = position_after(&text, "\\alp");
+
+    let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
+
+    let alpha = items.iter().find(|i| i.label == "alpha").unwrap_or_else(|| {
+        panic!("\\alpha should be offered in bare-command context: {:?}", items.iter().map(|i| &i.label).collect::<Vec<_>>())
+    });
+    assert_eq!(alpha.kind, CompletionKind::Symbol);
+    assert_eq!(alpha.insert, "alpha", "insert omits the leading backslash, like macros/package commands");
+    assert_eq!(alpha.symbol_preview.as_deref(), Some("\\alpha"), "symbolPreview carries real TeX source, backslash included, for KaTeX to render");
 
     fs::remove_dir_all(&project_dir).ok();
 }

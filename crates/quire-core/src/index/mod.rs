@@ -28,6 +28,7 @@
 //! once per extension bucket) was fixed directly: one walk, two result buckets.
 
 pub mod ctan;
+pub mod symbols;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;

@@ -12,6 +12,7 @@ import {
 } from "./editorModes";
 import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
+import { renderSymbolPreview } from "./symbolPreview";
 
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
@@ -74,6 +75,14 @@ const baseEditorTheme = EditorView.theme(
       textDecoration: "none",
       fontWeight: "600",
     },
+    // 3.8: KaTeX's own generated markup inherits color from here rather than carrying its own --
+    // .cm-completionInfo is itself a .cm-tooltip (see renderSymbolPreview), so border/background
+    // already match; this just sizes and centers the rendered glyph within that popup.
+    ".cm-symbolPreview": {
+      padding: "10px 14px",
+      fontSize: "1.6em",
+      textAlign: "center",
+    },
   },
   { dark: true },
 );
@@ -127,6 +136,9 @@ function makeCompletionSource(projectId: string, uri: string) {
         // placeholder text for everything but the new local snippet source.
         apply: item.insert.includes("${") ? snippet(item.insert) : item.insert,
         boost: -item.sortPriority,
+        // 3.8: math symbols carry `symbolPreview` (TeX source, e.g. "\\alpha"); everything else
+        // leaves this undefined, so CM6 shows no info panel at all rather than an empty one.
+        info: item.symbolPreview ? () => renderSymbolPreview(item.symbolPreview!) : undefined,
       })),
     };
   };
