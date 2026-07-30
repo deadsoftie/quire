@@ -1,9 +1,14 @@
 .seam {
   position: relative;
+  /* Higher than either pane (both un-stacked, so 0) -- without this, a subpixel rounding overlap
+  at the shared grid-track edge lets whichever pane paints later in DOM order (the preview) cover
+  part of the seam's own line, most visible once it turns into a gradient during compiling. */
+  z-index: 1;
+  /* Must stay exactly this width, matching App.tsx's grid-template-columns fixed middle column --
+  see Seam.tsx's comment on .seam__hit-area for why the wider click target lives on a separate,
+  absolutely-positioned element instead of here. */
   width: var(--s-2);
   flex-shrink: 0;
-  cursor: col-resize;
-  touch-action: none;
 }
 
 .seam__line {
@@ -14,6 +19,19 @@
   width: var(--seam);
   transform: translateX(-50%);
   background: var(--ink-600);
+  /* So drags started anywhere in .seam__hit-area's wider zone reach it, not this on-top visual line. */
+  pointer-events: none;
+}
+
+.seam__hit-area {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--target-min);
+  transform: translateX(-50%);
+  cursor: col-resize;
+  touch-action: none;
 }
 
 /* Reduced-motion clamps this via primitives.css's blanket animation-duration override. */

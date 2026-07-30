@@ -5,6 +5,25 @@ import "./Seam.css";
 export type SeamState = "idle" | "compiling" | "error";
 
 const MIN_PANE_PX = 200;
+// Matches --s-2 (packages/design/src/tokens.css) -- App.tsx's grid-template-columns is
+// `{frac}fr var(--s-2) {1-frac}fr`, so `frac` is a fraction of the width *remaining after* this
+// fixed column, not of the container's full width. Using the full width here was a real,
+// confirmed bug: the boundary the grid actually draws drifts from where the cursor computed it
+// should be, growing with pane size.
+const SEAM_WIDTH_PX = 8;
+
+// Pure so it's testable without a DOM -- rectLeft/rectWidth are just the container's own
+// getBoundingClientRect() fields.
+export function computeSplitFraction(clientX: number, rectLeft: number, rectWidth: number): number | null {
+  const usableWidth = rectWidth - SEAM_WIDTH_PX;
+  if (rectWidth === 0 || usableWidth <= 0) return null;
+  const minFraction = Math.min(0.5, MIN_PANE_PX / usableWidth);
+  // Measured against the seam's own center, so the boundary itself (not some offset edge) is what
+  // actually tracks the cursor.
+  const x = clientX - rectLeft - SEAM_WIDTH_PX / 2;
+  const raw = x / usableWidth;
+  return Math.min(1 - minFraction, Math.max(minFraction, raw));
+}
 
 interface SeamProps {
   state: SeamState;
@@ -18,10 +37,8 @@ export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
 
   const clampFraction = useCallback((clientX: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0) return null;
-    const minFraction = Math.min(0.5, MIN_PANE_PX / rect.width);
-    const raw = (clientX - rect.left) / rect.width;
-    return Math.min(1 - minFraction, Math.max(minFraction, raw));
+    if (!rect) return null;
+    return computeSplitFraction(clientX, rect.left, rect.width);
   }, [containerRef]);
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -46,23 +63,29 @@ export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
   }
 
   return (
-    <div
-      className="seam hit-target"
-      data-state={state}
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize editor and preview panes"
-      tabIndex={0}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onDoubleClick={onReset}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") onReset();
-      }}
-    >
+    <div className="seam" data-state={state}>
       <div className="seam__line" />
+      {/* A wider, absolutely-positioned hit area, deliberately separate from .seam itself: .seam
+          is a real grid item and must stay exactly SEAM_WIDTH_PX wide to match the grid's own
+          fixed track, or the two overflow their column into a neighboring pane -- confirmed to
+          visually misplace the line itself, not just the click target. hit-target's min-width
+          only inflates *this* absolutely-positioned element, which doesn't participate in the
+          grid's own sizing. */}
+      <div
+        className="seam__hit-area hit-target"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize editor and preview panes"
+        tabIndex={0}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onDoubleClick={onReset}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") onReset();
+        }}
+      />
     </div>
   );
 }

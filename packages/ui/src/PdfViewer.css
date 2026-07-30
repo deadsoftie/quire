@@ -1,3 +1,8 @@
+.pdf-viewer-container {
+  position: relative;
+  height: 100%;
+}
+
 .pdf-viewer {
   height: 100%;
   overflow: auto;
@@ -20,4 +25,42 @@
 /* hue-rotate keeps colored figures from reading as jarringly wrong-hued as a plain invert(1) alone would. */
 .pdf-viewer__page--inverted {
   filter: invert(1) hue-rotate(180deg);
+}
+
+.pdf-zoom {
+  position: absolute;
+  bottom: var(--s-3);
+  right: var(--s-3);
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.pdf-zoom__button,
+.pdf-zoom__label {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--type-mid);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.pdf-zoom__label {
+  padding: 0 var(--s-2);
+  white-space: nowrap;
+}
+
+.pdf-zoom__button:hover,
+.pdf-zoom__label:hover {
+  color: var(--type-hi);
+  background: var(--ink-700);
 }
