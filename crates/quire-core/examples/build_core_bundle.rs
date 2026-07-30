@@ -1,11 +1,16 @@
-//! Compiles the fixtures in `examples/fixtures/core_bundle_discovery/` against Tectonic's real
-//! (network/cache-backed) default bundle while logging every filename it resolves, then copies
-//! that observed file closure into `bundles/core/` as a flat directory bundle.
+//! Compiles the fixtures in `examples/fixtures/core_bundle_discovery/` -- plus, as of task 4.8,
+//! the real shipped templates in `templates/` -- against Tectonic's real (network/cache-backed)
+//! default bundle while logging every filename it resolves, then copies that observed file
+//! closure into `bundles/core/` as a flat directory bundle.
 //!
 //! Run with: cargo run -p quire-core --example build_core_bundle
 //!
-//! Re-run whenever `bundles/manifest.json` changes, and once real templates land (see that
-//! task's own fixtures note) to replace the stand-ins in `core_bundle_discovery/`.
+//! Re-run whenever `bundles/manifest.json` changes. The `core_bundle_discovery/` fixtures are
+//! deliberately kept alongside the real templates, not replaced by them: the real templates are
+//! intentionally minimal (a clean starting point, not a showcase), so several manifest packages
+//! (`xcolor`, `booktabs`, `enumitem`, `natbib`+citations, `amsthm`) are only ever exercised by the
+//! kitchen-sink `article.tex` fixture -- dropping it would silently drop their files from
+//! `bundles/core/` even though the manifest still lists them.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
@@ -34,6 +39,10 @@ const FIXTURES: &[(&str, &[&str])] = &[
     ("acm.tex", &[]),
 ];
 
+/// Task 4.8's real, user-facing starter documents -- see the module doc comment for why these
+/// are discovered *in addition to*, not instead of, the fixtures above.
+const TEMPLATES: &[&str] = &["article.tex", "ieee.tex", "acm.tex", "beamer.tex"];
+
 struct LoggingBundle {
     inner: Box<dyn Bundle>,
     seen: Rc<RefCell<BTreeSet<String>>>,
@@ -61,6 +70,10 @@ impl Bundle for LoggingBundle {
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/fixtures/core_bundle_discovery"))
+}
+
+fn templates_dir() -> PathBuf {
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../templates"))
 }
 
 fn core_bundle_dir() -> PathBuf {
@@ -112,6 +125,30 @@ fn prime_format_cache(bundle_factory: &dyn Fn() -> Result<Box<dyn Bundle>, Compi
     let _ = fs::remove_dir_all(&build_dir);
 }
 
+type BundleFactory = dyn Fn() -> Result<Box<dyn Bundle>, CompileError>;
+
+fn compile_one(source_dir: &Path, name: &str, extra_files: &[&str], bundle_factory: &BundleFactory) {
+    let source_path = source_dir.join(name);
+    let source =
+        fs::read_to_string(&source_path).unwrap_or_else(|e| panic!("reading {}: {e}", source_path.display()));
+
+    let build_dir = std::env::temp_dir().join(format!(
+        "quire-core-build-core-bundle-{}-{}",
+        name.trim_end_matches(".tex"),
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&build_dir);
+    fs::create_dir_all(&build_dir).expect("create build dir");
+    for extra in extra_files {
+        fs::copy(source_dir.join(extra), build_dir.join(extra)).unwrap_or_else(|e| panic!("copying dependency {extra}: {e}"));
+    }
+
+    println!("compiling {name}...");
+    let result = compile_latex_in_dir_with_bundle(&source, &build_dir, bundle_factory);
+    let _ = fs::remove_dir_all(&build_dir);
+    result.unwrap_or_else(|e| panic!("compiling {name}: {}", e.log.as_deref().unwrap_or(&e.message)));
+}
+
 fn discover() -> BTreeSet<String> {
     let seen: Rc<RefCell<BTreeSet<String>>> = Rc::new(RefCell::new(BTreeSet::new()));
     let factory_seen = Rc::clone(&seen);
@@ -123,26 +160,10 @@ fn discover() -> BTreeSet<String> {
     prime_format_cache(&bundle_factory);
 
     for (name, extra_files) in FIXTURES {
-        let source_path = fixtures_dir().join(name);
-        let source = fs::read_to_string(&source_path)
-            .unwrap_or_else(|e| panic!("reading fixture {}: {e}", source_path.display()));
-
-        let build_dir = std::env::temp_dir().join(format!(
-            "quire-core-build-core-bundle-{}-{}",
-            name.trim_end_matches(".tex"),
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&build_dir);
-        fs::create_dir_all(&build_dir).expect("create build dir");
-        for extra in *extra_files {
-            fs::copy(fixtures_dir().join(extra), build_dir.join(extra))
-                .unwrap_or_else(|e| panic!("copying fixture dependency {extra}: {e}"));
-        }
-
-        println!("compiling {name}...");
-        let result = compile_latex_in_dir_with_bundle(&source, &build_dir, &bundle_factory);
-        let _ = fs::remove_dir_all(&build_dir);
-        result.unwrap_or_else(|e| panic!("compiling {name}: {}", e.log.as_deref().unwrap_or(&e.message)));
+        compile_one(&fixtures_dir(), name, extra_files, &bundle_factory);
+    }
+    for name in TEMPLATES {
+        compile_one(&templates_dir(), name, &[], &bundle_factory);
     }
 
     // bundle_factory holds the other clone of `seen`; drop it so try_unwrap below succeeds.
