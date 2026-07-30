@@ -532,6 +532,7 @@ function AppShell() {
   }
 
   const activeTab = tabs.find((t) => t.uri === activeUri) ?? null;
+  const editorDiagnostics = activeTab ? diagnostics.filter((d) => d.uri === activeTab.uri) : [];
 
   return (
     <div className="app">
@@ -576,6 +577,7 @@ function AppShell() {
                   restoreScrollTop={activeTab.scrollTop}
                   onChange={scheduleCompile}
                   onCursorActivity={handleCursorActivity}
+                  diagnostics={editorDiagnostics}
                 />
               )}
             </div>

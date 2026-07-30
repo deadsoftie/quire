@@ -2,6 +2,9 @@ import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { autocompletion, snippet } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
+import { linter, lintGutter, setDiagnostics as setLintDiagnostics } from "@codemirror/lint";
+import type { Diagnostic } from "@quire/client";
+import { toEditorDiagnostics } from "./diagnostics";
 import {
   focusCompartment,
   focusModeExtension,
@@ -17,6 +20,16 @@ import { renderSymbolPreview } from "./symbolPreview";
 
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
+
+// @codemirror/lint's own underline bakes a fixed color into the SVG itself (not `currentColor`),
+// so recoloring it means supplying our own copy of that same SVG rather than a plain CSS override.
+function underline(): string {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="6" height="3">' +
+    '<path d="m0 2.5 l2 -1.5 l1 0 l2 1.5 l1 0" stroke="currentColor" fill="none" stroke-width=".7"/>' +
+    "</svg>";
+  return `url('data:image/svg+xml,${encodeURIComponent(svg)}')`;
+}
 
 // `{ dark: true }` is more than a flag here: @codemirror/autocomplete's base theme gates its
 // popup colors behind CM6's internal `&dark` scope class, which only gets added when some
@@ -75,6 +88,35 @@ const baseEditorTheme = EditorView.theme(
       fontSize: "1.6em",
       textAlign: "center",
     },
+    // Errors red, warnings amber, nothing louder than that -- same two colors and 2px accent
+    // width already used by StatusBar/ProblemsPanel.
+    ".cm-diagnostic": {
+      borderLeftWidth: "2px",
+      padding: "6px 8px",
+    },
+    ".cm-diagnostic-error": { borderLeftColor: "var(--proof-red)" },
+    ".cm-diagnostic-warning": { borderLeftColor: "var(--proof-amber)" },
+    ".cm-diagnostic-info": { borderLeftColor: "var(--type-lo)" },
+    ".cm-diagnosticText, .cm-diagnosticMessage": { color: "var(--type-hi)" },
+    ".cm-diagnosticHint": { color: "var(--type-mid)", marginTop: "2px" },
+    ".cm-lintRange-error": { color: "var(--proof-red)", backgroundImage: underline() },
+    ".cm-lintRange-warning": { color: "var(--proof-amber)", backgroundImage: underline() },
+    ".cm-lintRange-info": { color: "var(--type-lo)", backgroundImage: underline() },
+    ".cm-lintPoint-error:after": { borderBottomColor: "var(--proof-red)" },
+    ".cm-lintPoint-warning:after": { borderBottomColor: "var(--proof-amber)" },
+    ".cm-lintPoint-info:after": { borderBottomColor: "var(--type-lo)" },
+    // A quiet dot, not the library's default triangle/square/circle mix -- matches ProblemsPanel's
+    // own restrained accent-only treatment rather than adding a third visual vocabulary.
+    ".cm-lint-marker": {
+      width: "0.5em",
+      height: "0.5em",
+      margin: "0.35em auto",
+      borderRadius: "50%",
+      content: "none",
+    },
+    ".cm-lint-marker-error": { backgroundColor: "var(--proof-red)" },
+    ".cm-lint-marker-warning": { backgroundColor: "var(--proof-amber)" },
+    ".cm-lint-marker-info": { backgroundColor: "var(--type-lo)" },
   },
   { dark: true },
 );
@@ -131,6 +173,8 @@ interface EditorProps {
   // line/column here are 1-based (StatusBar's convention), distinct from the 0-based UTF-16
   // columns Position uses on the wire.
   onCursorActivity?: (cursor: number, scrollTop: number, line: number, column: number) => void;
+  // Already filtered to this file's own uri -- Editor doesn't know about other open tabs.
+  diagnostics?: Diagnostic[];
 }
 
 export function Editor({
@@ -144,6 +188,7 @@ export function Editor({
   restoreScrollTop,
   onChange,
   onCursorActivity,
+  diagnostics,
 }: EditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -165,6 +210,8 @@ export function Editor({
         baseEditorTheme,
         latex(),
         environmentSync(),
+        linter(null),
+        lintGutter(),
         autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] }),
         proseCompartment.of(proseMode ? proseModeExtension() : []),
         typewriterCompartment.of(typewriterMode ? typewriterScrollingExtension() : []),
@@ -221,6 +268,12 @@ export function Editor({
   useEffect(() => {
     viewRef.current?.dispatch({ effects: focusCompartment.reconfigure(focusMode ? focusModeExtension() : []) });
   }, [focusMode]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch(setLintDiagnostics(view.state, toEditorDiagnostics(diagnostics ?? [], view.state.doc)));
+  }, [diagnostics]);
 
   return <div ref={hostRef} style={{ height: "100%" }} />;
 }
