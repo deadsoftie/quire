@@ -1,3 +1,4 @@
+pub mod diagnostics;
 pub mod index;
 pub mod page_hash;
 pub mod project;
@@ -11,6 +12,8 @@ pub struct CompileOutput {
     pub pdf: Vec<u8>,
     pub page_count: u32,
     pub changed_pages: Vec<u32>,
+    /// The engine's own transcript from the relevant tex pass, for `diagnostics::translate_log`.
+    pub log: String,
 }
 
 #[derive(Debug)]
@@ -62,7 +65,7 @@ pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
         .tex_input_name("texput.tex")
         .format_name("latex")
         .format_cache_path(format_cache_path)
-        .keep_logs(false)
+        .keep_logs(true)
         .keep_intermediates(false)
         .print_stdout(false)
         .output_format(OutputFormat::Pdf)
@@ -84,9 +87,10 @@ pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
         message: "LaTeX didn't report failure, but no PDF was created".to_string(),
         log: None,
     })?;
+    let log = files.remove("texput.log").map(|f| String::from_utf8_lossy(&f.data).into_owned()).unwrap_or_default();
 
     let page_count = page_hash::hash_pages(&pdf)?.len() as u32;
     let changed_pages = (1..=page_count).collect();
 
-    Ok(CompileOutput { pdf, page_count, changed_pages })
+    Ok(CompileOutput { pdf, page_count, changed_pages, log })
 }

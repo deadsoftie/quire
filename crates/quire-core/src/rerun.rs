@@ -24,7 +24,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
     let aux_path = build_dir.join("texput.aux");
 
     let aux_before_pass1 = fs::read(&aux_path).unwrap_or_default();
-    run_tex_pass(source, build_dir, &config, &format_cache_path)?;
+    let mut last_log = run_tex_pass(source, build_dir, &config, &format_cache_path)?;
     let mut passes = 1;
     let mut last_aux = fs::read(&aux_path).unwrap_or_default();
     let mut needs_rerun = last_aux != aux_before_pass1;
@@ -42,7 +42,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
     }
 
     while needs_rerun && passes < MAX_PASSES {
-        run_tex_pass(source, build_dir, &config, &format_cache_path)?;
+        last_log = run_tex_pass(source, build_dir, &config, &format_cache_path)?;
         passes += 1;
         let new_aux = fs::read(&aux_path).unwrap_or_default();
         needs_rerun = new_aux != last_aux;
@@ -62,7 +62,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
     let changed_pages = crate::page_hash::diff_pages(previous_hashes.as_deref(), &hashes);
     fs::write(&hashes_path, hashes.join("\n"))?;
 
-    Ok(CompileOutput { pdf, page_count: hashes.len() as u32, changed_pages })
+    Ok(CompileOutput { pdf, page_count: hashes.len() as u32, changed_pages, log: last_log })
 }
 
 fn run_tex_pass(
@@ -70,7 +70,7 @@ fn run_tex_pass(
     build_dir: &Path,
     config: &PersistentConfig,
     format_cache_path: &Path,
-) -> Result<(), CompileError> {
+) -> Result<String, CompileError> {
     let mut status = NoopStatusBackend::default();
     let bundle = config.default_bundle(false)?;
 
@@ -91,15 +91,16 @@ fn run_tex_pass(
         .pass(PassSetting::Tex);
 
     let mut sess = sb.create(&mut status)?;
-    if let Err(e) = sess.run(&mut status) {
-        let log = String::from_utf8_lossy(&sess.get_stdout_content()).into_owned();
-        return Err(CompileError {
-            message: e.to_string(),
-            log: if log.trim().is_empty() { None } else { Some(log) },
-        });
+    let result = sess.run(&mut status);
+    // Unlike lib.rs's do_not_write_output_files() path, this builder config keeps a full
+    // transcript in get_stdout_content() on success too, for diagnostics::translate_log.
+    let log = String::from_utf8_lossy(&sess.get_stdout_content()).into_owned();
+
+    if let Err(e) = result {
+        return Err(CompileError { message: e.to_string(), log: if log.trim().is_empty() { None } else { Some(log) } });
     }
 
-    Ok(())
+    Ok(log)
 }
 
 fn run_bibtex_pass(

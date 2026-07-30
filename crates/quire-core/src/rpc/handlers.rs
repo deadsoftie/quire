@@ -122,6 +122,8 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let compile_id = generate_compile_id();
     let bundle_version = bundle_digest_hex().unwrap_or_default();
 
+    let root_uri = root.display().to_string();
+
     let response = match compile_latex_in_dir(&root_source, &shadow_dir) {
         Ok(output) => CompileResponse {
             compile_id,
@@ -130,30 +132,43 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             changed_pages: output.changed_pages,
             page_count: output.page_count,
             duration_ms: start.elapsed().as_millis() as u32,
-            diagnostics: Vec::new(),
+            diagnostics: crate::diagnostics::translate_log(&output.log, &root_uri, &project_dir),
             missing_packages: Vec::new(),
             bundle_version,
         },
-        Err(e) => CompileResponse {
-            compile_id,
-            status: CompileStatus::Errors,
-            pdf_path: None,
-            changed_pages: Vec::new(),
-            page_count: 0,
-            duration_ms: start.elapsed().as_millis() as u32,
-            // No log-parsing/translation yet -- the real error, as-is.
-            diagnostics: vec![Diagnostic {
-                uri: None,
-                range: None,
-                severity: Severity::Error,
-                message: e.message.clone(),
-                raw_message: e.log.unwrap_or(e.message),
-                hint: None,
-                code: None,
-            }],
-            missing_packages: Vec::new(),
-            bundle_version,
-        },
+        Err(e) => {
+            let translated = e
+                .log
+                .as_deref()
+                .map(|log| crate::diagnostics::translate_log(log, &root_uri, &project_dir))
+                .unwrap_or_default();
+            // A log the translator recognized nothing in (or no log at all -- some engine-level
+            // failures never produce one) still needs to reach the user as something, not silence.
+            let diagnostics = if translated.is_empty() {
+                vec![Diagnostic {
+                    uri: None,
+                    range: None,
+                    severity: Severity::Error,
+                    message: e.message.clone(),
+                    raw_message: e.log.unwrap_or(e.message),
+                    hint: None,
+                    code: None,
+                }]
+            } else {
+                translated
+            };
+            CompileResponse {
+                compile_id,
+                status: CompileStatus::Errors,
+                pdf_path: None,
+                changed_pages: Vec::new(),
+                page_count: 0,
+                duration_ms: start.elapsed().as_millis() as u32,
+                diagnostics,
+                missing_packages: Vec::new(),
+                bundle_version,
+            }
+        }
     };
 
     Ok(response)
