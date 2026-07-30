@@ -90,7 +90,10 @@ const PANEL_TITLES: Record<PanelKind, string> = {
 
 const DEFAULT_SESSION: SessionState = {
   projectPath: null,
-  openUri: null,
+  openTabs: [],
+  activeUri: null,
+  sidebarSection: "file-tree",
+  sidebarWidth: 240,
   splitFraction: 0.5,
   focusMode: false,
   typewriterMode: false,
@@ -163,10 +166,11 @@ function AppShell() {
   }, []);
 
   // Cursor/scroll come from Editor on every move -- updates the active tab's own record (so
-  // switching away and back within this session restores position) plus the session snapshot
-  // (still just "whichever tab was last active," same shape as before 3.5.3; a full per-tab
-  // session shape is 3.5.6). Doesn't call setTabs -- nothing visibly depends on these fields
-  // except the tab's own Editor mount, which only reads them once, at mount time.
+  // switching away and back within this session restores position) plus the session snapshot,
+  // which only remembers the *active* tab's exact position (3.5.6: restoring every tab's cursor
+  // wasn't worth the complexity the acceptance criterion didn't ask for). Doesn't call setTabs --
+  // nothing visibly depends on these fields except the tab's own Editor mount, which only reads
+  // them once, at mount time.
   const handleCursorActivity = useCallback(
     (cursor: number, scrollTop: number, line: number, column: number) => {
       const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
@@ -305,8 +309,8 @@ function AppShell() {
   // Restores the previous session if one exists and its project still opens;
   // otherwise (first launch, or the project has since moved/been deleted)
   // falls back to the same disposable scratch project as before session
-  // restore existed. Layout/mode/theme settings restore either way -- a
-  // project that's gone doesn't mean those should reset to defaults too.
+  // restore existed. Layout/mode/theme/sidebar settings restore either way --
+  // a project that's gone doesn't mean those should reset to defaults too.
   useEffect(() => {
     (async () => {
       const loaded = await window.quireDesktop.loadSession();
@@ -319,31 +323,50 @@ function AppShell() {
         setProseMode(session.proseMode);
         setTheme(session.theme);
         setPdfInverted(session.pdfInverted);
+        setSidebarSection(session.sidebarSection);
+        setSidebarWidth(session.sidebarWidth);
       }
 
       if (session?.projectPath) {
         try {
           const opened = await window.quire.openProject({ path: session.projectPath });
-          const uri = session.openUri ?? opened.root;
-          const text = await window.quire.readFile(uri);
           const next: Project = {
             projectId: opened.projectId,
             label: basename(opened.projectId),
             engineAvailable: opened.engineAvailable,
             files: opened.files,
           };
+
+          // A tab whose file has since moved/been deleted is skipped, not fatal to the whole
+          // restore -- reopen whatever's still there rather than falling all the way back to scratch.
+          const wantedUris = session.openTabs.length > 0 ? session.openTabs : [opened.root];
+          const loadedTabs: OpenTab[] = [];
+          for (const uri of wantedUris) {
+            const text = await window.quire.readFile(uri).catch(() => null);
+            if (text === null) continue;
+            const isActive = uri === session.activeUri;
+            loadedTabs.push({
+              uri,
+              text,
+              savedText: text,
+              cursor: isActive ? (session.cursor ?? 0) : 0,
+              scrollTop: isActive ? session.scrollTop : null,
+            });
+          }
+          // Every remembered tab is gone -- same situation as no tabs to restore at all; this
+          // still throws (uncaught) into the outer catch if even the root is unreadable, correctly
+          // degrading to the scratch project below.
+          if (loadedTabs.length === 0) {
+            const text = await window.quire.readFile(opened.root);
+            loadedTabs.push({ uri: opened.root, text, savedText: text, cursor: 0, scrollTop: null });
+          }
+
           projectRef.current = next;
           setProject(next);
-          const tab: OpenTab = {
-            uri,
-            text,
-            savedText: text,
-            cursor: session.cursor ?? 0,
-            scrollTop: session.scrollTop,
-          };
-          tabsRef.current = [tab];
-          setTabs(tabsRef.current);
-          setActiveUri(uri);
+          tabsRef.current = loadedTabs;
+          setTabs(loadedTabs);
+          const activeStillOpen = loadedTabs.some((t) => t.uri === session.activeUri);
+          setActiveUri(activeStillOpen ? session.activeUri : loadedTabs[0].uri);
           runCompile("open");
           initializedRef.current = true;
           return;
@@ -378,13 +401,19 @@ function AppShell() {
     localStorage.setItem("quire-theme", theme);
   }, [theme]);
 
-  // Everything except cursor/scroll (handleCursorActivity above covers those) -- infrequent enough to just watch directly.
+  // Everything except cursor/scroll (handleCursorActivity above covers those) -- infrequent enough
+  // to just watch directly. `tabs` (state, not tabsRef) only changes on open/close/rename, not on
+  // every keystroke, so this doesn't turn into a per-keystroke session write either.
   useEffect(() => {
     if (!initializedRef.current) return;
+    const isRealProject = project && project.engineAvailable !== null;
     sessionRef.current = {
       ...sessionRef.current,
-      projectPath: project && project.engineAvailable !== null ? project.projectId : null,
-      openUri: project && project.engineAvailable !== null ? activeUri : null,
+      projectPath: isRealProject ? project.projectId : null,
+      openTabs: isRealProject ? tabs.map((t) => t.uri) : [],
+      activeUri: isRealProject ? activeUri : null,
+      sidebarSection,
+      sidebarWidth,
       splitFraction,
       focusMode,
       typewriterMode,
@@ -393,7 +422,20 @@ function AppShell() {
       pdfInverted,
     };
     scheduleSaveSession();
-  }, [project, activeUri, splitFraction, focusMode, typewriterMode, proseMode, theme, pdfInverted, scheduleSaveSession]);
+  }, [
+    project,
+    tabs,
+    activeUri,
+    sidebarSection,
+    sidebarWidth,
+    splitFraction,
+    focusMode,
+    typewriterMode,
+    proseMode,
+    theme,
+    pdfInverted,
+    scheduleSaveSession,
+  ]);
 
   // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {

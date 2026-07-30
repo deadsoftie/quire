@@ -1,24 +1,34 @@
+import type { PanelKind } from "./panels/types";
+
+const PANEL_KINDS: PanelKind[] = ["file-tree", "outline", "problems", "packages"];
+
 // Everything that "quit and relaunch returns to identical state" covers.
 // Deliberately just the fields that exist today (2.3's split, 2.8's
-// editor modes, 2.9's theme/inversion), plus the cursor and scroll
-// position named directly in the acceptance criterion. Sidebar section/
-// width and open tabs are 3.5.6's job, once 3.5.3 settles their shape.
-// "Open projects" is plural in the task title but singular in practice --
-// this app has no multi-project concept to restore more than one.
+// editor modes, 2.9's theme/inversion, 3.5's sidebar/tabs), plus the
+// cursor and scroll position named directly in the acceptance criterion.
 export interface SessionState {
   /** `null` means no real project was ever opened (still on the scratch placeholder) -- there's nothing to reopen. */
   projectPath: string | null;
-  /** The file within the project that was open, if not the root document. */
-  openUri: string | null;
+  /** Every tab that was open, in order. `[]` means nothing to restore -- same meaning `openUri: null` had before 3.5.3. */
+  openTabs: string[];
+  /** Which of `openTabs` was active. Not trusted blindly on restore -- App.tsx falls back to the
+   * first successfully-reopened tab if this doesn't match any of them (corrupt file, or the
+   * remembered file's since been moved/deleted). */
+  activeUri: string | null;
+  sidebarSection: PanelKind | null;
+  sidebarWidth: number;
   splitFraction: number;
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;
   theme: "dark" | "light";
   pdfInverted: boolean;
-  /** CM6 selection head, a character offset into `openUri`'s text. */
+  /** CM6 selection head for whichever tab was active when this was saved -- only that one tab's
+   * position is restored exactly; every other reopened tab starts at its own beginning. The
+   * acceptance criterion is "the same set of open tabs," not each one's exact cursor, so this is
+   * a deliberate simplification, not a gap. */
   cursor: number | null;
-  /** The editor's own scroll position, in pixels. Deliberately not the PDF preview's -- that regenerates from a fresh compile every launch anyway. */
+  /** The editor's own scroll position, in pixels, for that same active tab. Deliberately not the PDF preview's -- that regenerates from a fresh compile every launch anyway. */
   scrollTop: number | null;
 }
 
@@ -33,9 +43,21 @@ export function normalizeSession(raw: unknown, fallback: SessionState): SessionS
   if (typeof raw !== "object" || raw === null) return fallback;
   const r = raw as Record<string, unknown>;
 
+  const openTabs = Array.isArray(r.openTabs)
+    ? r.openTabs.filter((u): u is string => typeof u === "string")
+    : fallback.openTabs;
+
+  const sidebarSection =
+    r.sidebarSection === null || (typeof r.sidebarSection === "string" && PANEL_KINDS.includes(r.sidebarSection as PanelKind))
+      ? (r.sidebarSection as PanelKind | null)
+      : fallback.sidebarSection;
+
   return {
     projectPath: typeof r.projectPath === "string" ? r.projectPath : fallback.projectPath,
-    openUri: typeof r.openUri === "string" ? r.openUri : fallback.openUri,
+    openTabs,
+    activeUri: typeof r.activeUri === "string" ? r.activeUri : fallback.activeUri,
+    sidebarSection,
+    sidebarWidth: typeof r.sidebarWidth === "number" ? r.sidebarWidth : fallback.sidebarWidth,
     splitFraction: typeof r.splitFraction === "number" ? r.splitFraction : fallback.splitFraction,
     focusMode: typeof r.focusMode === "boolean" ? r.focusMode : fallback.focusMode,
     typewriterMode: typeof r.typewriterMode === "boolean" ? r.typewriterMode : fallback.typewriterMode,
