@@ -207,8 +207,7 @@ fn generate_compile_id() -> String {
 }
 
 fn bundle_digest_hex() -> Result<String, CompileError> {
-    let config = tectonic::config::PersistentConfig::open(false)?;
-    let mut bundle = config.default_bundle(false)?;
+    let mut bundle = crate::bundle::resolve_bundle()?;
     Ok(bundle.get_digest()?.to_string())
 }
 

@@ -1,3 +1,4 @@
+pub mod bundle;
 pub mod diagnostics;
 pub mod index;
 pub mod page_hash;
@@ -56,7 +57,7 @@ pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
     let mut status = NoopStatusBackend::default();
 
     let config = tectonic::config::PersistentConfig::open(false)?;
-    let bundle = config.default_bundle(false)?;
+    let bundle = bundle::resolve_bundle()?;
     let format_cache_path = config.format_cache_path()?;
 
     let mut sb = ProcessingSessionBuilder::default();

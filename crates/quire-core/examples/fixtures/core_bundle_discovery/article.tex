@@ -1,0 +1,70 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{tgpagella}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{graphicx}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{natbib}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}
+
+\title{Core Bundle Discovery: Article}
+\author{Quire}
+
+\begin{document}
+\maketitle
+
+\section{Math}
+An equation: $E = mc^2$, and a set $\mathbb{R} \subseteq \mathbb{C}$.
+\begin{equation}
+  \int_0^1 x^2 \, dx = \frac{1}{3}
+\end{equation}
+
+\begin{theorem}
+  This is a theorem, via amsthm.
+\end{theorem}
+
+\section{Color and lists}
+Some \textcolor{blue}{colored text} via xcolor.
+
+\begin{enumerate}[label=(\alph*)]
+  \item First, via enumitem's custom label.
+  \item Second.
+\end{enumerate}
+
+\section{Table}
+\begin{table}
+  \centering
+  \caption{A booktabs table, captioned via the caption package.}
+  \begin{tabular}{lr}
+    \toprule
+    Name & Value \\
+    \midrule
+    Alpha & 1 \\
+    Beta & 2 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Basic type styles}
+Some \textbf{bold}, \textit{italic}, and \emph{emphasized} text -- and a deliberately
+undefined cross-reference, Figure~\ref{fig:does-not-exist-in-this-fixture}, since LaTeX's
+kernel renders that fallback in bold (\texttt{lmroman}'s bold face is otherwise never
+requested by a document that only ever cites resolvable labels).
+
+\section{References}
+See \href{https://example.com}{this link}, and a citation \citep{knuth1984}.
+
+\bibliographystyle{plainnat}
+\bibliography{article_refs}
+
+\end{document}

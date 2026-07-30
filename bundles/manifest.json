@@ -1,0 +1,34 @@
+{
+  "documentClasses": ["article", "report", "book", "beamer", "IEEEtran", "acmart"],
+  "packages": [
+    "amsmath",
+    "amssymb",
+    "amsthm",
+    "graphicx",
+    "hyperref",
+    "geometry",
+    "xcolor",
+    "booktabs",
+    "caption",
+    "enumitem",
+    "natbib",
+    "babel"
+  ],
+  "bibtexStyles": ["plain", "plainnat"],
+  "babelLanguages": ["english"],
+  "fontFamilies": ["Latin Modern", "TeX Gyre"],
+  "excluded": [
+    {
+      "name": "biblatex",
+      "reason": "Confirmed broken: Tectonic's bundled biblatex.sty writes a .bcf format version that no real biber binary produces/expects (BCF version mismatch). No workaround exists. See docs/CONTRACT.md. natbib covers core's citation need instead; revisit if this is ever resolved upstream."
+    },
+    {
+      "name": "biber",
+      "reason": "Same BCF mismatch as biblatex above -- biber itself doesn't work at all today, for anyone, independent of any bundling decision."
+    },
+    {
+      "name": "tikz/pgf",
+      "reason": "Deliberate, debatable omission (Section 9.6's own framing): genuinely common in the target audience's work, but large. Ship without it, watch install counts once package telemetry exists (task 4.13), promote into core in a point release if the data says so."
+    }
+  ]
+}

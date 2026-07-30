@@ -16,7 +16,19 @@ const CITATION_FINGERPRINT_FILE: &str = "quire-citations.txt";
 const PAGE_HASHES_FILE: &str = "quire-page-hashes.txt";
 const TEX_INPUT_NAME: &str = "texput.tex";
 
+/// Factory rather than a plain `Box<dyn Bundle>` because each Tectonic pass needs its own
+/// fresh bundle instance -- `ProcessingSessionBuilder::bundle` consumes it.
+pub type BundleFactory = dyn Fn() -> Result<Box<dyn Bundle>, CompileError>;
+
 pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOutput, CompileError> {
+    compile_latex_in_dir_with_bundle(source, build_dir, &crate::bundle::resolve_bundle)
+}
+
+pub fn compile_latex_in_dir_with_bundle(
+    source: &str,
+    build_dir: &Path,
+    bundle_factory: &BundleFactory,
+) -> Result<CompileOutput, CompileError> {
     fs::create_dir_all(build_dir)?;
 
     let config = PersistentConfig::open(false)?;
@@ -24,7 +36,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
     let aux_path = build_dir.join("texput.aux");
 
     let aux_before_pass1 = fs::read(&aux_path).unwrap_or_default();
-    let mut last_log = run_tex_pass(source, build_dir, &config, &format_cache_path)?;
+    let mut last_log = run_tex_pass(source, build_dir, &format_cache_path, bundle_factory)?;
     let mut passes = 1;
     let mut last_aux = fs::read(&aux_path).unwrap_or_default();
     let mut needs_rerun = last_aux != aux_before_pass1;
@@ -34,7 +46,7 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
         let fingerprint_path = build_dir.join(CITATION_FINGERPRINT_FILE);
         let previous = fs::read_to_string(&fingerprint_path).ok();
         if previous.as_deref() != Some(fingerprint.as_str()) {
-            run_bibtex_pass(build_dir, &config, &format_cache_path)?;
+            run_bibtex_pass(build_dir, &format_cache_path, bundle_factory)?;
             fs::write(&fingerprint_path, &fingerprint)?;
             // BibTeX only touches .bbl, invisible to the aux-diff check above.
             needs_rerun = true;
@@ -42,13 +54,13 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
     }
 
     while needs_rerun && passes < MAX_PASSES {
-        last_log = run_tex_pass(source, build_dir, &config, &format_cache_path)?;
+        last_log = run_tex_pass(source, build_dir, &format_cache_path, bundle_factory)?;
         passes += 1;
         let new_aux = fs::read(&aux_path).unwrap_or_default();
         needs_rerun = new_aux != last_aux;
         last_aux = new_aux;
     }
-    convert_xdv_to_pdf(build_dir, &config)?;
+    convert_xdv_to_pdf(build_dir, bundle_factory)?;
 
     let pdf = fs::read(build_dir.join("texput.pdf")).map_err(|_| CompileError {
         message: "LaTeX didn't report failure, but no PDF was created".to_string(),
@@ -68,11 +80,11 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
 fn run_tex_pass(
     source: &str,
     build_dir: &Path,
-    config: &PersistentConfig,
     format_cache_path: &Path,
+    bundle_factory: &BundleFactory,
 ) -> Result<String, CompileError> {
     let mut status = NoopStatusBackend::default();
-    let bundle = config.default_bundle(false)?;
+    let bundle = bundle_factory()?;
 
     let mut sb = ProcessingSessionBuilder::default();
     sb.bundle(bundle)
@@ -105,11 +117,11 @@ fn run_tex_pass(
 
 fn run_bibtex_pass(
     build_dir: &Path,
-    config: &PersistentConfig,
     format_cache_path: &Path,
+    bundle_factory: &BundleFactory,
 ) -> Result<(), CompileError> {
     let mut status = NoopStatusBackend::default();
-    let bundle = config.default_bundle(false)?;
+    let bundle = bundle_factory()?;
 
     let mut sb = ProcessingSessionBuilder::default();
     sb.bundle(bundle)
@@ -168,10 +180,10 @@ impl DriverHooks for XdvipdfmxDriver {
     }
 }
 
-fn convert_xdv_to_pdf(build_dir: &Path, config: &PersistentConfig) -> Result<(), CompileError> {
+fn convert_xdv_to_pdf(build_dir: &Path, bundle_factory: &BundleFactory) -> Result<(), CompileError> {
     let mut status = NoopStatusBackend::default();
     let xdv = fs::read(build_dir.join("texput.xdv"))?;
-    let bundle = config.default_bundle(false)?;
+    let bundle = bundle_factory()?;
 
     let mut mem = MemoryIo::new(true);
     mem.create_entry("texput.xdv", xdv);

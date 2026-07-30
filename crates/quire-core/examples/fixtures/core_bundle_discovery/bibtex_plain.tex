@@ -1,0 +1,10 @@
+\documentclass{article}
+\begin{document}
+A citation using the classic \texttt{plain} BibTeX style, as opposed to natbib's own
+\texttt{plainnat}: \cite{knuth1984}. Plain \texttt{\textbackslash cite} (no natbib
+loaded) is at least as common as natbib's \texttt{\textbackslash citep}, so both
+styles need to be in core, not just one.
+
+\bibliographystyle{plain}
+\bibliography{article_refs}
+\end{document}
