@@ -1,7 +1,3 @@
-//! Backs compiles with real files on disk (unlike `compile_latex`'s pure in-memory buffers) so repeated compiles of the same project can skip BibTeX when citations haven't changed and tell whether `.aux` is still settling -- state that can't live in process memory since each compile is a fresh spawned process.
-//!
-//! BibTeX only, not biblatex/biber (upstream Tectonic/biber BCF mismatch, tectonic#1267). Max 4 TeX passes total (QUIRE_SPEC.md 9.1). Page hashing ([`crate::page_hash`]) also persists its state here for the same reason.
-
 use std::fs;
 use std::path::Path;
 
@@ -20,7 +16,6 @@ const CITATION_FINGERPRINT_FILE: &str = "quire-citations.txt";
 const PAGE_HASHES_FILE: &str = "quire-page-hashes.txt";
 const TEX_INPUT_NAME: &str = "texput.tex";
 
-/// Same as [`crate::compile_latex`] but backed by real files in `build_dir`, so repeated calls can skip BibTeX/extra TeX passes when nothing relevant changed.
 pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOutput, CompileError> {
     fs::create_dir_all(build_dir)?;
 
@@ -53,7 +48,6 @@ pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOut
         needs_rerun = new_aux != last_aux;
         last_aux = new_aux;
     }
-    // Passes exhausted and still unstable: fall through and show the best available output (QUIRE_SPEC.md 9.1), don't loop or fail.
     convert_xdv_to_pdf(build_dir, &config)?;
 
     let pdf = fs::read(build_dir.join("texput.pdf")).map_err(|_| CompileError {
@@ -108,7 +102,6 @@ fn run_tex_pass(
     Ok(())
 }
 
-/// Runs BibTeX only, against the existing `texput.aux`: `BibtexFirst` + `reruns(0)` skips Tectonic's own TeX rerun loop; `Xdv` (not `Pdf`) avoids a doomed xdvipdfmx pass over a nonexistent `.xdv` while still writing `.bbl`.
 fn run_bibtex_pass(
     build_dir: &Path,
     config: &PersistentConfig,
@@ -144,7 +137,6 @@ fn run_bibtex_pass(
     Ok(())
 }
 
-/// `texput.xdv`/`texput.pdf` live in memory; font lookups fall through to the compile bundle. Not `tectonic_bridge_core`'s `MinimalDriver`: its wrapped provider is private, so the converted PDF couldn't be read back out.
 struct XdvipdfmxIo {
     mem: MemoryIo,
     bundle: Box<dyn Bundle>,
@@ -175,7 +167,6 @@ impl DriverHooks for XdvipdfmxDriver {
     }
 }
 
-/// Converts `texput.xdv` to `texput.pdf` standalone, bypassing `ProcessingSession` entirely: every `PassSetting` that produces a PDF also unconditionally re-runs BibTeX when `\bibdata` is present, with no way to skip it.
 fn convert_xdv_to_pdf(build_dir: &Path, config: &PersistentConfig) -> Result<(), CompileError> {
     let mut status = NoopStatusBackend::default();
     let xdv = fs::read(build_dir.join("texput.xdv"))?;
@@ -211,7 +202,6 @@ fn convert_xdv_to_pdf(build_dir: &Path, config: &PersistentConfig) -> Result<(),
     Ok(())
 }
 
-/// The `\bibdata`/`\citation` lines that determine BibTeX's output, order and duplicates preserved (citation-order-dependent styles like `unsrt`); `None` means no bibliography.
 fn citation_fingerprint(aux_text: &str) -> Option<String> {
     let mut has_bibdata = false;
     let mut lines = Vec::new();

@@ -30,7 +30,6 @@ function createWindow() {
   });
 }
 
-// Never calls client.openProject -- compile() works fine against a projectId that was never "opened," and a known-shape single-file dir doesn't need root detection.
 function createScratchProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "quire-scratch-"));
   const file = path.join(dir, "untitled.tex");
@@ -40,20 +39,16 @@ function createScratchProject() {
 
 app.whenReady().then(() => {
   client = new StdioTransport();
-  // A handful of fields (see packages/ui/src/session.ts) -- not worth a database.
   const sessionFile = path.join(app.getPath("userData"), "session.json");
 
-  // Forwarded unchanged -- App.tsx decides what each event means. On macOS the app (and any
-  // in-flight compile or ProjectWatcher) outlives the window past window-all-closed, so a
-  // background event can still fire after the window's gone -- isDestroyed() guards that,
-  // since mainWindow itself is only cleared on 'closed', not synchronously with destruction.
+  // On macOS the app can outlive the window past window-all-closed, so a background event can
+  // still fire after the window's gone -- isDestroyed() guards that.
   client.onEvent((event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("core-event", event);
     }
   });
 
-  // One handler per CoreApi method, forwarding to the real transport with no reshaping.
   ipcMain.handle("core:openProject", (_event, r) => client.openProject(r));
   ipcMain.handle("core:setRoot", (_event, projectId, uri) => client.setRoot(projectId, uri));
   ipcMain.handle("core:closeProject", (_event, projectId) => client.closeProject(projectId));
@@ -66,7 +61,6 @@ app.whenReady().then(() => {
   ipcMain.handle("core:readFile", (_event, uri) => client.readFile(uri));
   ipcMain.handle("core:writeFile", (_event, uri, text) => client.writeFile(uri, text));
 
-  // Desktop-only extras -- see preload.js's quireDesktop.
   ipcMain.handle("desktop:createScratchProject", () => createScratchProject());
 
   ipcMain.handle("desktop:chooseProjectFolder", async () => {

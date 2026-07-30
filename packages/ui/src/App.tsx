@@ -20,10 +20,6 @@ import { TabBar } from "./TabBar";
 import { TopBar } from "./TopBar";
 import "./App.css";
 
-// A tiny external store, not ordinary lifted state -- cursor position changes on every keystroke
-// (docChanged moves the cursor too), and StatusBar is the only thing that displays it. Routing it
-// through AppShell's own state would re-render the whole tree (file tree, tab bar, everything) on
-// every character typed; useSyncExternalStore lets only StatusBar itself re-render instead.
 function createCursorPositionStore(): CursorPositionStore & { set: (position: CursorPosition) => void } {
   let value: CursorPosition | null = null;
   const listeners = new Set<() => void>();
@@ -46,13 +42,7 @@ const SAVE_SESSION_DEBOUNCE_MS = 500;
 
 const DEBOUNCE_MS = 500;
 
-// Mirrors @quire/client's sidecarProcess.ts:SIDECAR_CALL_CANCELLED. Duplicated as a literal
-// rather than imported -- this crosses both the Electron IPC boundary (ipcMain.handle serializes
-// thrown errors down to a plain Error, so only .message survives) and, since @quire/client ships
-// CommonJS for apps/desktop's plain `require()`, Vite's production build (which cannot resolve a
-// named value export from that CJS package through the symlinked workspace dependency). Same
-// tradeoff apps/desktop/src/{main,preload}.js already make for IPC channel names like
-// "core:compile", duplicated as literals on both sides rather than shared across that boundary.
+// Duplicated literal (not imported) -- mirrors @quire/client's SIDECAR_CALL_CANCELLED, avoiding CJS/ESM resolution issues across the Electron IPC boundary.
 const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 interface Project {
@@ -64,8 +54,6 @@ interface Project {
   files: FileNode[];
 }
 
-// One per open document (3.5.3). `text` is the live buffer -- always what's compiled and shown,
-// regardless of whether it's been saved. `savedText` is what's actually on disk right now;
 // `text !== savedText` is the tab's entire dirty-state definition, not a separately tracked flag.
 interface OpenTab {
   uri: string;
@@ -124,16 +112,12 @@ function AppShell() {
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
-  // Persistent (Section 7), not summoned -- null means collapsed. Open on Explorer by default.
   const [sidebarSection, setSidebarSection] = useState<PanelKind | null>("file-tree");
   const [sidebarWidth, setSidebarWidth] = useState(240);
-  // Lifted above Editor (not local state there) so they survive the remount that happens when switching files/projects.
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [proseMode, setProseMode] = useState(false);
-  // Two independent settings (Section 7): switching one must never move the other.
-  // Seeded from the same localStorage mirror index.html's inline script reads synchronously,
-  // so this matches first paint instead of always starting "dark" and flashing on session load.
+  // Seeded from localStorage synchronously so this matches first paint instead of flashing on session load.
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
   );
@@ -141,21 +125,14 @@ function AppShell() {
   const [cursorStore] = useState(() => createCursorPositionStore());
 
   const projectRef = useRef<Project | null>(null);
-  // Authoritative, updated synchronously outside React state so every keystroke doesn't force a
-  // re-render (CM6 already manages its own text uncontrolled) -- `tabs` state exists only to
-  // repaint the tab bar (dirty dot, add/remove/switch), and is refreshed from this ref only when
-  // something actually needs to be seen.
+  // tabsRef is authoritative and updated outside React state; `tabs` state only exists to repaint the tab bar.
   const tabsRef = useRef<OpenTab[]>([]);
   const debounceRef = useRef<number | undefined>(undefined);
   const errorTimeoutRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<SessionState>(DEFAULT_SESSION);
   const saveSessionTimeoutRef = useRef<number | undefined>(undefined);
-  // Guards the "watch state, save" effect below from firing on the
-  // initial render's default state, before the restore-or-scratch effect
-  // has actually finished -- otherwise a slow restore could lose the
-  // race and get overwritten on disk by a premature "nothing open yet"
-  // snapshot.
+  // Guards against the save effect below firing before the restore-or-scratch effect finishes.
   const initializedRef = useRef(false);
 
   const scheduleSaveSession = useCallback(() => {
@@ -165,12 +142,6 @@ function AppShell() {
     }, SAVE_SESSION_DEBOUNCE_MS);
   }, []);
 
-  // Cursor/scroll come from Editor on every move -- updates the active tab's own record (so
-  // switching away and back within this session restores position) plus the session snapshot,
-  // which only remembers the *active* tab's exact position (3.5.6: restoring every tab's cursor
-  // wasn't worth the complexity the acceptance criterion didn't ask for). Doesn't call setTabs --
-  // nothing visibly depends on these fields except the tab's own Editor mount, which only reads
-  // them once, at mount time.
   const handleCursorActivity = useCallback(
     (cursor: number, scrollTop: number, line: number, column: number) => {
       const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
@@ -186,11 +157,7 @@ function AppShell() {
     [activeUri, cursorStore, scheduleSaveSession],
   );
 
-  // Single-flight: a superseded compile is killed and its promise now rejects with
-  // SIDECAR_CALL_CANCELLED (rather than hanging forever) -- swallow that one specifically so a
-  // stale/cancelled compile neither overwrites a newer result nor flashes a spurious error.
-  // Always compiles every open tab's live buffer, not just the active one -- a project with two
-  // dirty tabs needs both reflected, and CompileRequest.dirtyBuffers already accepts an array.
+  // Swallows SIDECAR_CALL_CANCELLED specifically -- a superseded compile's rejection, not a real error.
   const runCompile = useCallback(async (reason: CompileReason) => {
     const proj = projectRef.current;
     if (!proj) return;
@@ -215,8 +182,6 @@ function AppShell() {
     }
   }, []);
 
-  // Updates the active tab's live buffer (ref-only -- see tabsRef's comment) and re-renders only
-  // when dirty state actually flips, so typing doesn't repaint the tab bar on every keystroke.
   const scheduleCompile = useCallback(
     (text: string) => {
       if (!activeUri) return;
@@ -236,8 +201,6 @@ function AppShell() {
     [activeUri, runCompile],
   );
 
-  // Opening a file already open activates its tab instead of adding a duplicate (FileTreePanel
-  // is the only caller today; graphics have nothing to open into, per its own selectability rule).
   const openTab = useCallback(
     async (uri: string) => {
       if (tabsRef.current.some((t) => t.uri === uri)) {
@@ -258,8 +221,6 @@ function AppShell() {
     [runCompile],
   );
 
-  // Never closes the last tab -- there's always something open, matching every other entry point
-  // (openProjectFlow, session restore, the scratch fallback) always seeding at least one.
   const closeTab = useCallback((uri: string) => {
     const current = tabsRef.current;
     if (current.length <= 1) return;
@@ -270,7 +231,6 @@ function AppShell() {
     setTabs(next);
     setActiveUri((activePrev) => {
       if (activePrev !== uri) return activePrev;
-      // Prefer the tab that was to the right, else the one to the left -- standard tab-strip feel.
       const neighbor = current[idx + 1] ?? current[idx - 1];
       return neighbor.uri;
     });
@@ -287,8 +247,6 @@ function AppShell() {
         next[idx] = { ...tab, savedText: tab.text };
         tabsRef.current = next;
         setTabs(next);
-        // Cancel a pending debounced edit-compile -- this save's own immediate compile already
-        // covers it, and letting both fire is a harmless but pointless duplicate.
         if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
         runCompile("save");
       } catch (err) {
@@ -306,11 +264,6 @@ function AppShell() {
     [saveTab, closeTab],
   );
 
-  // Restores the previous session if one exists and its project still opens;
-  // otherwise (first launch, or the project has since moved/been deleted)
-  // falls back to the same disposable scratch project as before session
-  // restore existed. Layout/mode/theme/sidebar settings restore either way --
-  // a project that's gone doesn't mean those should reset to defaults too.
   useEffect(() => {
     (async () => {
       const loaded = await window.quireDesktop.loadSession();
@@ -337,8 +290,7 @@ function AppShell() {
             files: opened.files,
           };
 
-          // A tab whose file has since moved/been deleted is skipped, not fatal to the whole
-          // restore -- reopen whatever's still there rather than falling all the way back to scratch.
+          // A missing file is skipped, not fatal -- restore whatever's still there instead of falling back to scratch.
           const wantedUris = session.openTabs.length > 0 ? session.openTabs : [opened.root];
           const loadedTabs: OpenTab[] = [];
           for (const uri of wantedUris) {
@@ -353,9 +305,7 @@ function AppShell() {
               scrollTop: isActive ? session.scrollTop : null,
             });
           }
-          // Every remembered tab is gone -- same situation as no tabs to restore at all; this
-          // still throws (uncaught) into the outer catch if even the root is unreadable, correctly
-          // degrading to the scratch project below.
+          // If even the root is unreadable this throws into the outer catch, degrading to the scratch project below.
           if (loadedTabs.length === 0) {
             const text = await window.quire.readFile(opened.root);
             loadedTabs.push({ uri: opened.root, text, savedText: text, cursor: 0, scrollTop: null });
@@ -394,16 +344,11 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // index.html's inline script reads this same key synchronously before first paint, so a saved
-  // light theme doesn't flash dark while the real (async) session load is still in flight.
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("quire-theme", theme);
   }, [theme]);
 
-  // Everything except cursor/scroll (handleCursorActivity above covers those) -- infrequent enough
-  // to just watch directly. `tabs` (state, not tabsRef) only changes on open/close/rename, not on
-  // every keystroke, so this doesn't turn into a per-keystroke session write either.
   useEffect(() => {
     if (!initializedRef.current) return;
     const isRealProject = project && project.engineAvailable !== null;
@@ -437,7 +382,6 @@ function AppShell() {
     scheduleSaveSession,
   ]);
 
-  // Seam compile state, and reacting to an externally-triggered recompile, both come from the same CoreEvent stream.
   useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
       if (event.kind === "compile-started") {
@@ -459,7 +403,6 @@ function AppShell() {
     });
   }, [runCompile]);
 
-  // No "Open Project" button in the top bar -- reachable via keybinding/palette instead.
   useCommand({
     id: "project.open",
     title: "Open Project…",
@@ -522,7 +465,6 @@ function AppShell() {
     run: () => setProseMode((v) => !v),
   });
 
-  // Deliberately two separate commands, not one -- see the `theme`/`pdfInverted` state comment.
   useCommand({
     id: "app.toggle-theme",
     title: "Toggle Theme",
@@ -534,9 +476,6 @@ function AppShell() {
     run: () => setPdfInverted((v) => !v),
   });
 
-  // Selecting the already-open section collapses the sidebar; selecting any other section
-  // switches to it (opening the sidebar if it was collapsed). No separate "pinned" state --
-  // the sidebar is either open on a section or fully collapsed.
   const toggleSidebarSection = useCallback((kind: PanelKind) => {
     setSidebarSection((current) => (current === kind ? null : kind));
   }, []);
@@ -562,8 +501,6 @@ function AppShell() {
     keybinding: { key: "3", meta: true },
     run: () => toggleSidebarSection("problems"),
   });
-  // No keybinding -- same as the other three had none reserved beyond ⌘1-3; still reachable
-  // from the palette, matching "every action is reachable from the palette" (Section 8, 2.4).
   useCommand({
     id: "panel.packages",
     title: "Show Packages",

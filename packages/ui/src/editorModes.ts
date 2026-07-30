@@ -16,9 +16,8 @@ export function proseModeExtension(): Extension {
   });
 }
 
-// A ViewPlugin rather than a plain updateListener specifically for the destroy() hook: switching
-// files/projects destroys this view, and an in-flight requestAnimationFrame from a keystroke
-// just before that would otherwise dispatch to an already-destroyed EditorView.
+// ViewPlugin (not a plain updateListener) so destroy() can cancel an in-flight rAF before it
+// dispatches to an already-destroyed EditorView.
 export function typewriterScrollingExtension(): Extension {
   return ViewPlugin.fromClass(
     class {
@@ -43,7 +42,6 @@ export function typewriterScrollingExtension(): Extension {
   );
 }
 
-// A paragraph is a run of lines with no blank line in between.
 export function activeParagraphRange(state: EditorState): { from: number; to: number } {
   const doc = state.doc;
   const pos = state.selection.main.head;

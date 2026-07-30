@@ -44,17 +44,13 @@ fn main() {
             }),
         };
 
-        // Matches run_watch_mode's handling below: the other end (the TS client, one process
-        // per call) can close its end of the pipe before this write lands -- e.g. the app is
-        // force-quit mid-compile, or the client already gave up and killed us. That's a normal
-        // shutdown race, not a condition worth a panic over.
+        // the client can close its end of the pipe before this write lands; not worth a panic.
         if writeln!(stdout, "{response}").is_err() || stdout.flush().is_err() {
             break;
         }
     }
 }
 
-/// Push-based, not request/response: runs until killed, printing one JSON notification line per debounced batch of changes.
 fn run_watch_mode(dir: &Path) {
     let watcher = match quire_core::project::FileWatcher::new(dir, std::time::Duration::from_millis(500)) {
         Ok(w) => w,
@@ -76,8 +72,6 @@ fn run_watch_mode(dir: &Path) {
     }
 }
 
-/// Method names match CoreApi exactly; no cancelCompile here -- that one has no `quire-core`
-/// handler at all, it's a `packages/client`-only transport concern (see quire_core::rpc::handlers).
 fn handle_request(req: Request) -> Value {
     match req.method.as_str() {
         "openProject" => dispatch(req.id, req.params, |p| handlers::open_project(&p)),
@@ -106,7 +100,6 @@ fn invalid_params(id: &Value, e: impl std::fmt::Display) -> Value {
     })
 }
 
-/// Forwards `CompileError`'s captured log (if any) as `data.log`.
 fn compile_error_response(id: &Value, e: CompileError) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -115,7 +108,6 @@ fn compile_error_response(id: &Value, e: CompileError) -> Value {
     })
 }
 
-/// Deserializes `params` into `P`, calls `f`, and serializes the result.
 fn dispatch<P, R, F>(id: Value, params: Value, f: F) -> Value
 where
     P: DeserializeOwned,

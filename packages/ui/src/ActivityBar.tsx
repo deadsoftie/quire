@@ -49,8 +49,6 @@ const ITEMS: { kind: PanelKind; label: string; Icon: ComponentType }[] = [
   { kind: "packages", label: "Packages", Icon: PackagesIcon },
 ];
 
-// Persistent, not summoned (Section 7) -- selects which section the sidebar shows.
-// Clicking the already-active item collapses the sidebar; App.tsx owns that toggle.
 export function ActivityBar({ active, onSelect, problemCount }: ActivityBarProps) {
   return (
     <nav className="activity-bar" aria-label="Sidebar sections">

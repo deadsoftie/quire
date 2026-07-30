@@ -1,13 +1,8 @@
 import { snippetCompletion } from "@codemirror/autocomplete";
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 
-// Task 3.7's fixed abbreviation set (QUIRE_SPEC.md Section 8, M3). These are mnemonic shorthands,
-// not LaTeX command names, so they trigger on a bare word rather than coreCompletionSource's
-// backslash-anchored contexts in Editor.tsx -- `fig` expands, `\fig` does not exist as LaTeX.
-// `${1:...}` templates reuse the exact tabstop syntax CompletionItem.insert already carries over
-// the wire (Section 6), which CM6's own `snippet()`/`snippetCompletion()` parse directly -- no
-// hand-rolled tabstop navigation. Repeating a field number (`beg`'s `${1:environment}` on both
-// lines) mirrors that field between both instances as the user types, for free.
+// A repeated tabstop number across a template (e.g. `beg`'s `${1:environment}` on both lines)
+// mirrors that field between both instances as the user types -- CM6's own snippet() behavior.
 const SNIPPETS: { trigger: string; detail: string; template: string }[] = [
   {
     trigger: "fig",
@@ -47,9 +42,8 @@ const OPTIONS: Completion[] = SNIPPETS.map((s) =>
   snippetCompletion(s.template, { label: s.trigger, detail: s.detail }),
 );
 
-// Local and synchronous -- no quire-sidecar round trip, unlike coreCompletionSource's index-backed
-// sources. Rejected right after a backslash so it doesn't double up with bare-command macro/CTAN
-// completion there (typing "\sec" should offer \section-the-command, not the "sec" snippet).
+// Rejected right after a backslash so it doesn't double up with command completion there
+// (typing "\sec" should offer \section, not the "sec" snippet).
 export function snippetCompletionSource(context: CompletionContext): CompletionResult | null {
   const word = context.matchBefore(/[a-zA-Z]+/);
   if (!word || (word.from === word.to && !context.explicit)) return null;

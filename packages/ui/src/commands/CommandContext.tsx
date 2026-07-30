@@ -18,7 +18,6 @@ function useCommandRegistryValue(): CommandRegistry {
   return ctx;
 }
 
-// Single source of truth for both the palette's list and every command's keybinding dispatch, so nothing can drift out of sync.
 export function CommandProvider({ children }: { children: ReactNode }) {
   const [commands, setCommands] = useState<Command[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -44,7 +43,6 @@ export function CommandProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // The palette owns the keyboard while it's open.
       if (paletteOpenRef.current) return;
 
       for (const command of commandsRef.current) {

@@ -25,7 +25,6 @@ describe("environmentSync", () => {
   it("mirrors a deletion (backspace-style shrink)", () => {
     const state = stateWith("\\begin{figure}\nx\n\\end{figure}\n");
     const beginName = state.doc.toString().indexOf("figure");
-    // Delete the trailing "ure" from the begin name.
     const tr = state.update({ changes: { from: beginName + 3, to: beginName + 6, insert: "" } });
     expect(tr.state.doc.toString()).toBe("\\begin{fig}\nx\n\\end{fig}\n");
   });
@@ -63,7 +62,6 @@ describe("environmentSync", () => {
   it("does not add a redundant no-op change when the edit already matches the sibling", () => {
     const state = stateWith("\\begin{document}\nHello\n\\end{document}\n");
     const from = state.doc.toString().indexOf("document");
-    // Replace "document" with the exact same text -- both names are already in sync.
     const tr = state.update({ changes: { from, to: from + "document".length, insert: "document" } });
     let changeCount = 0;
     tr.changes.iterChangedRanges(() => changeCount++);

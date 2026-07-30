@@ -15,9 +15,6 @@ interface SidebarProps {
   children: ReactNode;
 }
 
-// Persistent (Section 7) -- not the ephemeral overlay/pinned-panel duality this replaced.
-// Resize handle is its own small drag mechanic, not Seam's: this resizes one pane's pixel
-// width against a fixed min/max, not a fraction shared between two flex siblings.
 export function Sidebar({ title, caption, width, onWidthChange, children }: SidebarProps) {
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
@@ -42,8 +39,7 @@ export function Sidebar({ title, caption, width, onWidthChange, children }: Side
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  // Same pointercancel guard as Seam -- an interrupted drag (OS gesture, focus steal) must not
-  // leave the resize stuck "on" for ordinary subsequent pointer movement.
+  // The OS can interrupt a drag with pointercancel instead of pointerup, so this must reset dragging state too.
   function handlePointerCancel() {
     draggingRef.current = false;
   }

@@ -15,14 +15,10 @@ pub enum RootConfidence {
 pub struct RootDetectionResult {
     pub root: Option<PathBuf>,
     pub confidence: RootConfidence,
-    /// Populated when ambiguous (per the contract, Section 6).
+    /// Populated when ambiguous.
     pub candidates: Vec<PathBuf>,
 }
 
-/// Detects a project's root document, in the order the spec lays out:
-/// an explicit `% !TEX root = ...` comment, else a single file with a
-/// real (non-`subfiles`) `\documentclass`, else the file that includes
-/// the most other files, else ambiguous.
 pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
     let tex_files = find_all_tex_files(project_dir);
 
@@ -93,11 +89,8 @@ fn find_all_tex_files(dir: &Path) -> Vec<PathBuf> {
     results
 }
 
-/// `Path::is_dir()` follows symlinks, so a directory containing a symlink back to itself or an
-/// ancestor would otherwise recurse forever (stack overflow -- a crash, not just a slow walk).
-/// Canonicalizing each directory before descending and tracking `visited` by that real path (not
-/// the walked path string, which keeps changing shape through a symlink) closes the cycle the
-/// same way `build_file_graph`'s own `visited` set already does for `\input` cycles.
+/// `Path::is_dir()` follows symlinks, so a self-referential symlink would otherwise recurse
+/// forever; tracking `visited` by canonicalized path breaks the cycle.
 fn find_all_tex_files_into(dir: &Path, visited: &mut HashSet<PathBuf>, results: &mut Vec<PathBuf>) {
     let Ok(real_dir) = dir.canonicalize() else {
         return;
@@ -179,7 +172,6 @@ fn files_with_real_documentclass(tex_files: &[PathBuf]) -> Vec<PathBuf> {
 fn documentclass_name(content: &str) -> Option<String> {
     let idx = content.find("\\documentclass")?;
     let rest = &content[idx + "\\documentclass".len()..];
-    // Skip an optional [options] block.
     let rest = match rest.trim_start().strip_prefix('[') {
         Some(after_bracket) => {
             let end = after_bracket.find(']')?;
@@ -272,7 +264,6 @@ mod tests {
 
     #[test]
     fn commented_out_documentclass_does_not_count() {
-        // Tests strip_comments + documentclass_name together, since documentclass_name alone has no comment awareness.
         let commented_out = strip_comments("% \\documentclass{article}\nplain text");
         assert_eq!(documentclass_name(&commented_out), None);
 

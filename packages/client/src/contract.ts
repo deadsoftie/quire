@@ -16,13 +16,9 @@ export type CompileResponse = { compileId: string, status: CompileStatus,
 /**
  * In the shadow dir; `null` if the compile produced no PDF.
  */
-pdfPath: string | null, 
+pdfPath: string | null, changedPages: Array<number>, pageCount: number, durationMs: number, 
 /**
- * For incremental re-render.
- */
-changedPages: Array<number>, pageCount: number, durationMs: number, 
-/**
- * Always empty today -- log translation is M3.10.
+ * Always empty today -- log translation isn't implemented yet.
  */
 diagnostics: Array<Diagnostic>, 
 /**
@@ -30,7 +26,7 @@ diagnostics: Array<Diagnostic>,
  */
 missingPackages: Array<string>, 
 /**
- * The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* (M4) doesn't exist yet.
+ * The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
  */
 bundleVersion: string, };
 
@@ -40,11 +36,7 @@ export type CompletionItem = { label: string, kind: CompletionKind,
 /**
  * May contain `${1:tabstops}`.
  */
-insert: string, 
-/**
- * e.g. bib entry title, package name.
- */
-detail?: string | null, documentation?: string | null, 
+insert: string, detail?: string | null, documentation?: string | null, 
 /**
  * TeX source for KaTeX rendering, e.g. `"\\alpha"`.
  */
@@ -59,7 +51,7 @@ export type CompletionKind = "command" | "environment" | "label" | "citation" | 
 export type CompletionRequest = { projectId: string, uri: string, position: Position, text: string, };
 
 /**
- * Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet (M3/M4 don't exist).
+ * Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet.
  */
 export type CoreEvent = { "kind": "compile-started", compileId: string, } | { "kind": "compile-progress", compileId: string, phase: CompilePhase, pass: number, } | { "kind": "compile-finished", result: CompileResponse, } | { "kind": "files-changed", projectId: string, uris: Array<string>, } | { "kind": "index-updated", projectId: string, } | { "kind": "bundle-fetch", package: string, bytes: number, done: boolean, };
 
@@ -71,15 +63,7 @@ uri: string | null, range: DiagnosticRange | null, severity: Severity,
 /**
  * PLAIN ENGLISH. Never the raw TeX string.
  */
-message: string, 
-/**
- * Original, for the detail view.
- */
-rawMessage: string, 
-/**
- * Suggested fix.
- */
-hint?: string | null, 
+message: string, rawMessage: string, hint?: string | null, 
 /**
  * Stable id, e.g. `"missing-dollar"`.
  */
@@ -87,11 +71,7 @@ code?: string | null, };
 
 export type DiagnosticRange = { start: Position, end: Position, };
 
-export type DirtyBuffer = { uri: string, 
-/**
- * Unsaved editor state.
- */
-text: string, };
+export type DirtyBuffer = { uri: string, text: string, };
 
 /**
  * Flat list from [`crate::project::FileGraph`] (the LaTeX dependency graph), not a directory walk.
@@ -102,11 +82,7 @@ export type FileNodeKind = "tex" | "graphic";
 
 export type OpenProjectRequest = { path: string, };
 
-export type OpenProjectResponse = { projectId: string, 
-/**
- * Detected root document.
- */
-root: string, rootConfidence: RootConfidence, 
+export type OpenProjectResponse = { projectId: string, root: string, rootConfidence: RootConfidence, 
 /**
  * Populated when `rootConfidence` is `"ambiguous"`.
  */
@@ -115,7 +91,7 @@ candidates: Array<string>, files: Array<FileNode>, engineAvailable: boolean, };
 export type OutlineNode = { label: string, kind: OutlineNodeKind, position: Position, children: Array<OutlineNode>, };
 
 /**
- * M3 scaffolding; `outline` never returns more than an empty list today.
+ * `outline` never returns more than an empty list today.
  */
 export type OutlineNodeKind = "part" | "chapter" | "section" | "subsection" | "subsubsection" | "label";
 
@@ -132,7 +108,7 @@ line: number,
 column: number, };
 
 /**
- * M4 scaffolding; not implemented yet.
+ * Not implemented yet.
  */
 export type PrefetchPackagesRequest = { projectId: string, };
 

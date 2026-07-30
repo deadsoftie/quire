@@ -6,11 +6,10 @@ import "./FileTreePanel.css";
 interface OutlinePanelProps {
   projectId: string;
   uri: string;
-  /** Bumped after every successful compile to refetch. Real as of 3.1, but reads from disk (`OutlineRequest` carries no dirty-buffer text), so it only reflects the last saved content -- a compile against unsaved edits doesn't move this until the file is actually written. */
+  /** Bumped after every successful compile to refetch; reads from disk, so it only reflects the last saved content, not unsaved edits. */
   refreshToken: number;
 }
 
-// Real per 3.1: section structure + \label sites from quire-core's own index.
 export function OutlinePanel({ projectId, uri, refreshToken }: OutlinePanelProps) {
   const [nodes, setNodes] = useState<OutlineNode[]>([]);
 

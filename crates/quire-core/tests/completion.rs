@@ -1,10 +1,3 @@
-//! Tasks 3.1-3.5 and 3.8's acceptance criteria, end to end: "Cross-file labels complete," "\cite{
-//! completes with readable entries," "Custom macros appear with correct tabstops," "Relative
-//! paths complete, extensions filtered by command," "\usepackage{tikz} unlocks TikZ commands;
-//! without it, they don't appear," and "\alp shows a rendered α" (the completion-item half of it
-//! -- KaTeX's actual rendering is client-side, `packages/ui`, untestable from here). Exercises the
-//! real `outline`/`complete` handlers (crate::index::ProjectIndex) against multi-file fixtures.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -32,8 +25,6 @@ fn fresh_project_copy(fixture: &str, name: &str) -> PathBuf {
     dst
 }
 
-/// `Position` right after `needle` (e.g. `"\ref{"`) on the first line containing it -- shared by
-/// both the label and citation fixture tests below.
 fn position_after(text: &str, needle: &str) -> Position {
     let (line_no, line) = text.lines().enumerate().find(|(_, l)| l.contains(needle)).unwrap();
     let column = (line.find(needle).unwrap() + needle.len()) as u32;
@@ -84,9 +75,6 @@ fn non_matching_context_returns_no_completions_yet() {
     let project_id = project_dir.display().to_string();
     let main_uri = project_dir.join("main.tex").display().to_string();
     let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
-    // Inside \documentclass{article}'s own argument -- an enclosing-command context, but for a
-    // command none of ref/eqref/autoref/cite recognize, and not a bare command-name context either
-    // (the `{` since the last backslash rules that out). 3.4/3.7/3.8 haven't landed yet regardless.
     let position = position_after(&text, "\\documentclass{art");
 
     let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
@@ -103,15 +91,11 @@ fn macro_completion_merges_newcommand_declaremathoperator_and_def_across_files_w
     let main_uri = project_dir.join("main.tex").display().to_string();
 
     let text = fs::read_to_string(project_dir.join("main.tex")).unwrap();
-    // "using \v" (not just "\v"): line 4 already contains "\v" inside "\newcommand{\vect}" --
-    // position_after must land on the actual bare-command-typing line, not that definition line.
+    // line 4 already contains "\v" inside "\newcommand{\vect}", so match "using \v" specifically.
     let position = position_after(&text, "using \\v");
 
     let items = complete(&CompletionRequest { project_id, uri: main_uri, position, text });
 
-    // This fixture also \usepackage{amsmath,tikz} (task 3.3's own setup, predating 3.5), so the
-    // bare-command response now legitimately mixes macros with those packages' CTAN commands
-    // (task 3.5) -- assert the macro-specific shape only on the Macro-kind subset.
     assert!(items.iter().any(|i| i.kind == CompletionKind::Command), "amsmath/tikz commands should also be in the merged response: {:?}", items.iter().map(|i| &i.label).collect::<Vec<_>>());
     let macros: Vec<&CompletionItem> = items.iter().filter(|i| i.kind == CompletionKind::Macro).collect();
     let by_label: std::collections::HashMap<&str, &CompletionItem> = macros.iter().map(|i| (i.label.as_str(), *i)).collect();
@@ -230,9 +214,6 @@ fn without_usepackage_tikz_commands_do_not_appear() {
 
 #[test]
 fn math_symbol_completion_offers_alpha_with_a_katex_ready_preview() {
-    // Reuses the "labels" fixture just for a project that exists on disk -- math symbols aren't
-    // scoped by anything project-specific (no \usepackage gate, unlike tikz above), so the actual
-    // on-disk main.tex content doesn't matter here, only the in-request `text`/`position` do.
     let project_dir = fresh_project_copy("labels", "complete-symbol");
     let project_id = project_dir.display().to_string();
     let main_uri = project_dir.join("main.tex").display().to_string();

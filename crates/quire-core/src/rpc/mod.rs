@@ -1,7 +1,3 @@
-//! The CoreApi contract (QUIRE_SPEC.md Section 6): source of truth for every request/response/event shape, generated into packages/client/src/contract.ts via ts-rs so the two platforms can't drift.
-//!
-//! Frozen since M1 (task 1.9); methods for unbuilt features (outline, prefetchPackages/bundleStatus) keep Section 6's real shape with handlers that honestly report "not implemented" rather than faking a result.
-
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -76,7 +72,6 @@ pub struct FileNode {
 #[ts(export, export_to = CONTRACT_TS)]
 pub struct OpenProjectResponse {
     pub project_id: ProjectId,
-    /// Detected root document.
     pub root: DocUri,
     pub root_confidence: RootConfidence,
     /// Populated when `rootConfidence` is `"ambiguous"`.
@@ -107,7 +102,6 @@ pub struct CloseProjectRequest {
 #[ts(export, export_to = CONTRACT_TS)]
 pub struct DirtyBuffer {
     pub uri: DocUri,
-    /// Unsaved editor state.
     pub text: String,
 }
 
@@ -138,7 +132,7 @@ pub enum CompileStatus {
     Errors,
     /// Never produced: the caller kills the process before a response is built.
     Cancelled,
-    /// Never produced yet -- no package/engine availability detection exists (M4).
+    /// Never produced yet -- no package/engine availability detection exists.
     EngineMissing,
     /// Never produced yet, same reason.
     PackagesMissing,
@@ -152,15 +146,14 @@ pub struct CompileResponse {
     pub status: CompileStatus,
     /// In the shadow dir; `null` if the compile produced no PDF.
     pub pdf_path: Option<String>,
-    /// For incremental re-render.
     pub changed_pages: Vec<u32>,
     pub page_count: u32,
     pub duration_ms: u32,
-    /// Always empty today -- log translation is M3.10.
+    /// Always empty today -- log translation isn't implemented yet.
     pub diagnostics: Vec<Diagnostic>,
     /// Populated only when `status` is `"packages-missing"`, so always empty today.
     pub missing_packages: Vec<String>,
-    /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* (M4) doesn't exist yet.
+    /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
     pub bundle_version: String,
 }
 
@@ -182,7 +175,7 @@ pub enum CompilePhase {
     Rerun,
 }
 
-/// Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet (M3/M4 don't exist).
+/// Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -229,7 +222,6 @@ pub struct CompletionItem {
     pub kind: CompletionKind,
     /// May contain `${1:tabstops}`.
     pub insert: String,
-    /// e.g. bib entry title, package name.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -243,7 +235,7 @@ pub struct CompletionItem {
 
 // ---------- Outline ----------
 
-/// M3 scaffolding; `outline` never returns more than an empty list today.
+/// `outline` never returns more than an empty list today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -303,9 +295,7 @@ pub struct Diagnostic {
     pub severity: Severity,
     /// PLAIN ENGLISH. Never the raw TeX string.
     pub message: String,
-    /// Original, for the detail view.
     pub raw_message: String,
-    /// Suggested fix.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hint: Option<String>,
     /// Stable id, e.g. `"missing-dollar"`.
@@ -315,7 +305,7 @@ pub struct Diagnostic {
 
 // ---------- Packages ----------
 
-/// M4 scaffolding; not implemented yet.
+/// Not implemented yet.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]

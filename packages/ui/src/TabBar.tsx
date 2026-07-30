@@ -16,10 +16,6 @@ interface TabBarProps {
   onSaveAndClose: (uri: string) => void;
 }
 
-// One open document per tab (3.5.3). Closing a clean tab is immediate; closing a dirty one swaps
-// that tab's own content for an inline Save/Discard choice instead of a modal -- Section 7 rules
-// out a lot of chrome, and a centered dialog with a backdrop is exactly that kind of chrome for
-// something this app can ask for in its own tab strip.
 export function TabBar({ tabs, activeUri, onActivate, onClose, onSaveAndClose }: TabBarProps) {
   const [confirmingUri, setConfirmingUri] = useState<string | null>(null);
 

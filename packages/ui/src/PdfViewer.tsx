@@ -53,7 +53,7 @@ interface PdfViewerProps {
   data: Uint8Array | null;
   /** Pages changed since the immediately preceding compile; a first-ever compile already reports every page (quire-core's own fallback), so no separate "first load" case is needed here. */
   changedPages: number[];
-  /** Independent of app theme (Section 7) -- inverted figures often look wrong, so this is never derived from it. */
+  /** Independent of app theme -- inverted figures often look wrong, so this is never derived from it. */
   inverted: boolean;
 }
 
@@ -110,7 +110,6 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     };
   }, [pdfDoc]);
 
-  // One shared observer for every page's wrapper div, registered via setWrapperRef.
   useEffect(() => {
     const root = scrollRootRef.current;
     if (!root) return;
@@ -145,7 +144,6 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     };
   }, []);
 
-  // Runs on every recompile and visibility change; shouldRenderPage decides which visible pages actually need a fresh draw.
   useEffect(() => {
     if (!pdfDoc) return;
     let cancelled = false;

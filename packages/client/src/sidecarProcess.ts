@@ -2,16 +2,11 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as readline from "node:readline";
 
-// Expects the sidecar binary already built via `cargo build -p quire-sidecar`; packaging it is M4.
 const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
 
-/**
- * Rejection message when a call's `kill()` was called before it got a response -- an explicit
- * `cancelCompile` or a single-flight supersede, never a real failure. A message marker rather
- * than an `Error` subclass because this crosses Electron's IPC boundary (`ipcMain.handle`),
- * which reconstructs thrown errors as plain `Error`s in the renderer and drops the original
- * prototype -- an `instanceof` check on the other side would silently never match.
- */
+// Marker string, not an Error subclass -- crossing Electron's IPC boundary (`ipcMain.handle`)
+// reconstructs thrown errors as plain `Error`s and drops the prototype, so `instanceof` would
+// silently never match on the other side.
 export const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 export interface SidecarCall {
@@ -19,7 +14,8 @@ export interface SidecarCall {
   kill(): void;
 }
 
-// Spawns one sidecar process, sends one JSON-RPC request, resolves with its result. `detached` + process-group kill (not plain child.kill()): Tectonic shells out to biber/bibtex, and only a group-kill reliably takes both out.
+// `detached` + process-group kill (not plain child.kill()): Tectonic shells out to biber/bibtex,
+// and only a group-kill reliably takes both out.
 export function runOnce(method: string, params: unknown, cwd?: string): SidecarCall {
   const proc = spawn(SIDECAR_PATH, [], {
     cwd,

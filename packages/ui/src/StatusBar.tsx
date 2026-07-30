@@ -6,8 +6,6 @@ export interface CursorPosition {
   column: number;
 }
 
-/** Read side of `createCursorPositionStore` (App.tsx) -- see that function's own comment for why
- * this is a tiny external store instead of ordinary lifted state. */
 export interface CursorPositionStore {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => CursorPosition | null;
@@ -20,9 +18,6 @@ interface StatusBarProps {
   engineAvailable: boolean | null;
 }
 
-// New in 3.5.4 (Section 7's layout revision). Problem count on the left; cursor position and the
-// bundle/offline indicator on the right, moved here verbatim from TopBar -- same meaning, same
-// dot, new location only.
 export function StatusBar({ problemCount, cursorPosition, engineAvailable }: StatusBarProps) {
   const position = useSyncExternalStore(cursorPosition.subscribe, cursorPosition.getSnapshot);
 

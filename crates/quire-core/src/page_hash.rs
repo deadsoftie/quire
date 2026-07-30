@@ -1,5 +1,3 @@
-//! Hashes each page's content stream (not the whole page object, since resource renumbering can shift that without any drawn content changing) to diff pages across compiles.
-
 use tectonic::digest::{self, Digest};
 
 use crate::CompileError;
@@ -24,7 +22,6 @@ pub fn hash_pages(pdf_bytes: &[u8]) -> Result<Vec<String>, CompileError> {
         .collect())
 }
 
-/// No previous hashes, or a page-count change, reports everything changed -- there's no reliable page alignment to diff against otherwise.
 pub fn diff_pages(previous: Option<&[String]>, current: &[String]) -> Vec<u32> {
     let all_changed = || (1..=current.len() as u32).collect();
 

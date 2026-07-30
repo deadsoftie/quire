@@ -15,7 +15,6 @@ import type {
 export type ProjectId = string;
 export type DocUri = string;
 
-/** QUIRE_SPEC.md Section 6, transport-agnostic (StdioTransport today, a Capacitor transport for M5). */
 export interface CoreApi {
   openProject(r: OpenProjectRequest): Promise<OpenProjectResponse>;
   setRoot(projectId: ProjectId, uri: DocUri): Promise<void>;

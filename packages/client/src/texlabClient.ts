@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 import type { CompletionItem } from "./contract";
 
-// M0/M1 scaffolding only (D7); GPL-3.0, removed once M3 has its own completion index.
 const DOC_URI = "file:///quire-buffer.tex";
 
 // Standard LSP framing (Content-Length header), unlike the sidecar's newline-delimited JSON-RPC.
@@ -43,12 +42,10 @@ interface LspCompletionItem {
   kind?: number;
 }
 
-// Every result here is a LaTeX command in practice (triggered only after `\`); LSP's numeric CompletionItemKind doesn't map cleanly onto our kind union, so this stays honestly "command" until M3's own index.
 function mapKind(_lspKind: number | undefined): CompletionItem["kind"] {
   return "command";
 }
 
-// One persistent texlab process per app run, kept in sync via didOpen/didChange.
 export class TexlabClient {
   private proc: ChildProcess | null = null;
   private nextId = 1;
@@ -70,7 +67,6 @@ export class TexlabClient {
 
       proc.on("error", () => resolve(false));
 
-      // Reject everything pending rather than leaving it hanging forever.
       proc.on("exit", () => {
         this.proc = null;
         for (const { reject } of this.pending.values()) {
@@ -103,7 +99,6 @@ export class TexlabClient {
       if (m.error) reject(new Error(m.error.message));
       else resolve(m.result);
     }
-    // Notifications from the server (diagnostics, etc.) are ignored.
   }
 
   private request(method: string, params: unknown): Promise<unknown> {

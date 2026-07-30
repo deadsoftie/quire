@@ -8,8 +8,6 @@ interface PanelShellProps {
   children: ReactNode;
 }
 
-// Header + body chrome for whichever sidebar section (Explorer/Outline/Problems/Packages) is
-// currently selected. Docked, not summoned -- there's no pin/overlay duality to render anymore.
 export function PanelShell({ title, caption, children }: PanelShellProps) {
   return (
     <div className="panel-shell" role="region" aria-label={title}>

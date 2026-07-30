@@ -8,10 +8,8 @@ pub use root::{detect_root, RootConfidence, RootDetectionResult};
 mod watcher;
 pub use watcher::FileWatcher;
 
-/// Shared by the file graph, root detection, and the file watcher.
 pub(crate) const SKIP_NAMES: &[&str] = &[".git", ".quire", "node_modules"];
 
-/// Which command produced a reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IncludeCommand {
     Input,
@@ -29,7 +27,6 @@ pub enum FileKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {
     pub command: IncludeCommand,
-    /// Exactly as written in the source, e.g. `"chapters/intro"`.
     pub raw_arg: String,
     /// `None` for a dangling reference -- a real document state, not an error.
     pub resolved: Option<PathBuf>,
@@ -50,7 +47,6 @@ pub struct FileGraph {
 }
 
 impl FileGraph {
-    /// References across the whole graph that didn't resolve to a real file.
     pub fn unresolved(&self) -> Vec<&Reference> {
         self.files
             .iter()
@@ -59,18 +55,13 @@ impl FileGraph {
             .collect()
     }
 
-    /// Every real (resolved) file in the graph, root included.
     pub fn resolved_paths(&self) -> Vec<&Path> {
         self.files.iter().map(|f| f.path.as_path()).collect()
     }
 }
 
-/// Extensions graphicx itself searches for an extensionless `\includegraphics`.
-/// `pub(crate)`: `crate::index` reuses this for `\includegraphics` path completion (task 3.4)
-/// rather than redefining the same list a second time.
 pub(crate) const GRAPHIC_EXTENSIONS: &[&str] = &["pdf", "png", "jpg", "jpeg", "eps"];
 
-/// Relative paths resolve against `root`'s directory, not the referencing file's own -- matching TeX's actual behavior. Cycles can't infinite-loop: each file is parsed at most once.
 pub fn build_file_graph(root: &Path) -> FileGraph {
     let base_dir = root.parent().unwrap_or_else(|| Path::new("."));
     let mut files = Vec::new();
@@ -108,7 +99,6 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         });
     }
 
-    // Graphics are leaves: recorded as nodes, not parsed for further references.
     let graphic_paths: Vec<PathBuf> = files
         .iter()
         .flat_map(|f| &f.references)
@@ -132,8 +122,6 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
     }
 }
 
-/// Strips unescaped `%`-to-end-of-line comments so a commented-out `\input` isn't followed; doesn't special-case verbatim blocks.
-/// `pub(crate)`: `crate::index` reuses this so a commented-out `\label`/section heading isn't indexed either, same reasoning.
 pub(crate) fn strip_comments(content: &str) -> String {
     let mut out = String::with_capacity(content.len());
     for line in content.lines() {
@@ -218,14 +206,7 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
     refs
 }
 
-/// A resolved reference is only trusted if it canonicalizes to somewhere inside `base_dir` --
-/// the shadow-dir mirror (`write_into_shadow`) and the UI's file tree both treat any resolved
-/// path as "a file belonging to this project," so an absolute path or a `..`-laden relative one
-/// (e.g. `\input{/etc/hosts}` or `\input{../../outside}`) must be rejected here as unresolved
-/// rather than followed -- resolving it would let a project's own source smuggle an
-/// out-of-project read/write target past every downstream consumer that trusts the graph.
-/// `pub(crate)`: `crate::index` reuses this for `\bibliography`/`\addbibresource` resolution --
-/// a malicious `\addbibresource{/etc/passwd}` shouldn't let the completion index read it either.
+/// Rejects an absolute or `..`-laden path as unresolved -- otherwise project source could smuggle an out-of-project read/write target past every downstream consumer.
 pub(crate) fn resolve_within(base_dir: &Path, candidate: PathBuf) -> Option<PathBuf> {
     if !candidate.is_file() {
         return None;

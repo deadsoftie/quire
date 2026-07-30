@@ -4,7 +4,6 @@ import * as readline from "node:readline";
 
 const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
 
-// Wraps `quire-sidecar watch <dir>`, a long-lived process (unlike the compile sidecar's spawn-per-request model) since watching is push-based.
 export class ProjectWatcher {
   private proc: ChildProcess;
   private rl: readline.Interface;
@@ -27,10 +26,6 @@ export class ProjectWatcher {
       }
     });
 
-    // Node rethrows an unlistened child-process 'error' as an uncaught exception -- without this,
-    // a missing/non-executable quire-sidecar binary (a realistic state pre-M4 packaging) crashes
-    // the whole Electron main process, not just file-watching. `stopped` distinguishes an
-    // unexpected crash from stop()'s own deliberate kill, so a normal teardown isn't logged as one.
     this.proc.on("error", (err) => {
       if (this.stopped) return;
       console.error(`quire-sidecar watch process failed to start or crashed: ${err.message}`);

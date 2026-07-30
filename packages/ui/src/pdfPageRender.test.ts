@@ -32,7 +32,7 @@ describe("shouldRenderPage", () => {
         lastRenderedDoc: "D1",
         previousDoc: "D1",
         currentDoc: "D2",
-        changedPages: new Set([2]), // page 1 not in the list
+        changedPages: new Set([2]),
         pageNumber: 1,
       }),
     ).toBe(false);
@@ -51,20 +51,18 @@ describe("shouldRenderPage", () => {
   });
 
   it("renders unconditionally when the canvas is stale from further back than the immediately preceding compile", () => {
-    // Painted for D1; D3's changedPages (relative to D2) says nothing about D1 -> D2.
     expect(
       shouldRenderPage({
         lastRenderedDoc: "D1",
         previousDoc: "D2",
         currentDoc: "D3",
-        changedPages: new Set(), // D2 -> D3 changed nothing
+        changedPages: new Set(),
         pageNumber: 5,
       }),
     ).toBe(true);
   });
 
   it("renders a brand new canvas element even for a doc it happens to already know about", () => {
-    // Mirrors setCanvasRef: a fresh DOM node has an undefined lastRenderedDoc regardless of currentDoc/previousDoc.
     expect(
       shouldRenderPage({
         lastRenderedDoc: undefined,

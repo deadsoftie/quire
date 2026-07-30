@@ -1,6 +1,5 @@
 import type { Command } from "./types";
 
-// Subsequence match (chars of `query` appear in `target`, in order, not necessarily contiguous), scored by contiguous-run length, word-boundary starts, earlier first-match, and shorter target -- not a plain substring filter, so ranking stays meaningful as more commands are added.
 export function fuzzyScore(query: string, target: string): number | null {
   if (query.length === 0) return 0;
 

@@ -1,32 +1,3 @@
-//! The completion/outline index (Section 9.4). Built fresh from a [`crate::project::FileGraph`]
-//! on every call -- no server-side cache, matching the rest of `quire-core` (per
-//! `docs/CONTRACT.md`, every RPC handler re-derives what it needs from `projectId` directly).
-//!
-//! 3.1 extracts `\label` definitions and section structure (`\part`.."\subsubsection") -- both in
-//! the same pass over a file, since they're the same walk. 3.2 adds `.bib` parsing, discovered via
-//! `\bibliography`/`\addbibresource` in `.tex` source (there's no `Bib` `FileKind` in
-//! [`crate::project::FileGraph`] -- bibliography files aren't mirrored into the compile shadow
-//! dir today, a separate, pre-existing gap this task doesn't touch). 3.3 adds `\newcommand`/`\def`/
-//! `\DeclareMathOperator` macros, and -- since something in 3.1-3.3 has to build it before 3.5
-//! needs it -- `\usepackage` tracking, which isn't a numbered task of its own. 3.4 adds file-path
-//! completion. 3.5 ([`ctan`]) is the one extension source that isn't parsed from project source at
-//! all -- a bundled command database scoped by [`ProjectIndex::packages`].
-//!
-//! **3.6 ("incremental reindex") turned out not to need a cache.** The plan through 3.5 (see this
-//! comment's own earlier revisions) was "reparse only a changed file," anticipating a persistent
-//! per-file cache the way `rerun.rs` persists citation fingerprints/page hashes across compiles.
-//! But `quire-sidecar` spawns a *fresh OS process per RPC call* (`docs/CONTRACT.md`,
-//! `packages/client/src/sidecarProcess.ts`'s `runOnce`) -- there is no long-lived process for
-//! `complete`/`outline` to hold an in-memory cache in at all, the same constraint `rerun.rs`
-//! solves by persisting to disk. Before building that same disk-cache machinery here (real
-//! complexity: serialization, mtime/size invalidation, concurrent-process write races), task
-//! 3.6's actual acceptance criterion -- "≤10ms for a single-file change" on a 50-file thesis --
-//! got measured against the honest full-rebuild-every-call approach first
-//! (`tests/reindex_bench.rs`). It measured ~2ms (release) / ~5ms (debug) on a real 51-file, ~1000
-//! line fixture -- comfortably under budget without a cache, so one wasn't built. The one real
-//! inefficiency found along the way (`find_path_candidates` walking the project directory twice,
-//! once per extension bucket) was fixed directly: one walk, two result buckets.
-
 pub mod ctan;
 pub mod symbols;
 
@@ -37,9 +8,6 @@ use std::path::{Path, PathBuf};
 use crate::project::{self, FileGraph, FileKind};
 use crate::rpc::{OutlineNode, OutlineNodeKind, Position};
 
-/// A `\label{name}` definition site, flattened across every file in the project -- what
-/// `\ref`/`\eqref`/`\autoref` completion (Section 9.4's ranking: project-local outranks
-/// everything else) draws from.
 #[derive(Debug, Clone)]
 pub struct LabelDef {
     pub name: String,
@@ -47,41 +15,28 @@ pub struct LabelDef {
     pub position: Position,
 }
 
-/// A citation key from a `.bib` entry, merged project-wide the same way [`LabelDef`] is.
-/// `@comment`/`@string`/`@preamble` entries are never citable, so they never produce one of these.
 #[derive(Debug, Clone)]
 pub struct CitationEntry {
     pub key: String,
-    /// "Author, *Title*, Year" per Section 9.4, literally -- `*...*` included, not rendered here.
-    /// Whichever of the three fields the entry is missing is just omitted, not left as a dangling
-    /// separator; `None` only when the entry has none of author/title/year at all.
+    /// `None` only when the entry has none of author/title/year at all.
     pub detail: Option<String>,
 }
 
-/// A `\newcommand`/`\def`/`\DeclareMathOperator` definition, merged project-wide the same way
-/// [`LabelDef`] is (no textual/definition-order scoping -- consistent with how labels and
-/// citations already work here, not a new model just for macros).
 #[derive(Debug, Clone)]
 pub struct MacroDef {
     /// Without the leading backslash, matching [`LabelDef::name`]/[`CitationEntry::key`]'s convention.
     pub name: String,
     /// How many required `{}` arguments -- what turns into `insert`'s `${1:...}` tabstops.
     pub arity: u32,
-    /// Raw substitution body, trimmed. Not used for `insert` (that's arity-driven, not
-    /// body-driven), just a readable `detail` so the popup shows what the macro actually expands to.
+    /// Not used for `insert` (arity-driven, not body-driven) -- just a readable `detail` for the popup.
     pub body: String,
 }
 
 struct FileIndex {
-    /// Top-level outline tree for this one file -- `outline()` is per-`uri`, not project-wide.
     outline: Vec<OutlineNode>,
-    /// This file's own `\label` sites, flattened out of `outline`'s tree shape for project-wide merging.
     labels: Vec<LabelDef>,
-    /// `.bib` files this one file's `\bibliography`/`\addbibresource` commands resolved to.
     bib_resources: Vec<PathBuf>,
-    /// This file's own macro definitions.
     macros: Vec<MacroDef>,
-    /// This file's own `\usepackage{...}` loads.
     packages: Vec<String>,
 }
 
@@ -90,29 +45,18 @@ pub struct ProjectIndex {
     citations: Vec<CitationEntry>,
     macros: Vec<MacroDef>,
     packages: HashSet<String>,
-    /// Project-relative, forward-slash paths for every real `.tex` file under the project
-    /// directory -- the `\input`/`\include` completion candidate set (task 3.4).
     tex_paths: Vec<String>,
-    /// Same, but every file matching [`project::GRAPHIC_EXTENSIONS`] -- the `\includegraphics`
-    /// completion candidate set.
     graphic_paths: Vec<String>,
 }
 
 impl ProjectIndex {
-    /// Reads and parses every `.tex` file reachable in `graph`, then every `.bib` file any of them
-    /// referenced. A file that's disappeared since the graph was built (race with an external
-    /// edit) is silently skipped -- same "record what you can, don't fail the whole request over
-    /// one file" posture `build_file_graph` itself takes.
     pub fn build(graph: &FileGraph) -> Self {
-        // Same convention `build_file_graph` itself uses for \input/\includegraphics: relative
-        // paths resolve against the root document's directory, not each referencing file's own.
+        // Same convention as `build_file_graph`: paths resolve against the root document's directory.
         let base_dir = graph.root.parent().unwrap_or_else(|| Path::new("."));
 
         let mut files = HashMap::with_capacity(graph.files.len());
         let mut bib_paths: HashSet<PathBuf> = HashSet::new();
-        // Keyed by name so a macro defined more than once (redefinition, or the same name
-        // appearing in two files) shows up once in completion rather than as confusing duplicates;
-        // last one scanned wins, since there's no real cross-file definition-order to prefer by.
+        // Keyed by name so a macro redefined (or duplicated across files) shows up once; last one scanned wins.
         let mut macros: HashMap<String, MacroDef> = HashMap::new();
         let mut packages: HashSet<String> = HashSet::new();
 
@@ -142,50 +86,36 @@ impl ProjectIndex {
         let mut macros: Vec<MacroDef> = macros.into_values().collect();
         macros.sort_by(|a, b| a.name.cmp(&b.name));
 
-        // Unlike everything above, these come from a filesystem walk, not FileGraph -- the whole
-        // point is offering files *not yet* \input/\includegraphics'd, which FileGraph (only
-        // what's already referenced) can't provide. One walk collecting both, not two.
+        // Filesystem walk, not FileGraph -- offers files not yet \input/\includegraphics'd, which FileGraph can't provide.
         let (tex_paths, graphic_paths) = find_path_candidates(base_dir);
 
         ProjectIndex { files, citations, macros, packages, tex_paths, graphic_paths }
     }
 
-    /// `outline()`'s real implementation: just this one file's section tree, `[]` if it isn't
-    /// part of the graph at all (matches the frozen stub's "always an array" shape).
     pub fn outline_for(&self, uri: &Path) -> Vec<OutlineNode> {
         self.files.get(uri).map(|f| f.outline.clone()).unwrap_or_default()
     }
 
-    /// Every `\label` in the project, from every file -- the whole point of building a
-    /// project-level merged view instead of one file at a time.
     pub fn labels(&self) -> impl Iterator<Item = &LabelDef> {
         self.files.values().flat_map(|f| f.labels.iter())
     }
 
-    /// Every citable entry from every `.bib` file any project `.tex` file references.
     pub fn citations(&self) -> impl Iterator<Item = &CitationEntry> {
         self.citations.iter()
     }
 
-    /// Every user-defined macro in the project, deduplicated by name.
     pub fn macros(&self) -> impl Iterator<Item = &MacroDef> {
         self.macros.iter()
     }
 
-    /// Every package loaded anywhere in the project via `\usepackage`. Not consumed by anything
-    /// yet -- 3.5's CTAN command scoping is the reason this exists ("only suggest what's actually
-    /// available," Section 9.4).
     pub fn packages(&self) -> impl Iterator<Item = &str> {
         self.packages.iter().map(|s| s.as_str())
     }
 
-    /// `\input`/`\include` path completion candidates -- every `.tex` file in the project, as a
-    /// project-relative path.
     pub fn tex_paths(&self) -> impl Iterator<Item = &str> {
         self.tex_paths.iter().map(|s| s.as_str())
     }
 
-    /// `\includegraphics` path completion candidates -- every image file in the project.
     pub fn graphic_paths(&self) -> impl Iterator<Item = &str> {
         self.graphic_paths.iter().map(|s| s.as_str())
     }
@@ -227,9 +157,7 @@ fn heading_rank(kind: OutlineNodeKind) -> Option<u8> {
     })
 }
 
-/// Longest-name-first, same discipline `project::parse_references` already applies to
-/// `\includegraphics`/`\include` -- avoids a prefix collision biting later even where none
-/// exists among these particular names today.
+/// Longest-name-first order avoids a prefix collision (e.g. `\section` matching inside `\subsection`).
 fn classify(rest: &str) -> Option<(OutlineNodeKind, usize)> {
     const COMMANDS: &[(&str, OutlineNodeKind)] = &[
         ("\\subsubsection", OutlineNodeKind::Subsubsection),
@@ -242,11 +170,8 @@ fn classify(rest: &str) -> Option<(OutlineNodeKind, usize)> {
     COMMANDS.iter().find(|(name, _)| rest.starts_with(name)).map(|(name, kind)| (*kind, name.len()))
 }
 
-/// Scans `stripped` (already comment-free) for section/label commands, in document order.
-/// Deliberately doesn't skip past a heading's `{...}` argument after extracting its title text --
-/// it continues scanning *into* the argument instead, so a `\label{}` nested inside (e.g.
-/// `\section{Intro\label{sec:intro}}`, a common pattern) is still found in its natural document
-/// position, with no separate recursion/position-remapping needed.
+/// Deliberately doesn't skip past a heading's `{...}` argument -- continues scanning into it, so a
+/// nested `\label{}` (e.g. `\section{Intro\label{sec:intro}}`) is still found in its natural position.
 fn scan_into(stripped: &str, entries: &mut Vec<RawEntry>) {
     let bytes = stripped.as_bytes();
     let mut i = 0;
@@ -281,7 +206,6 @@ fn scan_into(stripped: &str, entries: &mut Vec<RawEntry>) {
             entries.push(RawEntry { kind, text: raw_arg.trim().to_string(), position });
             i = close + 1;
         } else {
-            // A nested \label{} (if any) must not show up literally in the displayed title.
             let title = strip_label_commands(raw_arg).trim().to_string();
             entries.push(RawEntry { kind, text: title, position });
             i = after + 1; // into the argument, not past it -- see doc comment above
@@ -289,10 +213,8 @@ fn scan_into(stripped: &str, entries: &mut Vec<RawEntry>) {
     }
 }
 
-/// Byte offset of `{`'s matching `}`, honoring nesting (so `\section{A \textbf{bold} word}`
-/// doesn't truncate at `\textbf`'s own closing brace) and `\{`/`\}` escapes. Char-based (not raw
-/// byte indexing) so skipping an escaped character can't land mid multi-byte UTF-8 sequence and
-/// produce an invalid slice index later.
+/// Char-based (not byte indexing) so skipping an escaped character can't land mid multi-byte
+/// UTF-8 sequence and panic on slicing.
 fn matching_brace(s: &str, open_byte: usize) -> Option<usize> {
     let mut depth = 0i32;
     let mut chars = s[open_byte..].char_indices();
@@ -314,10 +236,8 @@ fn matching_brace(s: &str, open_byte: usize) -> Option<usize> {
     None
 }
 
-/// Removes any `\label{...}` spans from `text` (a heading's raw argument text) so a nested label
-/// doesn't show up literally in the outline's displayed title. Every other embedded command
-/// (`\textbf{}`, `\emph{}`, ...) is left as-is -- rendering LaTeX markup to plain text is out of
-/// scope here, only `\label` is a semantic annotation nobody wants to see spelled out.
+/// Only `\label` is stripped -- other markup (`\textbf{}`, etc.) is left as-is; rendering LaTeX
+/// to plain text is out of scope here.
 fn strip_label_commands(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut spans = Vec::new();
@@ -350,10 +270,6 @@ fn strip_label_commands(text: &str) -> String {
     out
 }
 
-/// Resolves a `\bibliography{name1,name2}` (classic BibTeX, comma-separated, no extension) or
-/// `\addbibresource{name.bib}` (biblatex, one file, extension usually already given) argument to
-/// real `.bib` files, confined to the project directory via [`project::resolve_within`] the same
-/// way `\input`/`\includegraphics` targets are -- see that function's own doc comment for why.
 fn find_bib_resources(stripped: &str, base_dir: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let bytes = stripped.as_bytes();
@@ -365,9 +281,7 @@ fn find_bib_resources(stripped: &str, base_dir: &Path) -> Vec<PathBuf> {
         }
         let rest = &stripped[i..];
         // \bibliographystyle{...} would otherwise false-match \bibliography's prefix; the
-        // "next char after the name must be `{`" check below already rejects it (name_len stops
-        // right at "style{...}", which doesn't start with `{`), same disambiguation `classify`
-        // relies on for e.g. \label vs. \labelformat.
+        // following `{`-check rejects it.
         let (is_multi, name_len) = if rest.starts_with("\\bibliography") {
             (true, "\\bibliography".len())
         } else if rest.starts_with("\\addbibresource") {
@@ -420,9 +334,6 @@ struct BibEntry {
     year: Option<String>,
 }
 
-/// Parses every `@type{key, field = value, ...}` entry in a `.bib` file. `@comment`/`@string`/
-/// `@preamble` are real BibTeX directives, never citable entries, so they're filtered out here
-/// rather than left for the caller to remember to exclude.
 fn parse_bib(content: &str) -> Vec<BibEntry> {
     let mut entries = Vec::new();
     let bytes = content.as_bytes();
@@ -461,7 +372,6 @@ fn parse_bib(content: &str) -> Vec<BibEntry> {
     entries
 }
 
-/// `body` is everything between an entry's outer `{}` -- `"key, field = {value}, field2 = value2"`.
 fn parse_bib_body(body: &str) -> Option<BibEntry> {
     let mut fields = split_top_level(body, ',').into_iter();
     let key = fields.next()?.trim().to_string();
@@ -488,9 +398,8 @@ fn parse_bib_body(body: &str) -> Option<BibEntry> {
     Some(BibEntry { key, author, title, year })
 }
 
-/// Splits on `sep` only at brace/quote depth 0 -- a BibTeX field value routinely contains commas
-/// itself (`author = {Smith, John}`, the "Last, First" convention), so a naive `str::split(',')`
-/// would cut a single field into two and misparse the entry.
+/// Splits on `sep` only at brace/quote depth 0 -- a bib field value routinely contains commas
+/// itself (`author = {Smith, John}`), so a naive split would misparse it.
 fn split_top_level(body: &str, sep: char) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0i32;
@@ -525,10 +434,8 @@ fn find_top_level_eq(field: &str) -> Option<usize> {
     None
 }
 
-/// Strips a field value's outer `{...}`/`"..."` wrapper (or leaves a bare value, e.g. `year =
-/// 1984`, untouched), then strips any remaining brace characters entirely -- BibTeX's
-/// case-protection braces (`title = {The {TeX}book}`) are a typesetting artifact real bibliography
-/// styles never show literally, so a "readable" completion detail shouldn't either.
+/// Also strips any remaining brace characters -- BibTeX's case-protection braces (`{The {TeX}book}`)
+/// are a typesetting artifact, not something a readable completion detail should show literally.
 fn unwrap_bib_value(raw: &str) -> String {
     let trimmed = raw.trim();
     let unwrapped = trimmed
@@ -539,8 +446,6 @@ fn unwrap_bib_value(raw: &str) -> String {
     unwrapped.chars().filter(|&c| c != '{' && c != '}').collect::<String>().trim().to_string()
 }
 
-/// "Author, *Title*, Year" per Section 9.4, literally -- omits whichever field is missing rather
-/// than leaving a dangling separator.
 fn citation_entry(entry: BibEntry) -> CitationEntry {
     let mut parts = Vec::new();
     if let Some(a) = entry.author {
@@ -564,8 +469,6 @@ fn skip_spaces(s: &str, mut pos: usize) -> usize {
     pos
 }
 
-/// Longest-name-first, same discipline as [`classify`]. `\DeclareMathOperator` isn't a prefix of
-/// anything else here, but keeping the ordering convention consistent costs nothing.
 fn classify_macro_command(rest: &str) -> Option<(&'static str, usize)> {
     const COMMANDS: &[(&str, &str)] = &[
         ("\\DeclareMathOperator", "declaremathoperator"),
@@ -575,10 +478,8 @@ fn classify_macro_command(rest: &str) -> Option<(&'static str, usize)> {
     COMMANDS.iter().find(|(name, _)| rest.starts_with(name)).map(|(name, tag)| (*tag, name.len()))
 }
 
-/// Scans `stripped` for `\newcommand`/`\def`/`\DeclareMathOperator` definitions. Unlike
-/// `scan_into`, an entry that doesn't parse as one of these three recognized shapes is dropped
-/// entirely rather than guessed at -- per this task's own instruction, a macro indexed with the
-/// wrong arity is a *wrong* completion, worse than a missing one.
+/// Unlike `scan_into`, an entry that doesn't parse as one of these three shapes is dropped rather
+/// than guessed at -- a wrong arity is worse than a missing completion.
 fn find_macros(stripped: &str) -> Vec<MacroDef> {
     let mut macros = Vec::new();
     let bytes = stripped.as_bytes();
@@ -616,10 +517,7 @@ fn find_macros(stripped: &str) -> Vec<MacroDef> {
     macros
 }
 
-/// `\newcommand{\name}[N][default]{body}` or `\newcommand\name[N]{body}` (both forms of naming
-/// are real LaTeX). The optional second `[default]` bracket (an optional first argument) is
-/// skipped without changing `arity` -- it doesn't add a required `{}` group, so it doesn't add a
-/// tabstop either.
+/// The optional `[default]` bracket doesn't add a required `{}` group, so it doesn't count toward `arity`.
 fn parse_newcommand(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     let bytes = stripped.as_bytes();
     let pos = skip_spaces(stripped, after);
@@ -661,8 +559,6 @@ fn parse_newcommand(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     Some((MacroDef { name, arity, body }, close + 1))
 }
 
-/// `\DeclareMathOperator{\name}{text}` (and the starred limits-style variant, star already
-/// consumed by the caller) -- always arity 0, structurally fixed (no `[N]` at all).
 fn parse_declare_math_operator(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     let bytes = stripped.as_bytes();
     let pos = skip_spaces(stripped, after);
@@ -682,11 +578,9 @@ fn parse_declare_math_operator(stripped: &str, after: usize) -> Option<(MacroDef
     Some((MacroDef { name, arity: 0, body }, body_close + 1))
 }
 
-/// `\def\name#1#2{body}` (plain TeX). Only the common undelimited `#1#2...#N` parameter-text
-/// shape is supported -- TeX's `\def` also allows delimited parameters with literal tokens
-/// between `#`s (`\def\foo#1,#2.{...}`), which is unparseable here on purpose: guessing an arity
-/// for that shape risks exactly the "wrong, not missing" completion this task warns against, so
-/// it's dropped instead.
+/// Only the common undelimited `#1#2...#N` shape is supported -- TeX's `\def` also allows
+/// delimited parameters with literal tokens between `#`s, which is unparseable here on purpose
+/// (dropped rather than guessed).
 fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     let bytes = stripped.as_bytes();
     let pos = skip_spaces(stripped, after);
@@ -725,8 +619,6 @@ fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     Some((MacroDef { name, arity, body }, close + 1))
 }
 
-/// `\usepackage[options]{pkg1,pkg2}` -- Section 9.4 lists this under `.tex` files' extracted data
-/// without giving it its own numbered task; 3.5 depends on it for CTAN command scoping.
 fn find_packages(stripped: &str) -> Vec<String> {
     const CMD: &str = "\\usepackage";
     let mut packages = Vec::new();
@@ -759,14 +651,9 @@ fn find_packages(stripped: &str) -> Vec<String> {
     packages
 }
 
-/// Project-relative, forward-slash-normalized paths of every real `.tex` file and every real
-/// image file (`project::GRAPHIC_EXTENSIONS`) under `base_dir`, in one filesystem walk -- not two
-/// separate ones. Unlike everything else in this module, this walks the filesystem directly
-/// rather than scanning `.tex` source -- the candidate set is "what files exist," not "what's
-/// already referenced." Skips [`project::SKIP_NAMES`] and guards against symlink cycles the same
-/// way `project::root`'s own directory walk does; kept as a separate implementation (not reusing
-/// that private, `.tex`-specific one) to avoid risking a regression in already-shipped
-/// root-detection code for a DRY win.
+/// Walks the filesystem directly (the candidate set is "what files exist," not what's already
+/// referenced) -- deliberately not reusing `project::root`'s own walk, to avoid risking a
+/// regression there for a DRY win.
 fn find_path_candidates(base_dir: &Path) -> (Vec<String>, Vec<String>) {
     let mut visited = HashSet::new();
     let mut tex_paths = Vec::new();
@@ -819,9 +706,8 @@ fn walk_project_files(
     }
 }
 
-/// Byte offset -> `Position` (0-based line, 0-based UTF-16 code units per Section 6's Position --
-/// matches CodeMirror/LSP convention). O(n) per call, fine here: called a handful of times per
-/// file (once per label/heading), never in a hot loop.
+/// Byte offset -> `Position` (0-based line, 0-based UTF-16 code units, matching CodeMirror/LSP
+/// convention). O(n) per call is fine -- called a handful of times per file, never in a hot loop.
 fn position_at(content: &str, byte_offset: usize) -> Position {
     let mut line = 0u32;
     let mut line_start = 0usize;
@@ -835,9 +721,8 @@ fn position_at(content: &str, byte_offset: usize) -> Position {
     Position { line, column }
 }
 
-/// Inverse of [`position_at`]: `Position` -> byte offset into `text`. Out-of-range lines/columns
-/// clamp to the nearest valid offset (end of line / end of document) rather than panicking --
-/// the caller supplies whatever the editor's own cursor position happens to be.
+/// Inverse of [`position_at`]. Out-of-range lines/columns clamp to the nearest valid offset
+/// rather than panicking -- the caller supplies whatever the editor's own cursor position happens to be.
 fn byte_offset_of(text: &str, position: &Position) -> usize {
     let mut offset = 0usize;
     for (line_no, line) in text.split('\n').enumerate() {
@@ -856,10 +741,8 @@ fn byte_offset_of(text: &str, position: &Position) -> usize {
     text.len()
 }
 
-/// Turns the flat, document-order `entries` (headings and `\label` leaves) into a nested tree by
-/// heading rank -- classic "flat heading list to table of contents" shape. A `\label` never opens
-/// a new nesting level; it always attaches as a leaf under whichever heading is currently
-/// innermost-open (or top-level, before any heading at all).
+/// A `\label` never opens a new nesting level -- it always attaches as a leaf under whichever
+/// heading is currently innermost-open (or top-level).
 fn build_outline(entries: Vec<RawEntry>) -> Vec<OutlineNode> {
     let mut stack: Vec<OutlineNode> = Vec::new();
     let mut top: Vec<OutlineNode> = Vec::new();
@@ -898,13 +781,8 @@ fn attach(stack: &mut [OutlineNode], top: &mut Vec<OutlineNode>, node: OutlineNo
     }
 }
 
-/// The command name (e.g. `"ref"`, `"cite"`) immediately before the innermost unclosed `{`
-/// preceding `position` in `text`, if any -- the shared trigger-detection primitive behind every
-/// `is_*_completion_context` check. Scans backward from the cursor tracking brace depth; stops at
-/// the first line break, since a command argument relevant to completion (a ref, a citation) is
-/// never expected to span multiple lines. `None` if the cursor isn't inside a same-line unclosed
-/// brace argument at all, or if what's immediately before that `{` isn't a bare command name
-/// (e.g. `\ref {` with a space, or plain text -- both real but rare/irrelevant edge cases).
+/// Scans backward from the cursor tracking brace depth; stops at the first line break, since a
+/// completion-relevant command argument is never expected to span multiple lines.
 fn enclosing_command(text: &str, position: &Position) -> Option<String> {
     let cursor = byte_offset_of(text, position).min(text.len());
     let before = &text[..cursor];
@@ -921,9 +799,8 @@ fn enclosing_command(text: &str, position: &Position) -> Option<String> {
                     depth -= 1;
                     continue;
                 }
-                // An optional [options] block can sit between the command name and this brace --
-                // \includegraphics[width=5cm]{...} and even plain LaTeX's \cite[p. 5]{...} both
-                // do this. Skip backward over it before looking for the command name.
+                // An optional [options] block can sit between the command name and this brace
+                // (`\includegraphics[width=5cm]{...}`, `\cite[p. 5]{...}`) -- skip backward over it first.
                 let mut prefix = &before[..i];
                 if prefix.ends_with(']') {
                     let open = find_matching_open_bracket(prefix)?;
@@ -939,9 +816,8 @@ fn enclosing_command(text: &str, position: &Position) -> Option<String> {
     None
 }
 
-/// `prefix` ends with `]`; finds the byte offset of its matching `[`, scanning backward and
-/// honoring nesting -- mirrors [`matching_brace`]'s logic but for `[...]` and in reverse. No
-/// escape handling: `[key=value]`-style option blocks don't realistically contain `\[`/`\]`.
+/// Mirrors [`matching_brace`] but for `[...]` in reverse. No escape handling -- option blocks
+/// don't realistically contain `\[`/`\]`.
 fn find_matching_open_bracket(prefix: &str) -> Option<usize> {
     let bytes = prefix.as_bytes();
     let mut depth = 0i32;
@@ -962,24 +838,18 @@ fn find_matching_open_bracket(prefix: &str) -> Option<usize> {
     None
 }
 
-/// Trigger context for label completion (Section 9.4's `\ref`/`\eqref`/`\autoref` sites, task 3.1).
 pub fn is_ref_completion_context(text: &str, position: &Position) -> bool {
     matches!(enclosing_command(text, position).as_deref(), Some("ref") | Some("eqref") | Some("autoref"))
 }
 
-/// Trigger context for citation completion (Section 9.4's `\cite{` sites, task 3.2). Just `\cite`
-/// -- natbib/biblatex variants (`\citep`, `\parencite`, ...) aren't offered since this project
-/// compiles with classic BibTeX only (9.1's documented Tectonic/biber limitation), so they'd be
-/// suggesting syntax the compile pipeline can't actually use.
+/// Just `\cite` -- natbib/biblatex variants (`\citep`, `\parencite`, ...) aren't offered since
+/// this project compiles with classic BibTeX only, so they'd suggest syntax the pipeline can't use.
 pub fn is_cite_completion_context(text: &str, position: &Position) -> bool {
     enclosing_command(text, position).as_deref() == Some("cite")
 }
 
-/// Trigger context for bare command-name completion (task 3.3's macros today; 3.5's CTAN
-/// commands will feed the same trigger later, ranked below project-local macros per Section
-/// 9.4). True when the cursor is right after `\` plus zero or more letters and nothing else --
-/// deliberately distinct from [`enclosing_command`]'s "inside a `{` argument" shape, and mutually
-/// exclusive with it: any `{`, `}`, or other non-letter since the last backslash rules this out.
+/// True when the cursor is right after `\` plus zero or more letters and nothing else --
+/// deliberately distinct from (and mutually exclusive with) [`enclosing_command`]'s "inside a `{` argument" shape.
 pub fn is_command_completion_context(text: &str, position: &Position) -> bool {
     let cursor = byte_offset_of(text, position).min(text.len());
     let before = &text[..cursor];
@@ -989,14 +859,10 @@ pub fn is_command_completion_context(text: &str, position: &Position) -> bool {
     before[backslash + 1..].chars().all(|c| c.is_ascii_alphabetic())
 }
 
-/// Trigger context for `\input`/`\include` file-path completion (task 3.4). Both take only
-/// `.tex` files (Section 9.4), so they share one context check.
 pub fn is_input_completion_context(text: &str, position: &Position) -> bool {
     matches!(enclosing_command(text, position).as_deref(), Some("input") | Some("include"))
 }
 
-/// Trigger context for `\includegraphics` file-path completion (task 3.4) -- a separate check
-/// from [`is_input_completion_context`] since it filters to a different extension set.
 pub fn is_includegraphics_completion_context(text: &str, position: &Position) -> bool {
     enclosing_command(text, position).as_deref() == Some("includegraphics")
 }
@@ -1020,8 +886,6 @@ mod tests {
     #[test]
     fn byte_offset_of_is_the_inverse_of_position_at() {
         let content = "line one\nsecond café line\nthird";
-        // Only real char boundaries -- scan_into only ever calls position_at at a `\` byte,
-        // always a boundary; position_at itself isn't meant to tolerate arbitrary offsets.
         for byte in [0, 5, 9, content.len()] {
             let pos = position_at(content, byte);
             assert_eq!(byte_offset_of(content, &pos), byte, "byte {byte} -> {pos:?} -> back");
@@ -1039,7 +903,6 @@ mod tests {
         let intro = &index.outline[0];
         assert_eq!(intro.label, "Intro");
         assert_eq!(intro.kind, OutlineNodeKind::Section);
-        // \label then \subsection, both children of Intro until Conclusion closes it.
         assert_eq!(intro.children.len(), 2);
         assert_eq!(intro.children[0].kind, OutlineNodeKind::Label);
         assert_eq!(intro.children[0].label, "sec:intro");
@@ -1082,8 +945,6 @@ mod tests {
         assert_eq!(index.labels.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), vec!["real"]);
     }
 
-    /// Position at the very end of `text` -- the completion-context tests only ever care about
-    /// "cursor right after what was just typed," never mid-document.
     fn end_position(text: &str) -> Position {
         let line = text.matches('\n').count() as u32;
         let col_start = text.rfind('\n').map(|i| i + 1).unwrap_or(0);
@@ -1142,8 +1003,6 @@ mod tests {
 
     #[test]
     fn parse_bib_handles_last_comma_first_author_and_bare_year() {
-        // A field value's own internal comma (the "Last, First" convention) must not be mistaken
-        // for the entry's own field separator.
         let content = "@article{lamport1994,\n  author = {Lamport, Leslie},\n  year = 1994\n}\n";
         let entries = parse_bib(content);
         assert_eq!(entries.len(), 1);
@@ -1248,9 +1107,6 @@ mod tests {
 
     #[test]
     fn def_with_delimited_parameters_is_unparseable_and_skipped() {
-        // `\def\foo#1,#2.{...}` -- a literal `,` token between parameters. Getting this wrong
-        // (guessing arity 2 and ignoring the delimiters) would be a *wrong* completion; dropping
-        // it entirely is the documented tradeoff.
         let macros = find_macros("\\def\\foo#1,#2.{body}");
         assert!(macros.is_empty(), "delimited \\def parameters must be dropped, not guessed at: {macros:?}");
     }
@@ -1270,7 +1126,6 @@ mod tests {
 
     #[test]
     fn macro_scan_does_not_misfire_on_lookalike_commands() {
-        // \newcommandy isn't \newcommand; \defer isn't \def; the "next char must be brace/backslash/whitespace-then-those" check must reject both.
         assert!(find_macros("\\newcommandy{\\x}{y}").is_empty());
     }
 
@@ -1285,7 +1140,6 @@ mod tests {
         for cmd in ["\\includegraphics[width=5cm]{", "\\includegraphics[width=5cm]{fig"] {
             assert!(is_includegraphics_completion_context(cmd, &end_position(cmd)), "{cmd:?} should be an includegraphics context");
         }
-        // Plain LaTeX's own \cite takes an optional note argument too, not just natbib/biblatex.
         let cite_with_note = "\\cite[p. 5]{";
         assert!(is_cite_completion_context(cite_with_note, &end_position(cite_with_note)));
     }

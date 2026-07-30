@@ -17,7 +17,6 @@ import { ProjectWatcher } from "./projectWatcher";
 import { runOnce, type SidecarCall } from "./sidecarProcess";
 import { TexlabClient } from "./texlabClient";
 
-/** Desktop's {@link CoreApi}: `quire-sidecar` over stdio, plus `cancelCompile`, which has no `quire-core` handler at all and is a transport-layer concern handled entirely here. */
 export class StdioTransport implements CoreApi {
   private texlab = new TexlabClient();
   private watcher: ProjectWatcher | null = null;
@@ -56,7 +55,6 @@ export class StdioTransport implements CoreApi {
 
   // compileId is minted client-side (not by quire-core, which only needs uniqueness internally) so it exists before the sidecar responds, for cancelCompile/compile-started to reference.
   async compile(r: CompileRequest): Promise<CompileResponse> {
-    // Single-flight: a new compile kills whatever's still running.
     this.currentCompile?.call.kill();
     this.currentCompile = null;
 
@@ -83,11 +81,8 @@ export class StdioTransport implements CoreApi {
       this.currentCompile.call.kill();
       this.currentCompile = null;
     }
-    // Already finished (or never existed) -- nothing to cancel, not an error.
   }
 
-  // Real quire-core completion as of 3.1 (label/\ref completion, from its own index); the wire
-  // shape has been frozen since M1, so this is a backend swap behind an unchanged request object.
   async complete(r: CompletionRequest): Promise<CompletionItem[]> {
     return (await runOnce("complete", r).promise) as CompletionItem[];
   }

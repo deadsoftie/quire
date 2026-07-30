@@ -5,7 +5,6 @@ interface ProblemsPanelProps {
   diagnostics: Diagnostic[];
 }
 
-// diagnostics is real but thin today: one raw entry on failure until M3.10's log-parsing lands.
 export function ProblemsPanel({ diagnostics }: ProblemsPanelProps) {
   if (diagnostics.length === 0) {
     return <p className="panel-empty">No problems.</p>;

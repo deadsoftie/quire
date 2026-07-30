@@ -1,5 +1,3 @@
-/* QUIRE_SPEC.md Section 7 typography. IBM Plex is vendored via @fontsource (verified OFL-1.1); Latin Modern Roman is NOT vendored -- no repackaging with verifiable license provenance was available, so it's a system-font fallback instead (ships with any TeX distribution). */
-
 @import "@fontsource/ibm-plex-mono/400.css";
 @import "@fontsource/ibm-plex-sans/400.css";
 @import "@fontsource/ibm-plex-sans/600.css";

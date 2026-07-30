@@ -13,7 +13,6 @@ interface SeamProps {
   onReset: () => void;
 }
 
-// Draggable via pointer capture (keeps working even if the pointer leaves mid-drag) and the only place compile state renders -- no spinner anywhere else.
 export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
   const draggingRef = useRef(false);
 
@@ -41,9 +40,7 @@ export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  // The OS can interrupt a drag with pointercancel instead of pointerup (trackpad/touch gesture
-  // recognition, focus steal) -- without this, draggingRef stays stuck "on" and the split keeps
-  // changing on ordinary subsequent mouse movement until the user clicks the seam once more.
+  // The OS can interrupt a drag with pointercancel instead of pointerup, so this must reset dragging state too.
   function handlePointerCancel() {
     draggingRef.current = false;
   }

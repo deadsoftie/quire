@@ -64,7 +64,6 @@ impl FileWatcher {
         })
     }
 
-    /// Blocks until a batch is ready, or `timeout` elapses (returning `None`).
     pub fn recv_timeout(&self, timeout: Duration) -> Option<Vec<PathBuf>> {
         self.batches.recv_timeout(timeout).ok()
     }
@@ -124,7 +123,6 @@ mod tests {
             assert!(batch.iter().any(|p| p.ends_with(name)), "missing {name} in {batch:?}");
         }
 
-        // Confirms one coalesced batch, not the first of several.
         assert!(watcher.recv_timeout(Duration::from_millis(500)).is_none());
 
         fs::remove_dir_all(&dir).unwrap();

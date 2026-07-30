@@ -13,10 +13,9 @@ const highlighting = styleTags({
   "{ }": t.brace,
 });
 
-// `basicSetup` (Editor.tsx) already brings its own `syntaxHighlighting(defaultHighlightStyle)`,
-// whose colors (navy, dark red, ...) assume a light background -- illegible against this
-// app's dark editor theme. This layers a second, dark-appropriate style on top of it,
-// using the same design tokens as the rest of the app, for exactly the tags used above.
+// `basicSetup` already brings its own syntaxHighlighting(defaultHighlightStyle), whose colors
+// assume a light background -- illegible against this app's dark editor theme. This layers a
+// second, dark-appropriate style on top of it for the tags used above.
 const latexHighlightStyle = HighlightStyle.define([
   { tag: t.lineComment, color: "var(--type-lo)", fontStyle: "italic" },
   { tag: t.macroName, color: "var(--nonrepro)" },

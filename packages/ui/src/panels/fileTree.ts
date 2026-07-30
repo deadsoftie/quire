@@ -10,7 +10,6 @@ export interface TreeNode {
   children: TreeNode[];
 }
 
-// Reconstructs a nested tree client-side from OpenProjectResponse.files' flat, dependency-graph-derived list -- same data, just organized for display, not a contract change.
 export function buildFileTree(files: FileNode[], projectId: string): TreeNode[] {
   const root: TreeNode = { name: "", path: "", kind: "directory", children: [] };
 

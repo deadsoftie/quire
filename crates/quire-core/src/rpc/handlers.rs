@@ -1,11 +1,8 @@
-//! Real logic behind the [`crate::rpc`] contract types; `quire-sidecar` is a thin JSON-RPC dispatcher over these (D6), so a future `quire-ffi` can reuse them with a different transport.
+//! No `cancel_compile` here: `quire-sidecar` is one process per compile with no in-process handle
+//! to interrupt -- the caller kills the OS process instead, a transport-layer concern.
 //!
-//! No `cancel_compile` here: `quire-sidecar` is one process per compile with no in-process handle to interrupt -- the caller kills the OS process instead, a transport-layer concern.
-//!
-//! `complete` *is* here as of 3.1 -- real for `\ref`/`\eqref`/`\autoref`/`\cite`/bare-command
-//! (macro) completion, `quire-core`'s own index rather than texlab (GPL-3.0, D7).
-//!
-//! `quire-core` holds no project registry -- `ProjectId` is the project's root directory path itself, and every function re-derives what it needs from that.
+//! `quire-core` holds no project registry -- `ProjectId` is the project's root directory path
+//! itself, and every function re-derives what it needs from that.
 
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -53,7 +50,7 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
         root_confidence: detection.confidence.into(),
         candidates: detection.candidates.iter().map(|p| p.display().to_string()).collect(),
         files,
-        // Tectonic is embedded (D1), so an engine always exists; per-compile network/package issues surface through compile()'s own errors instead.
+        // Tectonic is embedded, so an engine always exists; per-compile network/package issues surface through compile()'s own errors instead.
         engine_available: true,
     })
 }
@@ -74,7 +71,8 @@ pub fn close_project(_req: &CloseProjectRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// Mirrors only the files reachable from the root (per [`crate::project::FileGraph`]) into the shadow dir; dirty buffers override on-disk content, everything else is read fresh. A LaTeX failure is a normal `status: "errors"` result, never an `Err` -- `Err` is reserved for the request itself being unserviceable.
+/// A LaTeX failure is a normal `status: "errors"` result, never an `Err` -- `Err` is reserved for
+/// the request itself being unserviceable.
 pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let start = Instant::now();
     let project_dir = PathBuf::from(&req.project_id);
@@ -143,7 +141,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             changed_pages: Vec::new(),
             page_count: 0,
             duration_ms: start.elapsed().as_millis() as u32,
-            // No log-parsing/translation yet (M3.10) -- the real error, as-is.
+            // No log-parsing/translation yet -- the real error, as-is.
             diagnostics: vec![Diagnostic {
                 uri: None,
                 range: None,
@@ -161,12 +159,9 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     Ok(response)
 }
 
-/// `project::resolve_within` already confines every reference the graph walk follows to the
-/// project directory, so `real_path` should always be inside `project_dir` by the time it gets
-/// here. This is the last line of defense, not the primary control: `strip_prefix` failing (an
-/// absolute `real_path` outside `project_dir`) or succeeding but leaving `..` components in
-/// `relative` (both would otherwise let `shadow_dir.join(relative)` land outside `shadow_dir`)
-/// are treated as a bug to refuse, never silently followed to wherever they'd resolve.
+/// Last line of defense, not the primary control -- `resolve_within` already confines every
+/// reference to `project_dir`, but a failing `strip_prefix` or a leftover `..` component here is
+/// treated as a bug to refuse, never silently followed.
 fn write_into_shadow(
     project_dir: &Path,
     shadow_dir: &Path,
@@ -202,10 +197,8 @@ fn bundle_digest_hex() -> Result<String, CompileError> {
     Ok(bundle.get_digest()?.to_string())
 }
 
-/// Real per task 3.1: section structure (`\part`..`\subsubsection`) plus `\label` sites, both
-/// built from the same pass over `req.uri`'s content ([`crate::index`]). Reads from disk like
-/// every handler in this file -- `OutlineRequest` carries no dirty-buffer text, so this reflects
-/// the last saved content, not unsaved editor state.
+/// Reads from disk like every handler in this file -- `OutlineRequest` carries no dirty-buffer
+/// text, so this reflects the last saved content, not unsaved editor state.
 pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     let project_dir = Path::new(&req.project_id);
     let Some(root) = project::detect_root(project_dir).root else {
@@ -216,15 +209,8 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     index.outline_for(Path::new(&req.uri))
 }
 
-/// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion), 3.2 (`\cite{` citation
-/// completion), 3.3 (bare-command macro completion), 3.4 (`\input`/`\include`/
-/// `\includegraphics` file-path completion), 3.5 (bare-command CTAN package completion, merged
-/// into the same response as 3.3's macros), and 3.8 (bare-command math symbol completion,
-/// `crate::index::symbols`, merged into that same response one tier below package commands --
-/// see `command_completions`). 3.7's snippets (`fig`/`tab`/`eq`/`itm`/`sec`/`beg`) never reach
-/// this handler at all -- see `packages/ui/src/snippets.ts`. Checked before touching disk: no
-/// reason to rebuild the whole project index for a keystroke inside an argument none of these
-/// triggers recognize.
+/// Checked before touching disk: no reason to rebuild the whole project index for a keystroke
+/// inside an argument none of these triggers recognize.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
     let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);
@@ -255,10 +241,9 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     }
 }
 
-// Section 9.4's ranking: project-local symbols outrank package commands, which outrank the global
-// fallback -- 3.8's math symbols are that fallback tier itself (always available, never gated by
-// `\usepackage`, see `crate::index::symbols`). These constants only matter relative to each other
-// within the same response -- command_completions is the one place all three tiers appear together.
+// Project-local symbols outrank package commands, which outrank the global fallback (math
+// symbols). These constants only matter relative to each other within the same response --
+// command_completions is the one place all three tiers appear together.
 const PROJECT_LOCAL_PRIORITY: i32 = 0;
 const PACKAGE_PRIORITY: i32 = 10;
 const SYMBOL_PRIORITY: i32 = 20;
@@ -297,11 +282,8 @@ fn citation_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionIte
     items
 }
 
-/// Shared by `\input`/`\include` and `\includegraphics` completion -- both just offer a
-/// project-relative path, with the extension already filtered by which one `paths` came from.
-/// The full path (extension included) is inserted rather than an idiomatic extension-less form:
-/// unambiguous even if two candidates share a basename with different extensions (`plot.pdf` and
-/// `plot.png`), and always valid LaTeX either way.
+/// The full path (extension included) is inserted rather than an extension-less form: unambiguous
+/// even if two candidates share a basename with different extensions (`plot.pdf`/`plot.png`).
 fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = paths
         .map(|p| CompletionItem {
@@ -318,9 +300,7 @@ fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionI
     items
 }
 
-/// Bare-command completion (task 3.3's macros, 3.5's CTAN package commands, and 3.8's math
-/// symbols, merged into one response and ranked via `sort_priority`, per Section 9.4). `label`/
-/// `insert` deliberately omit the leading backslash -- the client's bare-command trigger
+/// `label`/`insert` deliberately omit the leading backslash -- the client's bare-command trigger
 /// (`Editor.tsx`'s `wordMatch`) replaces starting right after the backslash already in the
 /// document, matching how label/citation completions already replace starting after `{`.
 fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
@@ -330,8 +310,7 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
             label: m.name.clone(),
             kind: CompletionKind::Macro,
             insert: insert_with_tabstops(&m.name, m.arity),
-            // The raw substitution body, not a description -- there's nothing else to show, and
-            // seeing what a macro actually expands to is exactly what "readable" means here too.
+            // The raw substitution body -- there's nothing else to show for a "readable" detail here.
             detail: if m.body.is_empty() { None } else { Some(m.body.clone()) },
             documentation: None,
             symbol_preview: None,
@@ -350,8 +329,7 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
         sort_priority: PACKAGE_PRIORITY,
     }));
 
-    // Never scoped by `\usepackage` -- see `crate::index::symbols`'s own doc comment for why these
-    // are the "global fallback" tier rather than package-gated like the block just above.
+    // Never scoped by `\usepackage` -- these are the always-available fallback tier, unlike the package-gated block above.
     items.extend(crate::index::symbols::all().into_iter().map(|s| CompletionItem {
         label: s.name.clone(),
         kind: CompletionKind::Symbol,
@@ -368,13 +346,9 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
     items
 }
 
-/// Arity -> tabstops, shared by macro (3.3) and CTAN package command (3.5) completions: `\vect`
-/// (arity 1) becomes `vect{${1:arg1}}` (no leading backslash -- see `command_completions`'s
-/// comment), `\greet` (arity 2) becomes `greet{${1:arg1}}{${2:arg2}}`, and arity 0 is just the
-/// bare name with no braces at all -- both extraction sources already treat "doesn't cleanly
-/// take N required brace arguments" as arity 0 rather than guess. `${N:argN}` rather than empty
-/// `${N}` fields since neither a macro definition nor `data/ctan-commands.json` names its own
-/// arguments.
+/// `\vect` (arity 1) becomes `vect{${1:arg1}}`, `\greet` (arity 2) becomes
+/// `greet{${1:arg1}}{${2:arg2}}`, and arity 0 is just the bare name with no braces. `${N:argN}`
+/// rather than empty `${N}` since neither a macro definition nor the CTAN database names its own arguments.
 fn insert_with_tabstops(name: &str, arity: u32) -> String {
     let mut s = name.to_string();
     for n in 1..=arity {
@@ -385,12 +359,12 @@ fn insert_with_tabstops(name: &str, arity: u32) -> String {
     s
 }
 
-/// M4 scaffolding; always reports nothing fetched, nothing failed -- honest about doing no work.
+/// Always reports nothing fetched, nothing failed -- honest about doing no work.
 pub fn prefetch_packages(_req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
     PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() }
 }
 
-/// `version` is real; `offlinePackages`/`cacheBytes` are always `0` -- both are M4 concepts that don't exist yet.
+/// `version` is real; `offlinePackages`/`cacheBytes` are always `0` -- both don't exist yet.
 pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
     Ok(BundleStatusResponse { version: bundle_digest_hex()?, offline_packages: 0, cache_bytes: 0 })
 }

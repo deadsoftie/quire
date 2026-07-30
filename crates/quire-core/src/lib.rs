@@ -10,11 +10,9 @@ use tectonic::status::NoopStatusBackend;
 pub struct CompileOutput {
     pub pdf: Vec<u8>,
     pub page_count: u32,
-    /// Always all pages: this call is stateless, so real diffing lives in [`rerun::compile_latex_in_dir`].
     pub changed_pages: Vec<u32>,
 }
 
-/// Carries the engine's captured log, unlike `tectonic::Error`'s generic message.
 #[derive(Debug)]
 pub struct CompileError {
     pub message: String,
@@ -51,7 +49,6 @@ pub fn compile_latex_to_pdf(source: &str) -> Result<Vec<u8>, CompileError> {
     compile_latex(source).map(|out| out.pdf)
 }
 
-/// Same as [`compile_latex_to_pdf`] but returns the full [`CompileOutput`].
 pub fn compile_latex(source: &str) -> Result<CompileOutput, CompileError> {
     let mut status = NoopStatusBackend::default();
 
