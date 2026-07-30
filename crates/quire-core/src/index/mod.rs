@@ -1,8 +1,6 @@
 //! The completion/outline index (Section 9.4). Built fresh from a [`crate::project::FileGraph`]
 //! on every call -- no server-side cache, matching the rest of `quire-core` (per
 //! `docs/CONTRACT.md`, every RPC handler re-derives what it needs from `projectId` directly).
-//! Real incremental reindexing (reparsing only a changed file) is task 3.6; this module's job is
-//! to shape the data so that's a cache-invalidation problem later, not a rewrite.
 //!
 //! 3.1 extracts `\label` definitions and section structure (`\part`.."\subsubsection") -- both in
 //! the same pass over a file, since they're the same walk. 3.2 adds `.bib` parsing, discovered via
@@ -13,6 +11,21 @@
 //! needs it -- `\usepackage` tracking, which isn't a numbered task of its own. 3.4 adds file-path
 //! completion. 3.5 ([`ctan`]) is the one extension source that isn't parsed from project source at
 //! all -- a bundled command database scoped by [`ProjectIndex::packages`].
+//!
+//! **3.6 ("incremental reindex") turned out not to need a cache.** The plan through 3.5 (see this
+//! comment's own earlier revisions) was "reparse only a changed file," anticipating a persistent
+//! per-file cache the way `rerun.rs` persists citation fingerprints/page hashes across compiles.
+//! But `quire-sidecar` spawns a *fresh OS process per RPC call* (`docs/CONTRACT.md`,
+//! `packages/client/src/sidecarProcess.ts`'s `runOnce`) -- there is no long-lived process for
+//! `complete`/`outline` to hold an in-memory cache in at all, the same constraint `rerun.rs`
+//! solves by persisting to disk. Before building that same disk-cache machinery here (real
+//! complexity: serialization, mtime/size invalidation, concurrent-process write races), task
+//! 3.6's actual acceptance criterion -- "≤10ms for a single-file change" on a 50-file thesis --
+//! got measured against the honest full-rebuild-every-call approach first
+//! (`tests/reindex_bench.rs`). It measured ~2ms (release) / ~5ms (debug) on a real 51-file, ~1000
+//! line fixture -- comfortably under budget without a cache, so one wasn't built. The one real
+//! inefficiency found along the way (`find_path_candidates` walking the project directory twice,
+//! once per extension bucket) was fixed directly: one walk, two result buckets.
 
 pub mod ctan;
 
@@ -130,9 +143,8 @@ impl ProjectIndex {
 
         // Unlike everything above, these come from a filesystem walk, not FileGraph -- the whole
         // point is offering files *not yet* \input/\includegraphics'd, which FileGraph (only
-        // what's already referenced) can't provide.
-        let tex_paths = find_path_candidates(base_dir, &["tex"]);
-        let graphic_paths = find_path_candidates(base_dir, project::GRAPHIC_EXTENSIONS);
+        // what's already referenced) can't provide. One walk collecting both, not two.
+        let (tex_paths, graphic_paths) = find_path_candidates(base_dir);
 
         ProjectIndex { files, citations, macros, packages, tex_paths, graphic_paths }
     }
@@ -746,22 +758,31 @@ fn find_packages(stripped: &str) -> Vec<String> {
     packages
 }
 
-/// Project-relative, forward-slash-normalized paths of every real file under `base_dir` whose
-/// extension (case-insensitive) is in `extensions`. Unlike everything else in this module, this
-/// walks the filesystem directly rather than scanning `.tex` source -- the candidate set is "what
-/// files exist," not "what's already referenced." Skips [`project::SKIP_NAMES`] and guards
-/// against symlink cycles the same way `project::root`'s own directory walk does; kept as a
-/// separate implementation (not reusing that private, `.tex`-specific one) to avoid risking a
-/// regression in already-shipped root-detection code for a DRY win.
-fn find_path_candidates(base_dir: &Path, extensions: &[&str]) -> Vec<String> {
+/// Project-relative, forward-slash-normalized paths of every real `.tex` file and every real
+/// image file (`project::GRAPHIC_EXTENSIONS`) under `base_dir`, in one filesystem walk -- not two
+/// separate ones. Unlike everything else in this module, this walks the filesystem directly
+/// rather than scanning `.tex` source -- the candidate set is "what files exist," not "what's
+/// already referenced." Skips [`project::SKIP_NAMES`] and guards against symlink cycles the same
+/// way `project::root`'s own directory walk does; kept as a separate implementation (not reusing
+/// that private, `.tex`-specific one) to avoid risking a regression in already-shipped
+/// root-detection code for a DRY win.
+fn find_path_candidates(base_dir: &Path) -> (Vec<String>, Vec<String>) {
     let mut visited = HashSet::new();
-    let mut results = Vec::new();
-    walk_project_files(base_dir, base_dir, &mut visited, extensions, &mut results);
-    results.sort();
-    results
+    let mut tex_paths = Vec::new();
+    let mut graphic_paths = Vec::new();
+    walk_project_files(base_dir, base_dir, &mut visited, &mut tex_paths, &mut graphic_paths);
+    tex_paths.sort();
+    graphic_paths.sort();
+    (tex_paths, graphic_paths)
 }
 
-fn walk_project_files(base_dir: &Path, dir: &Path, visited: &mut HashSet<PathBuf>, extensions: &[&str], results: &mut Vec<String>) {
+fn walk_project_files(
+    base_dir: &Path,
+    dir: &Path,
+    visited: &mut HashSet<PathBuf>,
+    tex_paths: &mut Vec<String>,
+    graphic_paths: &mut Vec<String>,
+) {
     let Ok(real_dir) = dir.canonicalize() else {
         return;
     };
@@ -778,10 +799,20 @@ fn walk_project_files(base_dir: &Path, dir: &Path, visited: &mut HashSet<PathBuf
         }
         let path = entry.path();
         if path.is_dir() {
-            walk_project_files(base_dir, &path, visited, extensions, results);
-        } else if path.extension().is_some_and(|e| extensions.iter().any(|ext| e.eq_ignore_ascii_case(ext))) {
+            walk_project_files(base_dir, &path, visited, tex_paths, graphic_paths);
+            continue;
+        }
+        let Some(ext) = path.extension() else { continue };
+        let bucket = if ext.eq_ignore_ascii_case("tex") {
+            Some(&mut *tex_paths)
+        } else if project::GRAPHIC_EXTENSIONS.iter().any(|e| ext.eq_ignore_ascii_case(e)) {
+            Some(&mut *graphic_paths)
+        } else {
+            None
+        };
+        if let Some(bucket) = bucket {
             if let Ok(rel) = path.strip_prefix(base_dir) {
-                results.push(rel.to_string_lossy().replace('\\', "/"));
+                bucket.push(rel.to_string_lossy().replace('\\', "/"));
             }
         }
     }
@@ -1287,10 +1318,8 @@ mod tests {
         fs::write(dir.join("figures").join("plot.PNG"), "").unwrap(); // extension case shouldn't matter
         fs::write(dir.join("node_modules").join("ignored.tex"), "").unwrap();
 
-        let tex = find_path_candidates(&dir, &["tex"]);
+        let (tex, graphics) = find_path_candidates(&dir);
         assert_eq!(tex, vec!["chapters/intro.tex", "main.tex"], "sorted, node_modules excluded, forward slashes even if built on a platform that uses '\\'");
-
-        let graphics = find_path_candidates(&dir, project::GRAPHIC_EXTENSIONS);
         assert_eq!(graphics, vec!["figures/plot.PNG", "figures/plot.pdf"]);
 
         fs::remove_dir_all(&dir).ok();
