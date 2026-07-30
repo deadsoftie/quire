@@ -15,10 +15,8 @@ import type {
 } from "./contract";
 import { ProjectWatcher } from "./projectWatcher";
 import { runOnce, type SidecarCall } from "./sidecarProcess";
-import { TexlabClient } from "./texlabClient";
 
 export class StdioTransport implements CoreApi {
-  private texlab = new TexlabClient();
   private watcher: ProjectWatcher | null = null;
   private watchedProjectId: ProjectId | null = null;
   private listeners = new Set<(e: CoreEvent) => void>();
@@ -118,6 +116,5 @@ export class StdioTransport implements CoreApi {
     this.currentCompile = null;
     this.watcher?.stop();
     this.watcher = null;
-    this.texlab.stop();
   }
 }

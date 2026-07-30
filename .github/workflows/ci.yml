@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  no-texlab:
+    name: No texlab references outside the spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: rg -i texlab (excluding QUIRE_SPEC.md and M3_TASKS.md)
+        run: |
+          if rg -il texlab --glob '!QUIRE_SPEC.md' --glob '!M3_TASKS.md' .; then
+            echo
+            echo "texlab must not be referenced outside QUIRE_SPEC.md/M3_TASKS.md -- see the files listed above."
+            exit 1
+          fi
+          echo "No stray texlab references."
