@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, fs};
 
-use tectonic_bundles::Bundle;
-
 use crate::project::{self, FileKind};
 use crate::rerun::compile_latex_in_dir;
 use crate::rpc::*;
@@ -52,6 +50,7 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
         files,
         // Tectonic is embedded, so an engine always exists; per-compile network/package issues surface through compile()'s own errors instead.
         engine_available: true,
+        bundle_version_notice: crate::bundle::record_version_pin(project_dir),
     })
 }
 
@@ -120,7 +119,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     })?;
 
     let compile_id = generate_compile_id();
-    let bundle_version = bundle_digest_hex().unwrap_or_default();
+    let bundle_version = crate::bundle::digest_hex().unwrap_or_default();
 
     let root_uri = root.display().to_string();
 
@@ -211,10 +210,6 @@ fn generate_compile_id() -> String {
     format!("{}-{}", std::process::id(), nanos)
 }
 
-fn bundle_digest_hex() -> Result<String, CompileError> {
-    let mut bundle = crate::bundle::resolve_bundle()?;
-    Ok(bundle.get_digest()?.to_string())
-}
 
 /// Reads from disk like every handler in this file -- `OutlineRequest` carries no dirty-buffer
 /// text, so this reflects the last saved content, not unsaved editor state.
@@ -433,7 +428,7 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
 pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
     let offline_packages = (crate::bundle::core_packages().len() + crate::bundle::cached_packages().len()) as u32;
     Ok(BundleStatusResponse {
-        version: bundle_digest_hex()?,
+        version: crate::bundle::digest_hex()?,
         offline_packages,
         cache_bytes: crate::bundle::cache_size_bytes() as u32,
     })

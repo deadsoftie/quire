@@ -58,6 +58,34 @@ fn open_project_finds_root_and_full_file_list() {
 }
 
 #[test]
+fn open_project_pins_the_bundle_version_and_notices_only_on_a_real_mismatch() {
+    let project_dir = fresh_project_copy("project_graph", "pin");
+    let metadata_path = project_dir.join(".quire").join("project.json");
+    let current = quire_core::bundle::digest_hex().expect("a bundle should be resolvable in tests");
+
+    // First-ever open: nothing pinned yet, so nothing to compare against.
+    let first = open_project(&OpenProjectRequest { path: project_dir.display().to_string() }).unwrap();
+    assert!(first.bundle_version_notice.is_none(), "{:?}", first.bundle_version_notice);
+    let pinned = fs::read_to_string(&metadata_path).expect(".quire/project.json should exist after the first open");
+    assert!(pinned.contains(&current), "pinned file should record the real current digest: {pinned}");
+
+    // Second open, same bundle: pin matches, still nothing to report.
+    let second = open_project(&OpenProjectRequest { path: project_dir.display().to_string() }).unwrap();
+    assert!(second.bundle_version_notice.is_none(), "{:?}", second.bundle_version_notice);
+
+    // Simulate the bundle having changed since the last open by hand-editing the pinned value.
+    fs::write(&metadata_path, r#"{"bundleVersion":"deliberately-not-the-real-digest"}"#).unwrap();
+    let third = open_project(&OpenProjectRequest { path: project_dir.display().to_string() }).unwrap();
+    assert!(third.bundle_version_notice.is_some(), "a real mismatch should produce a notice");
+
+    // The mismatch notice also re-pins to the current version -- it must not repeat on the very next open.
+    let fourth = open_project(&OpenProjectRequest { path: project_dir.display().to_string() }).unwrap();
+    assert!(fourth.bundle_version_notice.is_none(), "{:?}", fourth.bundle_version_notice);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
 fn prefetch_fetches_a_package_missing_from_bundle_and_cache() {
     let project_dir = fresh_project_copy("prefetch", "prefetch");
     let project_id = project_dir.display().to_string();

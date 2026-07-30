@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tectonic::io::{InputHandle, IoProvider, OpenResult};
 use tectonic::status::{NoopStatusBackend, StatusBackend};
 use tectonic_bundles::{dir::DirBundle, Bundle};
@@ -225,4 +225,55 @@ pub fn remove_cached_package(name: &str) -> Result<(), CompileError> {
         }
     }
     Ok(())
+}
+
+/// The active bundle's digest, hex-formatted -- core's own when `bundles/core/` exists (per 4.2,
+/// core defines a compile's identity), Tectonic's default bundle's otherwise. Used for both
+/// `bundleStatus().version` and the version pin below; deliberately not `network_bundle_digest_hex`
+/// above, which is scoped to locating the cache tier's own on-disk directory specifically.
+pub fn digest_hex() -> Result<String, CompileError> {
+    let mut bundle = resolve_bundle()?;
+    Ok(bundle.get_digest()?.to_string())
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ProjectMetadata {
+    #[serde(default)]
+    bundle_version: Option<String>,
+}
+
+fn project_metadata_path(project_dir: &Path) -> PathBuf {
+    project_dir.join(".quire").join("project.json")
+}
+
+/// Task 4.6: compares the project's pinned bundle version (`.quire/project.json`, sibling to the
+/// compile shadow dir at `.quire/build/` -- already excluded from the file watcher and file tree)
+/// against the currently active one, returning a plain-English notice on a mismatch, then updates
+/// the pin to the current version either way. `None` covers both "versions match" and "nothing was
+/// pinned yet" (first open ever -- there's nothing to compare against). Best-effort: a read or
+/// write failure here never blocks opening the project, matching 4.3's own "swallow and proceed"
+/// precedent for prefetch failures.
+pub fn record_version_pin(project_dir: &Path) -> Option<String> {
+    let Ok(current) = digest_hex() else { return None };
+
+    let path = project_metadata_path(project_dir);
+    let previous = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<ProjectMetadata>(&text).ok());
+
+    let notice = match previous.as_ref().and_then(|m| m.bundle_version.as_deref()) {
+        Some(pinned) if pinned != current => {
+            Some("The package bundle has changed since this project was last opened.".to_string())
+        }
+        _ => None,
+    };
+
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let metadata = ProjectMetadata { bundle_version: Some(current) };
+    if let Ok(text) = serde_json::to_string_pretty(&metadata) {
+        let _ = fs::write(&path, text);
+    }
+
+    notice
 }

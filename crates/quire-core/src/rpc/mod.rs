@@ -78,6 +78,10 @@ pub struct OpenProjectResponse {
     pub candidates: Vec<DocUri>,
     pub files: Vec<FileNode>,
     pub engine_available: bool,
+    /// Plain-English, ready to display as-is (task 4.6) -- `null` when the project's pinned
+    /// bundle version matches the currently active one, or nothing was pinned yet (first open).
+    /// A notice only, never blocking: `openProject` still succeeds either way.
+    pub bundle_version_notice: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

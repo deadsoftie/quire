@@ -16,9 +16,18 @@ interface StatusBarProps {
   cursorPosition: CursorPositionStore;
   /** `null` when unknown (the scratch project never calls real `openProject`) -- the dot only renders on a real `false`. */
   engineAvailable: boolean | null;
+  /** Task 4.6 -- plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
+  bundleVersionNotice: string | null;
+  onDismissBundleVersionNotice: () => void;
 }
 
-export function StatusBar({ problemCount, cursorPosition, engineAvailable }: StatusBarProps) {
+export function StatusBar({
+  problemCount,
+  cursorPosition,
+  engineAvailable,
+  bundleVersionNotice,
+  onDismissBundleVersionNotice,
+}: StatusBarProps) {
   const position = useSyncExternalStore(cursorPosition.subscribe, cursorPosition.getSnapshot);
 
   return (
@@ -27,6 +36,19 @@ export function StatusBar({ problemCount, cursorPosition, engineAvailable }: Sta
         {problemCount > 0 && (
           <span className="status-bar__item status-bar__item--problem">
             {problemCount} {problemCount === 1 ? "problem" : "problems"}
+          </span>
+        )}
+        {bundleVersionNotice && (
+          <span className="status-bar__item status-bar__item--notice">
+            {bundleVersionNotice}
+            <button
+              type="button"
+              className="status-bar__dismiss"
+              onClick={onDismissBundleVersionNotice}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
           </span>
         )}
       </div>

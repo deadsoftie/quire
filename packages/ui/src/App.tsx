@@ -120,6 +120,7 @@ function AppShell() {
   const [failedPackageNames, setFailedPackageNames] = useState<string[]>([]);
   const [packagesCacheBytes, setPackagesCacheBytes] = useState(0);
   const [packagesRefreshToken, setPackagesRefreshToken] = useState(0);
+  const [bundleVersionNotice, setBundleVersionNotice] = useState<string | null>(null);
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
@@ -361,6 +362,8 @@ function AppShell() {
       files: [],
     };
     const tab: OpenTab = { uri: scratch.root, text: INITIAL_SOURCE, savedText: INITIAL_SOURCE, cursor: 0, scrollTop: null };
+    // The scratch project never calls real openProject, so any notice from a previously open real project no longer applies.
+    setBundleVersionNotice(null);
     return { project, tab };
   }, []);
 
@@ -397,6 +400,7 @@ function AppShell() {
             engineAvailable: opened.engineAvailable,
             files: opened.files,
           };
+          setBundleVersionNotice(opened.bundleVersionNotice);
 
           // A missing file is skipped, not fatal -- restore whatever's still there instead of falling back to scratch.
           const wantedUris = session.openTabs.length > 0 ? session.openTabs : [opened.root];
@@ -538,6 +542,7 @@ function AppShell() {
           engineAvailable: opened.engineAvailable,
           files: opened.files,
         };
+        setBundleVersionNotice(opened.bundleVersionNotice);
         const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
         applyProject(next, [tab], opened.root);
         prefetchThenCompile(next.projectId);
@@ -807,6 +812,8 @@ function AppShell() {
         problemCount={diagnostics.length}
         cursorPosition={cursorStore}
         engineAvailable={project?.engineAvailable ?? null}
+        bundleVersionNotice={bundleVersionNotice}
+        onDismissBundleVersionNotice={() => setBundleVersionNotice(null)}
       />
     </div>
   );

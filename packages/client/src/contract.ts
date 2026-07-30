@@ -99,7 +99,13 @@ export type OpenProjectResponse = { projectId: string, root: string, rootConfide
 /**
  * Populated when `rootConfidence` is `"ambiguous"`.
  */
-candidates: Array<string>, files: Array<FileNode>, engineAvailable: boolean, };
+candidates: Array<string>, files: Array<FileNode>, engineAvailable: boolean, 
+/**
+ * Plain-English, ready to display as-is (task 4.6) -- `null` when the project's pinned
+ * bundle version matches the currently active one, or nothing was pinned yet (first open).
+ * A notice only, never blocking: `openProject` still succeeds either way.
+ */
+bundleVersionNotice: string | null, };
 
 export type OutlineNode = { label: string, kind: OutlineNodeKind, position: Position, children: Array<OutlineNode>, };
 
