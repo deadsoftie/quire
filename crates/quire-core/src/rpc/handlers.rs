@@ -219,10 +219,12 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
 /// Real per tasks 3.1 (`\ref`/`\eqref`/`\autoref` label completion), 3.2 (`\cite{` citation
 /// completion), 3.3 (bare-command macro completion), 3.4 (`\input`/`\include`/
 /// `\includegraphics` file-path completion), and 3.5 (bare-command CTAN package completion,
-/// merged into the same response as 3.3's macros) -- every other trigger context (math symbols,
-/// snippets) returns `[]` until 3.7/3.8 land their own extraction sources onto the same
-/// [`crate::index::ProjectIndex`]. Checked before touching disk: no reason to rebuild the whole
-/// project index for a keystroke inside an argument none of these triggers recognize.
+/// merged into the same response as 3.3's macros) -- every other trigger context (math symbols)
+/// returns `[]` until 3.8 lands its own extraction source onto the same
+/// [`crate::index::ProjectIndex`]. 3.7's snippets (`fig`/`tab`/`eq`/`itm`/`sec`/`beg`) never reach
+/// this handler at all -- see `packages/ui/src/snippets.ts`. Checked before touching disk: no
+/// reason to rebuild the whole project index for a keystroke inside an argument none of these
+/// triggers recognize.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
     let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);

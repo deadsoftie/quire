@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
-import { autocompletion } from "@codemirror/autocomplete";
+import { autocompletion, snippet } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import {
   focusCompartment,
@@ -11,6 +11,7 @@ import {
   typewriterScrollingExtension,
 } from "./editorModes";
 import { latex } from "./latex/language";
+import { snippetCompletionSource } from "./snippets";
 
 export const INITIAL_SOURCE =
   "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
@@ -121,7 +122,10 @@ function makeCompletionSource(projectId: string, uri: string) {
       options: items.map((item) => ({
         label: item.label,
         detail: item.detail ?? undefined,
-        apply: item.insert,
+        // 3.3/3.5's macro/package arity tabstops are `${1:...}` too (Section 6) -- route them
+        // through the same CM6 snippet mechanism 3.7 wires up, rather than inserting the literal
+        // placeholder text for everything but the new local snippet source.
+        apply: item.insert.includes("${") ? snippet(item.insert) : item.insert,
         boost: -item.sortPriority,
       })),
     };
@@ -180,7 +184,7 @@ export function Editor({
         basicSetup,
         baseEditorTheme,
         latex(),
-        autocompletion({ override: [makeCompletionSource(projectId, uri)] }),
+        autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] }),
         proseCompartment.of(proseMode ? proseModeExtension() : []),
         typewriterCompartment.of(typewriterMode ? typewriterScrollingExtension() : []),
         focusCompartment.of(focusMode ? focusModeExtension() : []),
