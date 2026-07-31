@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("quireDesktop", {
   chooseProjectFolder: invoke("desktop:chooseProjectFolder"),
   chooseNewProjectFolder: invoke("desktop:chooseNewProjectFolder"),
   scaffoldProject: invoke("desktop:scaffoldProject"),
+  exportProject: invoke("desktop:exportProject"),
   createFile: invoke("desktop:createFile"),
   chooseFile: invoke("desktop:chooseFile"),
   confirmDiscard: invoke("desktop:confirmDiscard"),

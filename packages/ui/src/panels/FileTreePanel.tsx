@@ -35,8 +35,10 @@ function FileTreeItem({
 }) {
   const [expanded, setExpanded] = useState(true);
   const isDirectory = node.kind === "directory";
-  // Graphics show in the tree but have nothing to open them into yet.
+  // Graphics and .bib files show in the tree but have nothing to open them into yet -- neither
+  // has editor support (no bib syntax highlighting, no image viewer).
   const isSelectable = node.kind === "tex";
+  const isInert = node.kind === "graphic" || node.kind === "bib";
 
   return (
     <li>
@@ -45,7 +47,7 @@ function FileTreeItem({
           "file-tree__row" +
           (isSelectable ? " file-tree__row--selectable" : "") +
           (node.uri && node.uri === activeUri ? " file-tree__row--active" : "") +
-          (node.kind === "graphic" ? " file-tree__row--inert" : "")
+          (isInert ? " file-tree__row--inert" : "")
         }
         style={{ paddingLeft: `calc(var(--s-2) + ${depth} * var(--s-4))` }}
         onClick={() => {

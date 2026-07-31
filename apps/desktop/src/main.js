@@ -48,6 +48,8 @@ function buildMenu() {
         { type: "separator" },
         { label: "Save", accelerator: "CmdOrCtrl+S", click: () => sendMenuCommand("file.save") },
         { label: "Save As…", accelerator: "CmdOrCtrl+Shift+S", click: () => sendMenuCommand("file.save-as") },
+        { type: "separator" },
+        { label: "Export…", accelerator: "CmdOrCtrl+Shift+E", click: () => sendMenuCommand("file.export") },
         ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
       ],
     },
@@ -167,6 +169,56 @@ function scaffoldProject(dirPath, templateId) {
   fs.writeFileSync(path.join(dirPath, "main.tex"), source);
 }
 
+// `sourceFiles` entries come from the renderer's own `project.files` (itself sourced from a real
+// openProject() response, not arbitrary user input), so their paths are already trusted -- unlike
+// scaffoldProject's templateId, no allowlist is needed here. `dirtyText` set means an open,
+// unsaved tab -- its live in-memory text is used instead of re-reading the (stale) file on disk,
+// so the bundled source always matches the PDF that was just compiled from it.
+async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }) {
+  const projectName = path.basename(projectDir);
+  const documentsDir = app.getPath("documents");
+
+  if (!includeSource) {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: path.join(documentsDir, `${projectName}.pdf`),
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    fs.copyFileSync(pdfPath, result.filePath);
+    return result.filePath;
+  }
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: path.join(documentsDir, `${projectName}.zip`),
+    filters: [{ name: "Zip Archive", extensions: ["zip"] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+
+  // ESM-only package ("archiver" >=8 dropped its old CJS factory-function API for a `ZipArchive`
+  // class) -- dynamic import from this CJS file rather than a top-level require().
+  const { ZipArchive } = await import("archiver");
+
+  await new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(result.filePath);
+    const archive = new ZipArchive({ zlib: { level: 9 } });
+    output.on("close", resolve);
+    archive.on("error", reject);
+    archive.pipe(output);
+
+    archive.file(pdfPath, { name: `${projectName}.pdf` });
+    // Source files sit under source/ so the PDF and the source tree can never collide on name.
+    for (const { path: filePath, dirtyText } of sourceFiles ?? []) {
+      const relative = path.join("source", path.relative(projectDir, filePath));
+      if (dirtyText !== undefined) archive.append(dirtyText, { name: relative });
+      else archive.file(filePath, { name: relative });
+    }
+
+    archive.finalize();
+  });
+
+  return result.filePath;
+}
+
 app.whenReady().then(() => {
   client = new StdioTransport();
   const sessionFile = path.join(app.getPath("userData"), "session.json");
@@ -212,6 +264,8 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("desktop:scaffoldProject", (_event, dirPath, templateId) => scaffoldProject(dirPath, templateId));
+
+  ipcMain.handle("desktop:exportProject", (_event, options) => exportProject(options));
 
   ipcMain.handle("desktop:createFile", async (_event, projectDir) => {
     const result = await dialog.showSaveDialog(mainWindow, {

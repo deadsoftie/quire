@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CompileReason, CoreEvent, DetectSystemTexResponse, Diagnostic, FileNode } from "@quire/client";
+import type { CompileReason, CompileResponse, CoreEvent, DetectSystemTexResponse, Diagnostic, FileNode } from "@quire/client";
 import { Plus } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
@@ -14,6 +14,7 @@ import { OutlinePanel } from "./panels/OutlinePanel";
 import { formatBytes, PackagesPanel } from "./panels/PackagesPanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
 import type { PanelKind } from "./panels/types";
+import { ExportDialog } from "./ExportDialog";
 import { MissingPackagesCard } from "./MissingPackagesCard";
 import type { PackageInstallState } from "./MissingPackagesCard";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -142,6 +143,9 @@ function AppShell() {
   const [systemTexStatus, setSystemTexStatus] = useState<DetectSystemTexResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [cursorStore] = useState(() => createCursorPositionStore());
 
   const projectRef = useRef<Project | null>(null);
@@ -183,10 +187,13 @@ function AppShell() {
   );
 
   // Swallows SIDECAR_CALL_CANCELLED specifically -- a superseded compile's rejection, not a real error.
+  // Returns the real response so a caller that needs to know the outcome (Export, below) can wait
+  // on it -- every existing caller triggers this fire-and-forget and ignores the return value, so
+  // this is purely additive.
   const runCompile = useCallback(
-    async (reason: CompileReason) => {
+    async (reason: CompileReason): Promise<CompileResponse | null> => {
       const proj = projectRef.current;
-      if (!proj) return;
+      if (!proj) return null;
       const dirtyBuffers = tabsRef.current.map((t) => ({ uri: t.uri, text: t.text }));
       try {
         const result = await window.quire.compile({
@@ -215,10 +222,12 @@ function AppShell() {
           setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
           setMissingPackages(null);
         }
+        return result;
       } catch (err) {
         const message = String((err as Error)?.message ?? err);
-        if (message.includes(SIDECAR_CALL_CANCELLED)) return;
+        if (message.includes(SIDECAR_CALL_CANCELLED)) return null;
         setError(message);
+        return null;
       }
     },
     [useSystemTex],
@@ -488,6 +497,50 @@ function AppShell() {
     if (!path) return;
     await openTab(path);
   }, [project, openTab]);
+
+  // "manual" -- CompileReason had this value reserved but unused everywhere else; a real,
+  // explicit, user-triggered recompile outside the normal edit-debounce flow is exactly what it's
+  // for. Forced so the exported PDF always matches the current (possibly unsaved) editor state,
+  // per this feature's own acceptance bar.
+  const handleExport = useCallback(
+    async (includeSource: boolean) => {
+      setExportBusy(true);
+      setExportError(null);
+      const result = await runCompile("manual");
+      if (!result || result.status !== "ok" || !result.pdfPath) {
+        const diagnostic = result?.diagnostics[0];
+        setExportError(diagnostic?.rawMessage || diagnostic?.message || "Compile failed -- fix the errors and try again.");
+        setExportBusy(false);
+        return;
+      }
+      const proj = projectRef.current;
+      if (!proj) {
+        setExportBusy(false);
+        return;
+      }
+      // Open (unsaved) tabs contribute their live in-memory text instead of the stale on-disk
+      // copy -- same reasoning the compile call itself already applies via dirtyBuffers, so the
+      // exported source actually matches the exported PDF. Everything else main.js reads fresh
+      // from disk itself. Graphics are never open as tabs, so this lookup naturally no-ops for them.
+      const sourceFiles = includeSource
+        ? proj.files.map((f) => ({ path: f.uri, dirtyText: tabsRef.current.find((t) => t.uri === f.uri)?.text }))
+        : undefined;
+      try {
+        const exported = await window.quireDesktop.exportProject({
+          projectDir: proj.projectId,
+          pdfPath: result.pdfPath,
+          includeSource,
+          sourceFiles,
+        });
+        if (exported) setExportOpen(false);
+      } catch (err) {
+        setExportError(String((err as Error)?.message ?? err));
+      } finally {
+        setExportBusy(false);
+      }
+    },
+    [runCompile],
+  );
 
   const closeProject = useCallback(() => {
     projectRef.current = null;
@@ -787,6 +840,19 @@ function AppShell() {
   });
 
   useCommand({
+    id: "file.export",
+    title: "Export…",
+    shortcut: "⇧⌘E",
+    // No keybinding: the File menu's native "Export…" accelerator dispatches through menuBridge
+    // instead -- see project.open's comment above.
+    run: () => {
+      if (!project) return;
+      setExportError(null);
+      setExportOpen(true);
+    },
+  });
+
+  useCommand({
     id: "layout.reset-split",
     title: "Reset Editor/Preview Split",
     run: () => setSplitFraction(0.5),
@@ -898,6 +964,14 @@ function AppShell() {
       )}
       {newProjectOpen && (
         <NewProjectDialog onSelect={createProjectFromSelection} onClose={() => setNewProjectOpen(false)} />
+      )}
+      {exportOpen && (
+        <ExportDialog
+          onExport={handleExport}
+          onClose={() => setExportOpen(false)}
+          busy={exportBusy}
+          error={exportError}
+        />
       )}
       <div className="app__body">
         <ActivityBar active={sidebarSection} onSelect={toggleSidebarSection} problemCount={diagnostics.length} />

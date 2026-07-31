@@ -31,17 +31,13 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     let files = graph
         .files
         .iter()
-        // A .bib file is compiled with (see compile() below) but not itself an openable document
-        // -- FileNodeKind (the wire contract) has no variant for it, and adding one is a bigger,
-        // deliberate call than this fix makes; it stays invisible to the Explorer/file tree for now.
-        .filter(|f| f.kind != FileKind::Bib)
         .map(|f| FileNode {
             uri: f.path.display().to_string(),
             name: f.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             kind: match f.kind {
                 FileKind::Tex => FileNodeKind::Tex,
                 FileKind::Graphic => FileNodeKind::Graphic,
-                FileKind::Bib => unreachable!("filtered out above"),
+                FileKind::Bib => FileNodeKind::Bib,
             },
         })
         .collect();

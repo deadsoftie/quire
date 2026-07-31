@@ -29,6 +29,18 @@ declare global {
       chooseNewProjectFolder: () => Promise<string | null>;
       /** Writes `main.tex` into `dirPath` -- the chosen template's content, or blank boilerplate when `templateId` is `null`. Rejects if `dirPath` isn't empty or `templateId` isn't a real template. */
       scaffoldProject: (dirPath: string, templateId: string | null) => Promise<void>;
+      /**
+       * Native save dialog for the compiled PDF (`.pdf`) or, when `includeSource`, a `.zip` with
+       * the PDF plus every `sourceFiles` entry under `source/`. `dirtyText` set means an open,
+       * unsaved tab -- its live text is bundled instead of the on-disk copy; omitted otherwise,
+       * to be read fresh from disk. Returns the chosen path, or `null` if cancelled.
+       */
+      exportProject: (options: {
+        projectDir: string;
+        pdfPath: string;
+        includeSource: boolean;
+        sourceFiles?: { path: string; dirtyText?: string }[];
+      }) => Promise<string | null>;
       /** Native save-as picker rooted at the given project dir; writes an empty file and returns its path, `null` if cancelled. */
       createFile: (projectDir: string) => Promise<string | null>;
       /** Native open-file picker rooted at the given project dir; `null` if cancelled. */

@@ -52,13 +52,14 @@ describe("buildFileTree", () => {
     expect(tree[0].children.map((n) => n.name)).toEqual(["intro.tex", "outro.tex"]);
   });
 
-  it("preserves the real FileNodeKind (tex vs graphic) on leaves", () => {
+  it("preserves the real FileNodeKind (tex vs graphic vs bib) on leaves", () => {
     const tree = buildFileTree(
-      [file(`${PROJECT}/figures/plot.pdf`, "graphic")],
+      [file(`${PROJECT}/figures/plot.pdf`, "graphic"), file(`${PROJECT}/refs.bib`, "bib")],
       PROJECT,
     );
 
     expect(tree[0].children[0].kind).toBe("graphic");
+    expect(tree.find((n) => n.name === "refs.bib")!.kind).toBe("bib");
   });
 
   it("returns an empty tree for an empty file list", () => {

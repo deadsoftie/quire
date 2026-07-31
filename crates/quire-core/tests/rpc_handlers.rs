@@ -57,6 +57,22 @@ fn open_project_finds_root_and_full_file_list() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
+/// FileNodeKind::Bib closes the gap flagged when bib mirroring was first fixed (`docs/CONTRACT.md`)
+/// -- a .bib file is now a real, visible entry in openProject()'s own file list, not just mirrored
+/// into the shadow dir invisibly.
+#[test]
+fn open_project_exposes_bibliography_files_with_the_real_bib_kind() {
+    let project_dir = fresh_project_copy("compile_with_bibliography", "open-bib");
+
+    let resp = open_project(&OpenProjectRequest { path: project_dir.display().to_string() })
+        .expect("open_project should succeed on a real fixture");
+
+    let refs = resp.files.iter().find(|f| f.name == "refs.bib").expect("refs.bib should be in the file list");
+    assert_eq!(refs.kind, FileNodeKind::Bib);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
 #[test]
 fn open_project_pins_the_bundle_version_and_notices_only_on_a_real_mismatch() {
     let project_dir = fresh_project_copy("project_graph", "pin");

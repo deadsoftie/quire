@@ -55,6 +55,7 @@ impl From<crate::project::RootConfidence> for RootConfidence {
 pub enum FileNodeKind {
     Tex,
     Graphic,
+    Bib,
 }
 
 /// Flat list from [`crate::project::FileGraph`] (the LaTeX dependency graph), not a directory walk.
