@@ -23,10 +23,12 @@ declare global {
 
     // Desktop transport plumbing that isn't part of CoreApi and never will be.
     quireDesktop: {
-      /** Doesn't call CoreApi.openProject -- see apps/desktop/src/main.js. */
-      createScratchProject: () => Promise<{ projectId: string; root: string }>;
       /** Native folder picker; `null` if cancelled. */
       chooseProjectFolder: () => Promise<string | null>;
+      /** Native folder picker that also lets the user create+name a brand-new folder inline; `null` if cancelled. */
+      chooseNewProjectFolder: () => Promise<string | null>;
+      /** Writes `main.tex` into `dirPath` -- the chosen template's content, or blank boilerplate when `templateId` is `null`. Rejects if `dirPath` isn't empty or `templateId` isn't a real template. */
+      scaffoldProject: (dirPath: string, templateId: string | null) => Promise<void>;
       /** Native save-as picker rooted at the given project dir; writes an empty file and returns its path, `null` if cancelled. */
       createFile: (projectDir: string) => Promise<string | null>;
       /** Native open-file picker rooted at the given project dir; `null` if cancelled. */

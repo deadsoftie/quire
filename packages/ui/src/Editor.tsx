@@ -23,9 +23,6 @@ import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
 import { renderSymbolPreview } from "./symbolPreview";
 
-export const INITIAL_SOURCE =
-  "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
-
 // Chromium normalizes most clipboard images -- including a macOS screenshot-to-clipboard, this
 // feature's own acceptance case -- to `image/png` regardless of source, so `png` is the safe
 // default; only an explicit JPEG source keeps its own extension, since Tectonic reads the image

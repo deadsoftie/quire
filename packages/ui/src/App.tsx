@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CompileReason, CoreEvent, DetectSystemTexResponse, Diagnostic, FileNode } from "@quire/client";
+import { Plus } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
-import { Editor, INITIAL_SOURCE } from "./Editor";
+import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
 import { formatLatex } from "./latex/formatter";
 import { useMenuBridge } from "./menuBridge";
@@ -15,6 +16,7 @@ import { ProblemsPanel } from "./panels/ProblemsPanel";
 import type { PanelKind } from "./panels/types";
 import { MissingPackagesCard } from "./MissingPackagesCard";
 import type { PackageInstallState } from "./MissingPackagesCard";
+import { NewProjectDialog } from "./NewProjectDialog";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
@@ -25,6 +27,7 @@ import { normalizeSession, type SessionState } from "./session";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
+import { WelcomeScreen } from "./WelcomeScreen";
 import "./App.css";
 
 function createCursorPositionStore(): CursorPositionStore & { set: (position: CursorPosition) => void } {
@@ -52,12 +55,12 @@ const DEBOUNCE_MS = 500;
 // Duplicated literal (not imported) -- mirrors @quire/client's SIDECAR_CALL_CANCELLED, avoiding CJS/ESM resolution issues across the Electron IPC boundary.
 const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
+// A Project only ever exists after a real openProject() call -- there is no more scratch/throwaway
+// variant, so both fields below are always the real response values, never a placeholder.
 interface Project {
   projectId: string;
   label: string;
-  /** `null` for the scratch project, which never calls real `openProject`. */
-  engineAvailable: boolean | null;
-  /** `[]` for the scratch project, same reason. */
+  engineAvailable: boolean;
   files: FileNode[];
 }
 
@@ -138,6 +141,7 @@ function AppShell() {
   const [useSystemTex, setUseSystemTex] = useState(false);
   const [systemTexStatus, setSystemTexStatus] = useState<DetectSystemTexResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [cursorStore] = useState(() => createCursorPositionStore());
 
   const projectRef = useRef<Project | null>(null);
@@ -365,9 +369,10 @@ function AppShell() {
     if (pending.uri === activeUri) editorRef.current?.revealPosition(pending.line, pending.column);
   }, [activeUri]);
 
+  // Closing the last tab is allowed -- the project stays open with zero tabs, same empty state
+  // "Close All Files" can also reach (the editor pane shows its own empty message for it).
   const closeTab = useCallback((uri: string) => {
     const current = tabsRef.current;
-    if (current.length <= 1) return;
     const idx = current.findIndex((t) => t.uri === uri);
     if (idx === -1) return;
     const next = current.filter((t) => t.uri !== uri);
@@ -376,7 +381,7 @@ function AppShell() {
     setActiveUri((activePrev) => {
       if (activePrev !== uri) return activePrev;
       const neighbor = current[idx + 1] ?? current[idx - 1];
-      return neighbor.uri;
+      return neighbor ? neighbor.uri : null;
     });
   }, []);
 
@@ -421,21 +426,21 @@ function AppShell() {
     [saveTab, closeTab],
   );
 
-  // Shared by the initial-launch fallback below and the "Close Folder" command -- both need the
-  // exact same fresh, empty scratch project, not two copies of this logic.
-  const createFreshScratchProject = useCallback(async (): Promise<{ project: Project; tab: OpenTab }> => {
-    const scratch = await window.quireDesktop.createScratchProject();
-    const project: Project = {
-      projectId: scratch.projectId,
-      label: "Untitled",
-      engineAvailable: null,
-      files: [],
-    };
-    const tab: OpenTab = { uri: scratch.root, text: INITIAL_SOURCE, savedText: INITIAL_SOURCE, cursor: 0, scrollTop: null };
-    // The scratch project never calls real openProject, so any notice from a previously open real project no longer applies.
-    setBundleVersionNotice(null);
-    return { project, tab };
-  }, []);
+  // Shared by "Close Folder" and "Close All Files" -- both need the same "N unsaved files, Save
+  // all/Discard all/Cancel" batch confirmation before proceeding. Returns false on Cancel, so the
+  // caller can bail out of whatever it was about to do.
+  const confirmAndSaveDirtyTabs = useCallback(async (): Promise<boolean> => {
+    const dirty = tabsRef.current.filter((t) => t.text !== t.savedText);
+    if (dirty.length === 0) return true;
+    const choice = await window.quireDesktop.confirmDiscard(
+      dirty.length === 1 ? `Save changes to ${basename(dirty[0].uri)}?` : `Save changes to ${dirty.length} files?`,
+    );
+    if (choice === "cancel") return false;
+    if (choice === "save") {
+      for (const t of dirty) await saveTab(t.uri);
+    }
+    return true;
+  }, [saveTab]);
 
   const applyProject = useCallback((project: Project, tabs: OpenTab[], activeUri: string) => {
     projectRef.current = project;
@@ -444,6 +449,75 @@ function AppShell() {
     setTabs(tabs);
     setActiveUri(activeUri);
   }, []);
+
+  // Shared by "Open Folder…" and "New Project…" (once New Project has scaffolded a folder on
+  // disk, opening it is identical to opening any other real folder) -- one real openProject() call
+  // path, not two copies of it.
+  const openProjectAtPath = useCallback(
+    async (path: string) => {
+      try {
+        const opened = await window.quire.openProject({ path });
+        const initialText = await window.quire.readFile(opened.root);
+        const next: Project = {
+          projectId: opened.projectId,
+          label: basename(opened.projectId),
+          engineAvailable: opened.engineAvailable,
+          files: opened.files,
+        };
+        setBundleVersionNotice(opened.bundleVersionNotice);
+        const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
+        applyProject(next, [tab], opened.root);
+        prefetchThenCompile(next.projectId);
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+    [applyProject, prefetchThenCompile],
+  );
+
+  const openFolderPicker = useCallback(async () => {
+    const path = await window.quireDesktop.chooseProjectFolder();
+    if (!path) return;
+    await openProjectAtPath(path);
+  }, [openProjectAtPath]);
+
+  // Shared by the file.new command and the Explorer sidebar's own "+ New File" header button.
+  const createNewFile = useCallback(async () => {
+    if (!project) return;
+    const path = await window.quireDesktop.createFile(project.projectId);
+    if (!path) return;
+    await openTab(path);
+  }, [project, openTab]);
+
+  const closeProject = useCallback(() => {
+    projectRef.current = null;
+    setProject(null);
+    tabsRef.current = [];
+    setTabs([]);
+    setActiveUri(null);
+    setPdfData(null);
+    setChangedPages([]);
+    setError(null);
+    setDiagnostics([]);
+    setMissingPackages(null);
+    setBundleVersionNotice(null);
+  }, []);
+
+  const createProjectFromSelection = useCallback(
+    async (templateId: string | null) => {
+      setNewProjectOpen(false);
+      const dirPath = await window.quireDesktop.chooseNewProjectFolder();
+      if (!dirPath) return;
+      try {
+        await window.quireDesktop.scaffoldProject(dirPath, templateId);
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+        return;
+      }
+      await openProjectAtPath(dirPath);
+    },
+    [openProjectAtPath],
+  );
 
   useEffect(() => {
     (async () => {
@@ -474,7 +548,7 @@ function AppShell() {
           };
           setBundleVersionNotice(opened.bundleVersionNotice);
 
-          // A missing file is skipped, not fatal -- restore whatever's still there instead of falling back to scratch.
+          // A missing file is skipped, not fatal -- restore whatever's still there instead of falling back to the empty state.
           const wantedUris = session.openTabs.length > 0 ? session.openTabs : [opened.root];
           const loadedTabs: OpenTab[] = [];
           for (const uri of wantedUris) {
@@ -505,13 +579,13 @@ function AppShell() {
           initializedRef.current = true;
           return;
         } catch {
-          // Path moved/deleted/otherwise unreadable -- fall through to the scratch project below, same as a fresh launch.
+          // Path moved/deleted/otherwise unreadable -- fall through to the empty state below, same as a fresh launch.
         }
       }
 
-      const { project: freshProject, tab } = await createFreshScratchProject();
-      applyProject(freshProject, [tab], tab.uri);
-      runCompile("open");
+      // No restorable session, or it didn't pan out -- project/tabs/activeUri stay at their empty
+      // initial state; the WelcomeScreen (rendered below whenever project is null) offers Open
+      // Folder / New Project instead of silently substituting a throwaway document.
       initializedRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,12 +598,11 @@ function AppShell() {
 
   useEffect(() => {
     if (!initializedRef.current) return;
-    const isRealProject = project && project.engineAvailable !== null;
     sessionRef.current = {
       ...sessionRef.current,
-      projectPath: isRealProject ? project.projectId : null,
-      openTabs: isRealProject ? tabs.map((t) => t.uri) : [],
-      activeUri: isRealProject ? activeUri : null,
+      projectPath: project ? project.projectId : null,
+      openTabs: project ? tabs.map((t) => t.uri) : [],
+      activeUri: project ? activeUri : null,
       sidebarSection,
       sidebarWidth,
       splitFraction,
@@ -607,38 +680,23 @@ function AppShell() {
     shortcut: "⌘O",
     // No keybinding: the File menu's native "Open Folder…" accelerator (⌘O) dispatches through
     // menuBridge instead -- registering both here would double-fire on the same keypress.
-    run: async () => {
-      const path = await window.quireDesktop.chooseProjectFolder();
-      if (!path) return;
-      try {
-        const opened = await window.quire.openProject({ path });
-        const initialText = await window.quire.readFile(opened.root);
-        const next: Project = {
-          projectId: opened.projectId,
-          label: basename(opened.projectId),
-          engineAvailable: opened.engineAvailable,
-          files: opened.files,
-        };
-        setBundleVersionNotice(opened.bundleVersionNotice);
-        const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
-        applyProject(next, [tab], opened.root);
-        prefetchThenCompile(next.projectId);
-      } catch (err) {
-        setError(String((err as Error)?.message ?? err));
-      }
-    },
+    run: openFolderPicker,
+  });
+
+  useCommand({
+    id: "project.new",
+    title: "New Project…",
+    shortcut: "⇧⌘N",
+    // No keybinding: the File menu's native "New Project…" accelerator dispatches through
+    // menuBridge instead -- see project.open's comment above.
+    run: () => setNewProjectOpen(true),
   });
 
   useCommand({
     id: "file.new",
     title: "New File",
     shortcut: "⌘N",
-    run: async () => {
-      if (!project) return;
-      const path = await window.quireDesktop.createFile(project.projectId);
-      if (!path) return;
-      await openTab(path);
-    },
+    run: createNewFile,
   });
 
   useCommand({
@@ -672,22 +730,25 @@ function AppShell() {
   });
 
   useCommand({
+    id: "file.close-all",
+    title: "Close All Files",
+    shortcut: "⇧⌘W",
+    // No keybinding: the File menu's native "Close All Files" accelerator dispatches through
+    // menuBridge instead -- see project.open's comment above.
+    run: async () => {
+      if (!(await confirmAndSaveDirtyTabs())) return;
+      tabsRef.current = [];
+      setTabs([]);
+      setActiveUri(null);
+    },
+  });
+
+  useCommand({
     id: "file.close-folder",
     title: "Close Folder",
     run: async () => {
-      const dirty = tabsRef.current.filter((t) => t.text !== t.savedText);
-      if (dirty.length > 0) {
-        const choice = await window.quireDesktop.confirmDiscard(
-          dirty.length === 1 ? `Save changes to ${basename(dirty[0].uri)}?` : `Save changes to ${dirty.length} files?`,
-        );
-        if (choice === "cancel") return;
-        if (choice === "save") {
-          for (const t of dirty) await saveTab(t.uri);
-        }
-      }
-      const { project: freshProject, tab } = await createFreshScratchProject();
-      applyProject(freshProject, [tab], tab.uri);
-      runCompile("open");
+      if (!(await confirmAndSaveDirtyTabs())) return;
+      closeProject();
     },
   });
 
@@ -835,6 +896,9 @@ function AppShell() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+      {newProjectOpen && (
+        <NewProjectDialog onSelect={createProjectFromSelection} onClose={() => setNewProjectOpen(false)} />
+      )}
       <div className="app__body">
         <ActivityBar active={sidebarSection} onSelect={toggleSidebarSection} problemCount={diagnostics.length} />
         {sidebarSection && (
@@ -846,6 +910,20 @@ function AppShell() {
                 : sidebarSection === "packages"
                   ? `${formatBytes(packagesCacheBytes)} cached`
                   : undefined
+            }
+            action={
+              sidebarSection === "file-tree" &&
+              project && (
+                <button
+                  type="button"
+                  className="panel-shell__action"
+                  onClick={createNewFile}
+                  aria-label="New File"
+                  title="New File"
+                >
+                  <Plus size={14} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              )
             }
             width={sidebarWidth}
             onWidthChange={setSidebarWidth}
@@ -861,55 +939,61 @@ function AppShell() {
             onClose={closeTab}
             onSaveAndClose={saveAndCloseTab}
           />
-          <div
-            className="app__panes"
-            ref={containerRef}
-            style={{ gridTemplateColumns: `${splitFraction}fr var(--s-2) ${1 - splitFraction}fr` }}
-          >
-            <div className="app__pane app__pane--editor">
-              {project && activeTab && (
-                <Editor
-                  ref={editorRef}
-                  key={activeTab.uri}
-                  initialDoc={activeTab.text}
-                  projectId={project.projectId}
-                  uri={activeTab.uri}
-                  focusMode={focusMode}
-                  typewriterMode={typewriterMode}
-                  proseMode={proseMode}
-                  wordWrap={wordWrap}
-                  restoreCursor={activeTab.cursor}
-                  restoreScrollTop={activeTab.scrollTop}
-                  onChange={scheduleCompile}
-                  onCursorActivity={handleCursorActivity}
-                  diagnostics={editorDiagnostics}
-                />
-              )}
+          {!project ? (
+            <WelcomeScreen onOpenFolder={openFolderPicker} onNewProject={() => setNewProjectOpen(true)} />
+          ) : (
+            <div
+              className="app__panes"
+              ref={containerRef}
+              style={{ gridTemplateColumns: `${splitFraction}fr var(--s-2) ${1 - splitFraction}fr` }}
+            >
+              <div className="app__pane app__pane--editor">
+                {activeTab ? (
+                  <Editor
+                    ref={editorRef}
+                    key={activeTab.uri}
+                    initialDoc={activeTab.text}
+                    projectId={project.projectId}
+                    uri={activeTab.uri}
+                    focusMode={focusMode}
+                    typewriterMode={typewriterMode}
+                    proseMode={proseMode}
+                    wordWrap={wordWrap}
+                    restoreCursor={activeTab.cursor}
+                    restoreScrollTop={activeTab.scrollTop}
+                    onChange={scheduleCompile}
+                    onCursorActivity={handleCursorActivity}
+                    diagnostics={editorDiagnostics}
+                  />
+                ) : (
+                  <p className="app__pane-empty">No file open. Select one from Explorer, or ⌘N for a new file.</p>
+                )}
+              </div>
+              <Seam
+                state={seamState}
+                containerRef={containerRef}
+                onChange={setSplitFraction}
+                onReset={() => setSplitFraction(0.5)}
+              />
+              <div className="app__pane app__pane--preview">
+                {error ? (
+                  <pre className="app__error">{error}</pre>
+                ) : (
+                  <>
+                    <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
+                    {missingPackages && missingPackages.length > 0 && (
+                      <MissingPackagesCard
+                        packages={missingPackages}
+                        installState={packageInstallState}
+                        failedNames={failedPackageNames}
+                        onInstall={installMissingPackages}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-            <Seam
-              state={seamState}
-              containerRef={containerRef}
-              onChange={setSplitFraction}
-              onReset={() => setSplitFraction(0.5)}
-            />
-            <div className="app__pane app__pane--preview">
-              {error ? (
-                <pre className="app__error">{error}</pre>
-              ) : (
-                <>
-                  <PdfViewer data={pdfData} changedPages={changedPages} inverted={pdfInverted} />
-                  {missingPackages && missingPackages.length > 0 && (
-                    <MissingPackagesCard
-                      packages={missingPackages}
-                      installState={packageInstallState}
-                      failedNames={failedPackageNames}
-                      onInstall={installMissingPackages}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       </div>
       <StatusBar

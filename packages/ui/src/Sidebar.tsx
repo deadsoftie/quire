@@ -10,12 +10,13 @@ const RESIZE_STEP = 16;
 interface SidebarProps {
   title: string;
   caption?: string;
+  action?: ReactNode;
   width: number;
   onWidthChange: (width: number) => void;
   children: ReactNode;
 }
 
-export function Sidebar({ title, caption, width, onWidthChange, children }: SidebarProps) {
+export function Sidebar({ title, caption, action, width, onWidthChange, children }: SidebarProps) {
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
@@ -46,7 +47,7 @@ export function Sidebar({ title, caption, width, onWidthChange, children }: Side
 
   return (
     <aside className="sidebar" style={{ width }}>
-      <PanelShell title={title} caption={caption}>
+      <PanelShell title={title} caption={caption} action={action}>
         {children}
       </PanelShell>
       <div

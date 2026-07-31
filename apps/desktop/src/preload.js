@@ -27,8 +27,9 @@ contextBridge.exposeInMainWorld("quire", {
 });
 
 contextBridge.exposeInMainWorld("quireDesktop", {
-  createScratchProject: invoke("desktop:createScratchProject"),
   chooseProjectFolder: invoke("desktop:chooseProjectFolder"),
+  chooseNewProjectFolder: invoke("desktop:chooseNewProjectFolder"),
+  scaffoldProject: invoke("desktop:scaffoldProject"),
   createFile: invoke("desktop:createFile"),
   chooseFile: invoke("desktop:chooseFile"),
   confirmDiscard: invoke("desktop:confirmDiscard"),

@@ -1,14 +1,21 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const { StdioTransport } = require("@quire/client");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 const isMac = process.platform === "darwin";
 
-// Matches Editor.tsx's INITIAL_SOURCE; must have real body content, since an empty \begin{document}\end{document} reproducibly fails to compile.
-const SCRATCH_PLACEHOLDER = "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
+// Duplicated literal (not imported) -- same reasoning as App.tsx's SIDECAR_CALL_CANCELLED comment:
+// avoids CJS/ESM resolution issues across the Electron IPC boundary. Must have real body content,
+// since an empty \begin{document}\end{document} reproducibly fails to compile.
+const BLANK_PROJECT_SOURCE = "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
+
+// templates/*.tex, resolved relative to this dev checkout -- apps/desktop/src/main.js is three
+// levels under the repo root. Packaging (task 4.12, not yet built) will need these bundled as
+// extraResources and this path swapped for one relative to `process.resourcesPath` instead.
+const TEMPLATES_DIR = path.join(__dirname, "..", "..", "..", "templates");
+const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 
 let client;
 let mainWindow;
@@ -31,10 +38,12 @@ function buildMenu() {
         { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => sendMenuCommand("app.open-settings") },
         { type: "separator" },
         { label: "New File", accelerator: "CmdOrCtrl+N", click: () => sendMenuCommand("file.new") },
+        { label: "New Project…", accelerator: "CmdOrCtrl+Shift+N", click: () => sendMenuCommand("project.new") },
         { label: "Open File…", accelerator: "CmdOrCtrl+Shift+O", click: () => sendMenuCommand("file.open") },
         { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: () => sendMenuCommand("project.open") },
         { type: "separator" },
         { label: "Close File", accelerator: "CmdOrCtrl+W", click: () => sendMenuCommand("file.close") },
+        { label: "Close All Files", accelerator: "CmdOrCtrl+Shift+W", click: () => sendMenuCommand("file.close-all") },
         { label: "Close Folder", click: () => sendMenuCommand("file.close-folder") },
         { type: "separator" },
         { label: "Save", accelerator: "CmdOrCtrl+S", click: () => sendMenuCommand("file.save") },
@@ -138,11 +147,24 @@ function createWindow() {
   });
 }
 
-function createScratchProject() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "quire-scratch-"));
-  const file = path.join(dir, "untitled.tex");
-  fs.writeFileSync(file, SCRATCH_PLACEHOLDER);
-  return { projectId: dir, root: file };
+// `templateId` is renderer-supplied IPC input -- validated against TEMPLATE_IDS before it ever
+// touches a path, so a compromised renderer can't read arbitrary files via e.g. "../../etc/passwd".
+function scaffoldProject(dirPath, templateId) {
+  // Dotfiles ignored -- a freshly created Finder folder already has a .DS_Store, which isn't
+  // meaningfully "not empty" from the user's point of view.
+  const visibleEntries = fs.readdirSync(dirPath).filter((name) => !name.startsWith("."));
+  if (visibleEntries.length > 0) {
+    throw new Error("That folder isn't empty. Choose a new or empty folder for a new project.");
+  }
+  let source;
+  if (templateId === null) {
+    source = BLANK_PROJECT_SOURCE;
+  } else if (TEMPLATE_IDS.includes(templateId)) {
+    source = fs.readFileSync(path.join(TEMPLATES_DIR, `${templateId}.tex`), "utf8");
+  } else {
+    throw new Error(`Unknown template: ${templateId}`);
+  }
+  fs.writeFileSync(path.join(dirPath, "main.tex"), source);
 }
 
 app.whenReady().then(() => {
@@ -173,13 +195,23 @@ app.whenReady().then(() => {
   ipcMain.handle("core:readFile", (_event, uri) => client.readFile(uri));
   ipcMain.handle("core:writeFile", (_event, uri, text) => client.writeFile(uri, text));
 
-  ipcMain.handle("desktop:createScratchProject", () => createScratchProject());
-
   ipcMain.handle("desktop:chooseProjectFolder", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
+
+  // "createDirectory" adds the native "New Folder" affordance to the picker (macOS shows it by
+  // default; Windows/Linux directory pickers already offer their own) -- one dialog lets the user
+  // either pick an existing empty folder or create+name a new one, instead of a bespoke two-step
+  // pick-parent-then-type-a-name flow.
+  ipcMain.handle("desktop:chooseNewProjectFolder", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle("desktop:scaffoldProject", (_event, dirPath, templateId) => scaffoldProject(dirPath, templateId));
 
   ipcMain.handle("desktop:createFile", async (_event, projectDir) => {
     const result = await dialog.showSaveDialog(mainWindow, {

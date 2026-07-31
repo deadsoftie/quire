@@ -11,6 +11,13 @@
   border-bottom: var(--seam) solid var(--ink-600);
 }
 
+.panel-shell__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
 .panel-shell__title {
   display: block;
   font-family: var(--ui-font);
@@ -18,6 +25,26 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--type-mid);
+}
+
+.panel-shell__action {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-mid);
+  cursor: pointer;
+}
+
+.panel-shell__action:hover {
+  color: var(--type-hi);
+  background: var(--ink-700);
 }
 
 .panel-shell__caption {
