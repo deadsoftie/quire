@@ -66,4 +66,13 @@ describe("mathHighlightSpans", () => {
     const doc = "Just ordinary text, no math here.";
     expect(mathHighlightSpans(stateWithLatex(doc))).toEqual([]);
   });
+
+  it("only looks within the given from/to range -- the real plugin's own viewport-scoping", () => {
+    const doc = "$a$ middle text here $b$";
+    const state = stateWithLatex(doc);
+    const secondDollarStart = doc.lastIndexOf("$b$");
+    // Bounded to just the second math span: the first must not appear.
+    const spans = mathHighlightSpans(state, secondDollarStart, doc.length);
+    expect(spans.map((s) => doc.slice(s.from, s.to))).toEqual(["$b$"]);
+  });
 });

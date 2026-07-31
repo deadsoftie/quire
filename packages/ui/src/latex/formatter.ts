@@ -34,10 +34,25 @@ export function formatLatex(source: string): string {
     },
   });
 
+  // Depth per line via a delta sweep rather than checking every span against every line: each
+  // span only ever adjusts the running count twice (its own two boundary lines), regardless of
+  // how many lines the document has, so this whole pass is O(lines + environments) rather than
+  // O(lines x environments).
+  const depthDelta = new Array<number>(doc.lines + 2).fill(0);
+  for (const span of envSpans) {
+    depthDelta[span.beginLine + 1]++;
+    depthDelta[span.endLine]--;
+  }
+
   const outLines: string[] = [];
   let blankRun = 0;
+  let depth = 0;
 
   for (let i = 1; i <= doc.lines; i++) {
+    // depth now equals how many environment spans strictly contain line i -- the
+    // \begin{...}/\end{...} lines themselves sit at the *outer* depth, not indented into their
+    // own body (depthDelta's +1 lands one line after beginLine, and its -1 lands exactly on endLine).
+    depth += depthDelta[i];
     const rawLine = doc.line(i).text;
 
     // Verbatim/lstlisting/minted body content is deliberately opaque to this grammar (tokens.ts) --
@@ -55,13 +70,6 @@ export function formatLatex(source: string): string {
       continue;
     }
     blankRun = 0;
-
-    // depth = how many environment spans strictly contain this line -- the \begin{...}/\end{...}
-    // lines themselves sit at the *outer* depth, not indented into their own body.
-    let depth = 0;
-    for (const span of envSpans) {
-      if (span.beginLine < i && i < span.endLine) depth++;
-    }
     outLines.push(INDENT_UNIT.repeat(depth) + trimmed);
   }
 

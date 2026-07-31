@@ -3,6 +3,7 @@ import type { EditorState, Extension } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
+import { MATH_DELIMITED_NODE_NAMES } from "./latex/language";
 
 // One compartment per toggle, shared across Editor instances -- reconfiguring
 // a compartment only ever affects whichever EditorView it's dispatched to.
@@ -87,19 +88,20 @@ export function focusModeExtension(): Extension {
   return [focusModePlugin, focusModeTheme];
 }
 
-const MATH_SPAN_NODE_NAMES = new Set([
-  "InlineMath",
-  "DisplayMathDollar",
-  "DisplayMathBracket",
-  "InlineMathParen",
-  "MathEnvironment",
-]);
+// MathEnvironment isn't itself math-atom-tagged in language.ts (its EnvName is what's tagged),
+// but it still needs a background span here, so it's added on top of the shared delimiter list
+// rather than duplicating all four names independently.
+const MATH_SPAN_NODE_NAMES = new Set([...MATH_DELIMITED_NODE_NAMES, "MathEnvironment"]);
 
 // Exported and tested directly, same reasoning as `activeParagraphRange` above -- real coverage
-// without needing a full EditorView.
-export function mathHighlightSpans(state: EditorState): { from: number; to: number }[] {
+// without needing a full EditorView. `from`/`to` default to the whole document for that
+// standalone testability; the real plugin below passes the visible range instead, so a keystroke
+// in a large document doesn't re-walk content that isn't even on screen.
+export function mathHighlightSpans(state: EditorState, from = 0, to = state.doc.length): { from: number; to: number }[] {
   const spans: { from: number; to: number }[] = [];
   syntaxTree(state).iterate({
+    from,
+    to,
     enter: (node) => {
       if (!MATH_SPAN_NODE_NAMES.has(node.name)) return;
       spans.push({ from: node.from, to: node.to });
@@ -111,10 +113,12 @@ export function mathHighlightSpans(state: EditorState): { from: number; to: numb
 
 const mathRegionMark = Decoration.mark({ class: "cm-math-region" });
 
-function buildMathDecorations(state: EditorState): DecorationSet {
+function buildMathDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  for (const { from, to } of mathHighlightSpans(state)) {
-    if (from < to) builder.add(from, to, mathRegionMark);
+  for (const { from: rangeFrom, to: rangeTo } of view.visibleRanges) {
+    for (const { from, to } of mathHighlightSpans(view.state, rangeFrom, rangeTo)) {
+      if (from < to) builder.add(from, to, mathRegionMark);
+    }
   }
   return builder.finish();
 }
@@ -123,18 +127,26 @@ const mathHighlightPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = buildMathDecorations(view.state);
+      this.decorations = buildMathDecorations(view);
     }
     update(update: ViewUpdate) {
-      // Unlike focus mode, math regions depend only on document content, never cursor position.
-      if (update.docChanged) this.decorations = buildMathDecorations(update.state);
+      // Unlike focus mode, math regions depend only on document content and the visible range,
+      // never cursor position.
+      if (update.docChanged || update.viewportChanged) this.decorations = buildMathDecorations(update.view);
     }
   },
   { decorations: (plugin) => plugin.decorations },
 );
 
+// Reuses the ink-cyan family math delimiters/brackets already use (latex/language.ts) -- no new
+// color. Colocated with the plugin it styles, matching focusModeExtension's own pattern above,
+// rather than living in Editor.tsx's unrelated base theme.
+const mathHighlightTheme = EditorView.theme({
+  ".cm-math-region": { backgroundColor: "var(--ink-cyan-dim)", borderRadius: "2px" },
+});
+
 // Always on, unlike the compartmentalized toggles above -- a permanent readability aid, not an
 // editing mode.
 export function mathHighlightExtension(): Extension {
-  return mathHighlightPlugin;
+  return [mathHighlightPlugin, mathHighlightTheme];
 }

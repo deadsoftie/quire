@@ -363,23 +363,21 @@ function AppShell() {
       const tab = tabsRef.current[idx];
       const formatted = formatLatex(tab.text);
       if (formatted !== tab.text) {
-        if (uri === activeUri) {
-          // -> onChange -> scheduleCompile updates tabsRef[idx].text synchronously (CM6 dispatch
-          // and its updateListener run synchronously) and arms a debounced "edit" recompile,
-          // cancelled below so it can't race the "save" compile.
-          editorRef.current?.replaceContent(formatted);
-        } else {
-          // Not the mounted tab -- no live view to push into; initialDoc only re-seeds on remount.
-          const next = tabsRef.current.slice();
-          next[idx] = { ...tab, text: formatted };
-          tabsRef.current = next;
-        }
+        const next = tabsRef.current.slice();
+        next[idx] = { ...tab, text: formatted };
+        tabsRef.current = next;
+        // Also sync the live view when this is the mounted tab -- initialDoc only re-seeds on
+        // remount, so without this the on-screen editor would still show the unformatted text.
+        // That dispatch's own onChange -> scheduleCompile harmlessly rewrites tabsRef with the
+        // same value again, and arms a debounced "edit" recompile -- cancelled below so it can't
+        // race the "save" compile.
+        if (uri === activeUri) editorRef.current?.replaceContent(formatted);
       }
       const current = tabsRef.current[idx];
       try {
         await window.quire.writeFile(uri, current.text);
         const next = tabsRef.current.slice();
-        next[idx] = { ...tabsRef.current[idx], savedText: current.text };
+        next[idx] = { ...current, savedText: current.text };
         tabsRef.current = next;
         setTabs(next);
         if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);

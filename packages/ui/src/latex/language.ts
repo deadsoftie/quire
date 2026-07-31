@@ -2,6 +2,11 @@ import { HighlightStyle, LRLanguage, LanguageSupport, syntaxHighlighting } from 
 import { styleTags, tags as t } from "@lezer/highlight";
 import { parser } from "./parser";
 
+// The four inline/display math node shapes this grammar produces -- exported so editorModes.ts's
+// math-region background decoration can build its own node set (that one also includes
+// MathEnvironment, which isn't itself math-atom-tagged here) without re-typing this list.
+export const MATH_DELIMITED_NODE_NAMES = ["InlineMath", "DisplayMathDollar", "DisplayMathBracket", "InlineMathParen"];
+
 const highlighting = styleTags({
   Comment: t.lineComment,
   Command: t.macroName,
@@ -15,7 +20,7 @@ const highlighting = styleTags({
   // A variant of typeName -- groups a verbatim environment's own name with its monospace body,
   // rather than with ordinary/math environment names.
   VerbatimEnvName: t.special(t.typeName),
-  "InlineMath DisplayMathDollar DisplayMathBracket InlineMathParen": t.special(t.atom),
+  [MATH_DELIMITED_NODE_NAMES.join(" ")]: t.special(t.atom),
   "MathBracketOpen MathBracketClose MathParenOpen MathParenClose": t.processingInstruction,
   VerbatimBody: t.monospace,
   "{ }": t.brace,

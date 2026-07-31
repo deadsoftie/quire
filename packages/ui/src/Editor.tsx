@@ -96,11 +96,6 @@ const baseEditorTheme = EditorView.theme(
       textDecoration: "none",
       fontWeight: "600",
     },
-    // Matches the ink-cyan family math delimiters/brackets now use (latex/language.ts).
-    ".cm-math-region": {
-      backgroundColor: "var(--ink-cyan-dim)",
-      borderRadius: "2px",
-    },
     ".cm-symbolPreview": {
       padding: "10px 14px",
       fontSize: "1.6em",
@@ -230,8 +225,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   function applyFormatted(newText?: string) {
     const view = viewRef.current;
     if (!view) return;
-    const formatted = newText ?? formatLatex(view.state.doc.toString());
-    if (formatted === view.state.doc.toString()) return;
+    const current = view.state.doc.toString();
+    const formatted = newText ?? formatLatex(current);
+    if (formatted === current) return;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
   }
 
