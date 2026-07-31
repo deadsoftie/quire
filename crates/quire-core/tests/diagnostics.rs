@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use quire_core::rpc::handlers::compile;
-use quire_core::rpc::{CompileReason, CompileRequest, Diagnostic, DirtyBuffer, Severity};
+use quire_core::rpc::{CompileEngine, CompileReason, CompileRequest, Diagnostic, DirtyBuffer, Severity};
 
 fn copy_dir(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).unwrap();
@@ -40,6 +40,7 @@ fn diagnostics_for(name: &str, body: &str) -> Vec<Diagnostic> {
         project_id,
         dirty_buffers: vec![DirtyBuffer { uri: main_uri, text: wrap(body) }],
         reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
     })
     .expect("compile should not error at the RPC level");
 
@@ -82,6 +83,7 @@ fn missing_package_is_translated_and_names_the_package() {
         project_id,
         dirty_buffers: vec![DirtyBuffer { uri: main_uri, text: source.to_string() }],
         reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
     })
     .unwrap();
     fs::remove_dir_all(&project_dir).ok();

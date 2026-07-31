@@ -5,6 +5,7 @@ import type {
   CompletionItem,
   CompletionRequest,
   CoreEvent,
+  DetectSystemTexResponse,
   FetchedPackage,
   InstalledPackage,
   OpenProjectRequest,
@@ -33,6 +34,7 @@ export interface CoreApi {
   listInstalledPackages(): Promise<InstalledPackage[]>;
   installPackage(name: string): Promise<FetchedPackage>;
   removePackage(name: string): Promise<void>;
+  detectSystemTex(): Promise<DetectSystemTexResponse>;
 
   readFile(uri: DocUri): Promise<string>;
   writeFile(uri: DocUri, text: string): Promise<void>;

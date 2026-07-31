@@ -17,6 +17,8 @@ export interface SessionState {
   proseMode: boolean;
   theme: "dark" | "light";
   pdfInverted: boolean;
+  /** Task 4.9 -- only ever honored when a real system TeX install is actually detected at runtime. */
+  useSystemTex: boolean;
   /** CM6 selection head for whichever tab was active when this was saved; other reopened tabs start at their own beginning. */
   cursor: number | null;
   /** The editor's own scroll position, in pixels, for that same active tab. Deliberately not the PDF preview's -- that regenerates from a fresh compile every launch anyway. */
@@ -48,6 +50,7 @@ export function normalizeSession(raw: unknown, fallback: SessionState): SessionS
     proseMode: typeof r.proseMode === "boolean" ? r.proseMode : fallback.proseMode,
     theme: r.theme === "dark" || r.theme === "light" ? r.theme : fallback.theme,
     pdfInverted: typeof r.pdfInverted === "boolean" ? r.pdfInverted : fallback.pdfInverted,
+    useSystemTex: typeof r.useSystemTex === "boolean" ? r.useSystemTex : fallback.useSystemTex,
     cursor: typeof r.cursor === "number" ? r.cursor : fallback.cursor,
     scrollTop: typeof r.scrollTop === "number" ? r.scrollTop : fallback.scrollTop,
   };

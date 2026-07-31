@@ -33,10 +33,39 @@ pub fn compile_latex_in_dir_with_bundle(
 
     let config = PersistentConfig::open(false)?;
     let format_cache_path = config.format_cache_path()?;
+
+    let last_log = run_passes_with_rerun(
+        build_dir,
+        || run_tex_pass(source, build_dir, &format_cache_path, bundle_factory),
+        || run_bibtex_pass(build_dir, &format_cache_path, bundle_factory),
+    )?;
+    convert_xdv_to_pdf(build_dir, bundle_factory)?;
+
+    let pdf = fs::read(build_dir.join("texput.pdf")).map_err(|_| CompileError {
+        message: "LaTeX didn't report failure, but no PDF was created".to_string(),
+        log: None,
+    })?;
+
+    let (page_count, changed_pages) = hash_and_diff_pages(build_dir, &pdf)?;
+    Ok(CompileOutput { pdf, page_count, changed_pages, log: last_log })
+}
+
+/// Engine-agnostic rerun decision loop, shared by the Tectonic path above and `system_tex`'s
+/// subprocess path -- only *how a single pass runs* differs between engines, not when to rerun.
+/// `run_pass`/`run_bibtex` are closures so each engine supplies its own execution mechanism
+/// (Tectonic's in-process `ProcessingSessionBuilder`, or a subprocess `Command`) while this
+/// function owns the actual decision: run once, diff `.aux`, run BibTeX if the citation
+/// fingerprint changed (invisible to the aux-diff, since BibTeX only touches `.bbl`), then rerun
+/// up to `MAX_PASSES` while `.aux` keeps changing.
+pub(crate) fn run_passes_with_rerun(
+    build_dir: &Path,
+    mut run_pass: impl FnMut() -> Result<String, CompileError>,
+    mut run_bibtex: impl FnMut() -> Result<(), CompileError>,
+) -> Result<String, CompileError> {
     let aux_path = build_dir.join("texput.aux");
 
     let aux_before_pass1 = fs::read(&aux_path).unwrap_or_default();
-    let mut last_log = run_tex_pass(source, build_dir, &format_cache_path, bundle_factory)?;
+    let mut last_log = run_pass()?;
     let mut passes = 1;
     let mut last_aux = fs::read(&aux_path).unwrap_or_default();
     let mut needs_rerun = last_aux != aux_before_pass1;
@@ -46,7 +75,7 @@ pub fn compile_latex_in_dir_with_bundle(
         let fingerprint_path = build_dir.join(CITATION_FINGERPRINT_FILE);
         let previous = fs::read_to_string(&fingerprint_path).ok();
         if previous.as_deref() != Some(fingerprint.as_str()) {
-            run_bibtex_pass(build_dir, &format_cache_path, bundle_factory)?;
+            run_bibtex()?;
             fs::write(&fingerprint_path, &fingerprint)?;
             // BibTeX only touches .bbl, invisible to the aux-diff check above.
             needs_rerun = true;
@@ -54,27 +83,27 @@ pub fn compile_latex_in_dir_with_bundle(
     }
 
     while needs_rerun && passes < MAX_PASSES {
-        last_log = run_tex_pass(source, build_dir, &format_cache_path, bundle_factory)?;
+        last_log = run_pass()?;
         passes += 1;
         let new_aux = fs::read(&aux_path).unwrap_or_default();
         needs_rerun = new_aux != last_aux;
         last_aux = new_aux;
     }
-    convert_xdv_to_pdf(build_dir, bundle_factory)?;
 
-    let pdf = fs::read(build_dir.join("texput.pdf")).map_err(|_| CompileError {
-        message: "LaTeX didn't report failure, but no PDF was created".to_string(),
-        log: None,
-    })?;
+    Ok(last_log)
+}
 
-    let hashes = crate::page_hash::hash_pages(&pdf)?;
+/// Shared page-hash-caching tail: both engines read the same final `texput.pdf` and cache
+/// against the same `PAGE_HASHES_FILE` in `build_dir`, so this is identical regardless of which
+/// engine produced the PDF.
+pub(crate) fn hash_and_diff_pages(build_dir: &Path, pdf: &[u8]) -> Result<(u32, Vec<u32>), CompileError> {
+    let hashes = crate::page_hash::hash_pages(pdf)?;
     let hashes_path = build_dir.join(PAGE_HASHES_FILE);
     let previous_hashes: Option<Vec<String>> =
         fs::read_to_string(&hashes_path).ok().map(|s| s.lines().map(str::to_string).collect());
     let changed_pages = crate::page_hash::diff_pages(previous_hashes.as_deref(), &hashes);
     fs::write(&hashes_path, hashes.join("\n"))?;
-
-    Ok(CompileOutput { pdf, page_count: hashes.len() as u32, changed_pages, log: last_log })
+    Ok((hashes.len() as u32, changed_pages))
 }
 
 fn run_tex_pass(

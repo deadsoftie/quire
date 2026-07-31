@@ -6,11 +6,18 @@ export type CancelCompileRequest = { compileId: string, };
 
 export type CloseProjectRequest = { projectId: string, };
 
+/**
+ * Task 4.9: `Tectonic` is the default, embedded engine; `System` shells out to a detected
+ * TeX Live/MiKTeX install instead. Explicit per request rather than a server-side setting --
+ * `quire-core` holds no state (1.4), so every call has to say which engine it wants.
+ */
+export type CompileEngine = "tectonic" | "system";
+
 export type CompilePhase = "typeset" | "bib" | "rerun";
 
 export type CompileReason = "edit" | "manual" | "open" | "save";
 
-export type CompileRequest = { projectId: string, dirtyBuffers: Array<DirtyBuffer>, reason: CompileReason, };
+export type CompileRequest = { projectId: string, dirtyBuffers: Array<DirtyBuffer>, reason: CompileReason, engine: CompileEngine, };
 
 export type CompileResponse = { compileId: string, status: CompileStatus, 
 /**
@@ -51,6 +58,12 @@ export type CompletionRequest = { projectId: string, uri: string, position: Posi
  * Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet.
  */
 export type CoreEvent = { "kind": "compile-started", compileId: string, } | { "kind": "compile-progress", compileId: string, phase: CompilePhase, pass: number, } | { "kind": "compile-finished", result: CompileResponse, } | { "kind": "files-changed", projectId: string, uris: Array<string>, } | { "kind": "index-updated", projectId: string, } | { "kind": "bundle-fetch", package: string, bytes: number, done: boolean, };
+
+/**
+ * `engine`/`version` are `None` together iff `available` is `false` -- there's no partial state
+ * where an engine was found but couldn't be identified.
+ */
+export type DetectSystemTexResponse = { available: boolean, engine: SystemTexEngine | null, version: string | null, };
 
 export type Diagnostic = { 
 /**
@@ -146,5 +159,12 @@ export type RootConfidence = "explicit" | "inferred" | "ambiguous";
 export type SetRootRequest = { projectId: string, uri: string, };
 
 export type Severity = "error" | "warning" | "info";
+
+/**
+ * Task 4.9: which real, working system engine `system_tex::detect()` found -- `xelatex` is
+ * preferred (checked first) over `pdflatex` since Tectonic's own embedded engine is XeTeX-based,
+ * so it's the closer match to what the app's users already expect from a compile.
+ */
+export type SystemTexEngine = "xelatex" | "pdflatex";
 
 export type WriteFileRequest = { uri: string, text: string, };

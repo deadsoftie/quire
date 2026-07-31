@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use quire_core::rpc::handlers::{compile, open_project, prefetch_packages};
 use quire_core::rpc::{
-    CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest, PrefetchPackagesRequest,
-    RootConfidence,
+    CompileEngine, CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest,
+    PrefetchPackagesRequest, RootConfidence,
 };
 
 fn copy_dir(src: &Path, dst: &Path) {
@@ -120,6 +120,7 @@ fn compile_reports_packages_missing_with_the_real_package_name() {
         project_id: project_dir.display().to_string(),
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
     })
     .expect("compile should not error at the RPC level even though the document itself fails");
 
@@ -144,6 +145,7 @@ fn compile_mirrors_the_whole_graph_and_produces_a_real_pdf() {
         project_id: project_dir.display().to_string(),
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
     })
     .expect("compile should succeed");
 
@@ -161,13 +163,50 @@ fn compile_mirrors_the_whole_graph_and_produces_a_real_pdf() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
+/// Task 4.9, wired end to end through the real RPC handler rather than `system_tex::compile()`
+/// directly (see `tests/system_tex.rs` for that) -- proves `handlers::compile()`'s own
+/// `engine: System` branch actually resolves the root document's shadow-dir-relative path
+/// correctly and produces a normal `status: Ok` response, same shape as the Tectonic path.
+/// Skips (doesn't fail) on a machine with no system TeX install -- `system_tex::detect()`
+/// returning `None` there is expected, not a bug.
+#[test]
+fn compile_with_system_engine_produces_a_real_pdf_when_a_system_install_exists() {
+    if quire_core::system_tex::detect().is_none() {
+        eprintln!("skipping: no system TeX install detected on this machine");
+        return;
+    }
+
+    let project_dir = fresh_project_copy("compile_multi_file", "compile-system-tex");
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+        engine: CompileEngine::System,
+    })
+    .expect("compile should succeed");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+    let pdf_path = resp.pdf_path.expect("a successful compile must report a pdf path");
+    let pdf = fs::read(&pdf_path).expect("the reported pdf path should be a real file");
+    assert!(pdf.starts_with(b"%PDF-"));
+    assert!(resp.page_count >= 1);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
 #[test]
 fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
     let project_dir = fresh_project_copy("compile_multi_file", "compile-dirty");
     let project_id = project_dir.display().to_string();
 
-    compile(&CompileRequest { project_id: project_id.clone(), dirty_buffers: Vec::new(), reason: CompileReason::Open })
-        .expect("first compile should succeed");
+    compile(&CompileRequest {
+        project_id: project_id.clone(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Open,
+        engine: CompileEngine::Tectonic,
+    })
+    .expect("first compile should succeed");
 
     let intro_uri = project_dir.join("chapters/intro.tex").display().to_string();
     let resp = compile(&CompileRequest {
@@ -177,6 +216,7 @@ fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
             text: "Edited intro content, not what's on disk.\n".to_string(),
         }],
         reason: CompileReason::Edit,
+        engine: CompileEngine::Tectonic,
     })
     .expect("second compile with a dirty non-root buffer should succeed");
 

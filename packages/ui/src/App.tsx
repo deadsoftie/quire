@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CompileReason, CoreEvent, Diagnostic, FileNode } from "@quire/client";
+import type { CompileReason, CoreEvent, DetectSystemTexResponse, Diagnostic, FileNode } from "@quire/client";
 import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
@@ -16,6 +16,7 @@ import type { PackageInstallState } from "./MissingPackagesCard";
 import { PdfViewer } from "./PdfViewer";
 import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
+import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
 import { normalizeSession, type SessionState } from "./session";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
@@ -92,6 +93,7 @@ const DEFAULT_SESSION: SessionState = {
   proseMode: false,
   theme: "dark",
   pdfInverted: false,
+  useSystemTex: false,
   cursor: null,
   scrollTop: null,
 };
@@ -134,6 +136,9 @@ function AppShell() {
     localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
   );
   const [pdfInverted, setPdfInverted] = useState(false);
+  const [useSystemTex, setUseSystemTex] = useState(false);
+  const [systemTexStatus, setSystemTexStatus] = useState<DetectSystemTexResponse | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [cursorStore] = useState(() => createCursorPositionStore());
 
   const projectRef = useRef<Project | null>(null);
@@ -170,38 +175,46 @@ function AppShell() {
   );
 
   // Swallows SIDECAR_CALL_CANCELLED specifically -- a superseded compile's rejection, not a real error.
-  const runCompile = useCallback(async (reason: CompileReason) => {
-    const proj = projectRef.current;
-    if (!proj) return;
-    const dirtyBuffers = tabsRef.current.map((t) => ({ uri: t.uri, text: t.text }));
-    try {
-      const result = await window.quire.compile({ projectId: proj.projectId, dirtyBuffers, reason });
-      setDiagnostics(result.diagnostics);
-      if (result.status === "ok" && result.pdfPath) {
-        const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
-        setPdfData(bytes);
-        setChangedPages(result.changedPages);
-        setError(null);
-        setMissingPackages(null);
-        setCompileVersion((v) => v + 1);
-      } else if (result.status === "packages-missing") {
-        // Not a raw error -- keep whatever PDF is already showing (9.6: "nothing has gone
-        // wrong"), and let the card (not the error box) own this state.
-        setError(null);
-        setMissingPackages(result.missingPackages);
-        setPackageInstallState("idle");
-        setFailedPackageNames([]);
-      } else {
-        const diagnostic = result.diagnostics[0];
-        setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
-        setMissingPackages(null);
+  const runCompile = useCallback(
+    async (reason: CompileReason) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      const dirtyBuffers = tabsRef.current.map((t) => ({ uri: t.uri, text: t.text }));
+      try {
+        const result = await window.quire.compile({
+          projectId: proj.projectId,
+          dirtyBuffers,
+          reason,
+          engine: useSystemTex ? "system" : "tectonic",
+        });
+        setDiagnostics(result.diagnostics);
+        if (result.status === "ok" && result.pdfPath) {
+          const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
+          setPdfData(bytes);
+          setChangedPages(result.changedPages);
+          setError(null);
+          setMissingPackages(null);
+          setCompileVersion((v) => v + 1);
+        } else if (result.status === "packages-missing") {
+          // Not a raw error -- keep whatever PDF is already showing (9.6: "nothing has gone
+          // wrong"), and let the card (not the error box) own this state.
+          setError(null);
+          setMissingPackages(result.missingPackages);
+          setPackageInstallState("idle");
+          setFailedPackageNames([]);
+        } else {
+          const diagnostic = result.diagnostics[0];
+          setError(diagnostic?.rawMessage || diagnostic?.message || `Compile failed (${result.status}).`);
+          setMissingPackages(null);
+        }
+      } catch (err) {
+        const message = String((err as Error)?.message ?? err);
+        if (message.includes(SIDECAR_CALL_CANCELLED)) return;
+        setError(message);
       }
-    } catch (err) {
-      const message = String((err as Error)?.message ?? err);
-      if (message.includes(SIDECAR_CALL_CANCELLED)) return;
-      setError(message);
-    }
-  }, []);
+    },
+    [useSystemTex],
+  );
 
   // Best-effort: a prefetch failure (offline, RPC error) just means the first compile falls
   // back to fetching on demand, mid-flight, the same as before this existed -- never a reason
@@ -268,6 +281,22 @@ function AppShell() {
       cancelled = true;
     };
   }, [sidebarSection, packagesRefreshToken]);
+
+  // Task 4.9: checked once at startup, not reactively -- a system TeX install doesn't come or go
+  // while the app is running. Self-heals a persisted `useSystemTex: true` from a prior session if
+  // the install is no longer there, rather than letting the next compile surface an avoidable
+  // "engine missing" error for a state the Settings dialog would already show as unavailable.
+  useEffect(() => {
+    let cancelled = false;
+    window.quire.detectSystemTex().then((status) => {
+      if (cancelled) return;
+      setSystemTexStatus(status);
+      if (!status.available) setUseSystemTex(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const scheduleCompile = useCallback(
     (text: string) => {
@@ -387,6 +416,7 @@ function AppShell() {
         setProseMode(session.proseMode);
         setTheme(session.theme);
         setPdfInverted(session.pdfInverted);
+        setUseSystemTex(session.useSystemTex);
         setSidebarSection(session.sidebarSection);
         setSidebarWidth(session.sidebarWidth);
       }
@@ -466,6 +496,7 @@ function AppShell() {
       proseMode,
       theme,
       pdfInverted,
+      useSystemTex,
     };
     scheduleSaveSession();
   }, [
@@ -480,6 +511,7 @@ function AppShell() {
     proseMode,
     theme,
     pdfInverted,
+    useSystemTex,
     scheduleSaveSession,
   ]);
 
@@ -677,6 +709,15 @@ function AppShell() {
     run: () => setPdfInverted((v) => !v),
   });
 
+  useCommand({
+    id: "app.open-settings",
+    title: "Settings…",
+    shortcut: "⌘,",
+    // No keybinding: the File menu's native "Settings…" accelerator (⌘,) dispatches through
+    // menuBridge instead -- registering both here would double-fire on the same keypress.
+    run: () => setSettingsOpen(true),
+  });
+
   const toggleSidebarSection = useCallback((kind: PanelKind) => {
     setSidebarSection((current) => (current === kind ? null : kind));
   }, []);
@@ -732,6 +773,14 @@ function AppShell() {
   return (
     <div className="app">
       <CommandPalette />
+      {settingsOpen && (
+        <SettingsDialog
+          systemTexStatus={systemTexStatus}
+          useSystemTex={useSystemTex}
+          onToggleSystemTex={setUseSystemTex}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       <TopBar projectLabel={project?.label ?? "Untitled"} />
       <div className="app__body">
         <ActivityBar active={sidebarSection} onSelect={toggleSidebarSection} problemCount={diagnostics.length} />

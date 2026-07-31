@@ -1,0 +1,69 @@
+.settings-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.settings-dialog {
+  width: min(420px, 90vw);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.settings-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: var(--seam) solid var(--ink-600);
+}
+
+.settings-dialog__title {
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--type-hi);
+}
+
+.settings-dialog__close {
+  border: none;
+  background: transparent;
+  color: var(--type-mid);
+  font-size: var(--t-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+}
+
+.settings-dialog__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.settings-dialog__row:has(input:disabled) {
+  color: var(--type-lo);
+  cursor: default;
+}
+
+.settings-dialog__note {
+  margin: 0;
+  color: var(--type-lo);
+  font-size: var(--t-xs);
+}

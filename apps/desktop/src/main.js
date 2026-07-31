@@ -28,6 +28,8 @@ function buildMenu() {
     {
       label: "File",
       submenu: [
+        { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => sendMenuCommand("app.open-settings") },
+        { type: "separator" },
         { label: "New File", accelerator: "CmdOrCtrl+N", click: () => sendMenuCommand("file.new") },
         { label: "Open File…", accelerator: "CmdOrCtrl+Shift+O", click: () => sendMenuCommand("file.open") },
         { label: "Open Folder…", accelerator: "CmdOrCtrl+O", click: () => sendMenuCommand("project.open") },
@@ -160,6 +162,7 @@ app.whenReady().then(() => {
   ipcMain.handle("core:outline", (_event, projectId, uri) => client.outline(projectId, uri));
   ipcMain.handle("core:prefetchPackages", (_event, projectId) => client.prefetchPackages(projectId));
   ipcMain.handle("core:bundleStatus", () => client.bundleStatus());
+  ipcMain.handle("core:detectSystemTex", () => client.detectSystemTex());
   ipcMain.handle("core:listInstalledPackages", () => client.listInstalledPackages());
   ipcMain.handle("core:installPackage", (_event, name) => client.installPackage(name));
   ipcMain.handle("core:removePackage", (_event, name) => client.removePackage(name));

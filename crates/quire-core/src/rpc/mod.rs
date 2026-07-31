@@ -119,6 +119,17 @@ pub enum CompileReason {
     Save,
 }
 
+/// Task 4.9: `Tectonic` is the default, embedded engine; `System` shells out to a detected
+/// TeX Live/MiKTeX install instead. Explicit per request rather than a server-side setting --
+/// `quire-core` holds no state (1.4), so every call has to say which engine it wants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub enum CompileEngine {
+    Tectonic,
+    System,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -126,6 +137,7 @@ pub struct CompileRequest {
     pub project_id: ProjectId,
     pub dirty_buffers: Vec<DirtyBuffer>,
     pub reason: CompileReason,
+    pub engine: CompileEngine,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -136,7 +148,8 @@ pub enum CompileStatus {
     Errors,
     /// Never produced: the caller kills the process before a response is built.
     Cancelled,
-    /// Never produced yet -- no system-TeX-fallback/engine availability detection exists.
+    /// Real as of task 4.9: produced when `CompileRequest.engine` is `"system"` and
+    /// `system_tex::detect()` finds no working install at compile time.
     EngineMissing,
     PackagesMissing,
 }
@@ -165,6 +178,30 @@ pub struct CompileResponse {
 #[ts(export, export_to = CONTRACT_TS)]
 pub struct CancelCompileRequest {
     pub compile_id: String,
+}
+
+// ---------- System TeX ----------
+
+/// Task 4.9: which real, working system engine `system_tex::detect()` found -- `xelatex` is
+/// preferred (checked first) over `pdflatex` since Tectonic's own embedded engine is XeTeX-based,
+/// so it's the closer match to what the app's users already expect from a compile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub enum SystemTexEngine {
+    Xelatex,
+    Pdflatex,
+}
+
+/// `engine`/`version` are `None` together iff `available` is `false` -- there's no partial state
+/// where an engine was found but couldn't be identified.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct DetectSystemTexResponse {
+    pub available: bool,
+    pub engine: Option<SystemTexEngine>,
+    pub version: Option<String>,
 }
 
 // ---------- Events ----------

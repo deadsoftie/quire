@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("quire", {
   outline: invoke("core:outline"),
   prefetchPackages: invoke("core:prefetchPackages"),
   bundleStatus: invoke("core:bundleStatus"),
+  detectSystemTex: invoke("core:detectSystemTex"),
   listInstalledPackages: invoke("core:listInstalledPackages"),
   installPackage: invoke("core:installPackage"),
   removePackage: invoke("core:removePackage"),

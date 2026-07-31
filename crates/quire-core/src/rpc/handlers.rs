@@ -123,7 +123,43 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
 
     let root_uri = root.display().to_string();
 
-    let response = match compile_latex_in_dir(&root_source, &shadow_dir) {
+    let compile_result = match req.engine {
+        CompileEngine::Tectonic => compile_latex_in_dir(&root_source, &shadow_dir),
+        CompileEngine::System => {
+            let root_relative = root.strip_prefix(&project_dir).unwrap_or(&root);
+            match crate::system_tex::detect() {
+                Some((engine, _version)) => crate::system_tex::compile(engine, root_relative, &shadow_dir),
+                // Re-detected here rather than trusting the caller's earlier `detectSystemTex()`
+                // call -- core holds no state (1.4), and the install may have vanished mid-session.
+                None => {
+                    return Ok(CompileResponse {
+                        compile_id,
+                        status: CompileStatus::EngineMissing,
+                        pdf_path: None,
+                        changed_pages: Vec::new(),
+                        page_count: 0,
+                        duration_ms: start.elapsed().as_millis() as u32,
+                        diagnostics: vec![Diagnostic {
+                            uri: None,
+                            range: None,
+                            severity: Severity::Error,
+                            message: "No working system TeX installation was found.".to_string(),
+                            raw_message: "No working system TeX installation was found.".to_string(),
+                            hint: Some(
+                                "Disable \"Use System TeX\" in Settings, or install/reinstall TeX Live or MiKTeX."
+                                    .to_string(),
+                            ),
+                            code: None,
+                        }],
+                        missing_packages: Vec::new(),
+                        bundle_version,
+                    });
+                }
+            }
+        }
+    };
+
+    let response = match compile_result {
         Ok(output) => CompileResponse {
             compile_id,
             status: CompileStatus::Ok,
@@ -432,6 +468,18 @@ pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
         offline_packages,
         cache_bytes: crate::bundle::cache_size_bytes() as u32,
     })
+}
+
+/// Task 4.9: whether a real, working system TeX install exists right now -- checked fresh on
+/// every call, not cached, since the whole point is never offering the Settings toggle for a
+/// fallback that turns out not to work.
+pub fn detect_system_tex() -> DetectSystemTexResponse {
+    match crate::system_tex::detect() {
+        Some((engine, version)) => {
+            DetectSystemTexResponse { available: true, engine: Some(engine.into()), version: Some(version) }
+        }
+        None => DetectSystemTexResponse { available: false, engine: None, version: None },
+    }
 }
 
 /// Core (task 4.1's curated bundle, never removable) merged with whatever the cache tier

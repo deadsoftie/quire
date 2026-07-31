@@ -8,6 +8,7 @@ import type {
   CompletionItem,
   CompletionRequest,
   CoreEvent,
+  DetectSystemTexResponse,
   FetchedPackage,
   InstalledPackage,
   OpenProjectRequest,
@@ -97,6 +98,10 @@ export class StdioTransport implements CoreApi {
 
   async bundleStatus(): Promise<BundleStatusResponse> {
     return (await runOnce("bundleStatus", null).promise) as BundleStatusResponse;
+  }
+
+  async detectSystemTex(): Promise<DetectSystemTexResponse> {
+    return (await runOnce("detectSystemTex", null).promise) as DetectSystemTexResponse;
   }
 
   async listInstalledPackages(): Promise<InstalledPackage[]> {
