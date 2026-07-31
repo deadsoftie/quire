@@ -76,6 +76,12 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const wrapperRefs = useRef(new Map<number, HTMLDivElement>());
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>());
+  // Per-page ref callbacks, cached by page number so the same function identity is passed to
+  // `ref=` across renders -- an inline `(el) => ...` in JSX gets a new identity every render,
+  // which makes React detach+reattach the ref (and everything that does, like re-observing the
+  // IntersectionObserver or clearing renderedForDocRef) on every re-render, not just real mount/unmount.
+  const wrapperRefCallbacks = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
+  const canvasRefCallbacks = useRef(new Map<number, (el: HTMLCanvasElement | null) => void>());
   const renderTasks = useRef(new Map<number, RenderTask>());
   // Which pdfDoc each page's *current* canvas element last painted -- a fresh element (see setCanvasRef) always needs a fresh draw.
   const renderedForDocRef = useRef(new Map<number, PDFDocumentProxy>());
@@ -238,6 +244,24 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     // Rendering is left to the effect above, which re-runs right after this fires.
   }
 
+  function getWrapperRefCallback(pageNumber: number) {
+    let callback = wrapperRefCallbacks.current.get(pageNumber);
+    if (!callback) {
+      callback = (el) => setWrapperRef(pageNumber, el);
+      wrapperRefCallbacks.current.set(pageNumber, callback);
+    }
+    return callback;
+  }
+
+  function getCanvasRefCallback(pageNumber: number) {
+    let callback = canvasRefCallbacks.current.get(pageNumber);
+    if (!callback) {
+      callback = (el) => setCanvasRef(pageNumber, el);
+      canvasRefCallbacks.current.set(pageNumber, callback);
+    }
+    return callback;
+  }
+
   const numPages = pdfDoc?.numPages ?? 0;
   const pageNumbers = Array.from({ length: numPages }, (_, i) => i + 1);
 
@@ -262,12 +286,12 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
             <div
               key={pageNumber}
               data-page-number={pageNumber}
-              ref={(el) => setWrapperRef(pageNumber, el)}
+              ref={getWrapperRefCallback(pageNumber)}
               className={inverted ? "pdf-viewer__page pdf-viewer__page--inverted" : "pdf-viewer__page"}
               style={size ? { width: size.width, height: size.height } : undefined}
             >
               {isVisible && size && (
-                <canvas ref={(el) => setCanvasRef(pageNumber, el)} className="pdf-viewer__canvas" />
+                <canvas ref={getCanvasRefCallback(pageNumber)} className="pdf-viewer__canvas" />
               )}
             </div>
           );
