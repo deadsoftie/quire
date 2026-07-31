@@ -12,6 +12,7 @@ interface ViewMenuState {
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;
+  wordWrap: boolean;
   lightTheme: boolean;
   pdfInverted: boolean;
 }

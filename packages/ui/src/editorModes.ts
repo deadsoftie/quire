@@ -8,6 +8,7 @@ import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 export const proseCompartment = new Compartment();
 export const typewriterCompartment = new Compartment();
 export const focusCompartment = new Compartment();
+export const wordWrapCompartment = new Compartment();
 
 export function proseModeExtension(): Extension {
   return EditorView.theme({

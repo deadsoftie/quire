@@ -75,6 +75,7 @@ function buildMenu() {
         { id: "view.focus-mode", label: "Focus Mode", type: "checkbox", click: () => sendMenuCommand("editor.toggle-focus-mode") },
         { id: "view.typewriter", label: "Typewriter Scrolling", type: "checkbox", click: () => sendMenuCommand("editor.toggle-typewriter-scrolling") },
         { id: "view.prose-mode", label: "Serif Prose Mode", type: "checkbox", click: () => sendMenuCommand("editor.toggle-prose-mode") },
+        { id: "view.word-wrap", label: "Word Wrap", type: "checkbox", click: () => sendMenuCommand("editor.toggle-word-wrap") },
         { type: "separator" },
         { id: "view.light-theme", label: "Light Theme", type: "checkbox", click: () => sendMenuCommand("app.toggle-theme") },
         { id: "view.pdf-inverted", label: "Invert PDF Colors", type: "checkbox", click: () => sendMenuCommand("pdf.toggle-inversion") },
@@ -103,6 +104,7 @@ const VIEW_MENU_CHECK_IDS = {
   focusMode: "view.focus-mode",
   typewriterMode: "view.typewriter",
   proseMode: "view.prose-mode",
+  wordWrap: "view.word-wrap",
   lightTheme: "view.light-theme",
   pdfInverted: "view.pdf-inverted",
 };

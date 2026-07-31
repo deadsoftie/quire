@@ -14,6 +14,7 @@ import {
   proseModeExtension,
   typewriterCompartment,
   typewriterScrollingExtension,
+  wordWrapCompartment,
 } from "./editorModes";
 import { environmentSync } from "./environmentSync";
 import { latex } from "./latex/language";
@@ -176,6 +177,7 @@ interface EditorProps {
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;
+  wordWrap: boolean;
   restoreCursor?: number | null;
   // Applied a frame after mount so the content it scrolls has actually been laid out.
   restoreScrollTop?: number | null;
@@ -194,6 +196,7 @@ export function Editor({
   focusMode,
   typewriterMode,
   proseMode,
+  wordWrap,
   restoreCursor,
   restoreScrollTop,
   onChange,
@@ -247,6 +250,7 @@ export function Editor({
         proseCompartment.of(proseMode ? proseModeExtension() : []),
         typewriterCompartment.of(typewriterMode ? typewriterScrollingExtension() : []),
         focusCompartment.of(focusMode ? focusModeExtension() : []),
+        wordWrapCompartment.of(wordWrap ? EditorView.lineWrapping : []),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
@@ -327,6 +331,10 @@ export function Editor({
   useEffect(() => {
     viewRef.current?.dispatch({ effects: focusCompartment.reconfigure(focusMode ? focusModeExtension() : []) });
   }, [focusMode]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: wordWrapCompartment.reconfigure(wordWrap ? EditorView.lineWrapping : []) });
+  }, [wordWrap]);
 
   useEffect(() => {
     const view = viewRef.current;

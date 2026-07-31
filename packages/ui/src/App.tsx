@@ -22,7 +22,6 @@ import { normalizeSession, type SessionState } from "./session";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
-import { TopBar } from "./TopBar";
 import "./App.css";
 
 function createCursorPositionStore(): CursorPositionStore & { set: (position: CursorPosition) => void } {
@@ -91,6 +90,7 @@ const DEFAULT_SESSION: SessionState = {
   focusMode: false,
   typewriterMode: false,
   proseMode: false,
+  wordWrap: false,
   theme: "dark",
   pdfInverted: false,
   useSystemTex: false,
@@ -131,6 +131,7 @@ function AppShell() {
   const [focusMode, setFocusMode] = useState(false);
   const [typewriterMode, setTypewriterMode] = useState(false);
   const [proseMode, setProseMode] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
   // Seeded from localStorage synchronously so this matches first paint instead of flashing on session load.
   const [theme, setTheme] = useState<"dark" | "light">(() =>
     localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
@@ -414,6 +415,7 @@ function AppShell() {
         setFocusMode(session.focusMode);
         setTypewriterMode(session.typewriterMode);
         setProseMode(session.proseMode);
+        setWordWrap(session.wordWrap);
         setTheme(session.theme);
         setPdfInverted(session.pdfInverted);
         setUseSystemTex(session.useSystemTex);
@@ -494,6 +496,7 @@ function AppShell() {
       focusMode,
       typewriterMode,
       proseMode,
+      wordWrap,
       theme,
       pdfInverted,
       useSystemTex,
@@ -509,6 +512,7 @@ function AppShell() {
     focusMode,
     typewriterMode,
     proseMode,
+    wordWrap,
     theme,
     pdfInverted,
     useSystemTex,
@@ -528,10 +532,11 @@ function AppShell() {
       focusMode,
       typewriterMode,
       proseMode,
+      wordWrap,
       lightTheme: theme === "light",
       pdfInverted,
     });
-  }, [sidebarSection, focusMode, typewriterMode, proseMode, theme, pdfInverted]);
+  }, [sidebarSection, focusMode, typewriterMode, proseMode, wordWrap, theme, pdfInverted]);
 
   useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
@@ -697,6 +702,11 @@ function AppShell() {
     title: "Toggle Serif Prose Mode",
     run: () => setProseMode((v) => !v),
   });
+  useCommand({
+    id: "editor.toggle-word-wrap",
+    title: "Toggle Word Wrap",
+    run: () => setWordWrap((v) => !v),
+  });
 
   useCommand({
     id: "app.toggle-theme",
@@ -781,7 +791,6 @@ function AppShell() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      <TopBar projectLabel={project?.label ?? "Untitled"} />
       <div className="app__body">
         <ActivityBar active={sidebarSection} onSelect={toggleSidebarSection} problemCount={diagnostics.length} />
         {sidebarSection && (
@@ -823,6 +832,7 @@ function AppShell() {
                   focusMode={focusMode}
                   typewriterMode={typewriterMode}
                   proseMode={proseMode}
+                  wordWrap={wordWrap}
                   restoreCursor={activeTab.cursor}
                   restoreScrollTop={activeTab.scrollTop}
                   onChange={scheduleCompile}

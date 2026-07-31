@@ -15,6 +15,7 @@ export interface SessionState {
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;
+  wordWrap: boolean;
   theme: "dark" | "light";
   pdfInverted: boolean;
   /** Task 4.9 -- only ever honored when a real system TeX install is actually detected at runtime. */
@@ -48,6 +49,7 @@ export function normalizeSession(raw: unknown, fallback: SessionState): SessionS
     focusMode: typeof r.focusMode === "boolean" ? r.focusMode : fallback.focusMode,
     typewriterMode: typeof r.typewriterMode === "boolean" ? r.typewriterMode : fallback.typewriterMode,
     proseMode: typeof r.proseMode === "boolean" ? r.proseMode : fallback.proseMode,
+    wordWrap: typeof r.wordWrap === "boolean" ? r.wordWrap : fallback.wordWrap,
     theme: r.theme === "dark" || r.theme === "light" ? r.theme : fallback.theme,
     pdfInverted: typeof r.pdfInverted === "boolean" ? r.pdfInverted : fallback.pdfInverted,
     useSystemTex: typeof r.useSystemTex === "boolean" ? r.useSystemTex : fallback.useSystemTex,
