@@ -1,4 +1,5 @@
-import type { ComponentType } from "react";
+import { AlertTriangle, Folder, ListTree, Package } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { PanelKind } from "./panels/types";
 import "./ActivityBar.css";
 
@@ -8,45 +9,11 @@ interface ActivityBarProps {
   problemCount: number;
 }
 
-function ExplorerIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-      <path d="M4 6h6l2 2h8v10H4z" />
-    </svg>
-  );
-}
-
-function OutlineIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-      <path d="M5 6h14M5 12h9M5 18h11" />
-    </svg>
-  );
-}
-
-function ProblemsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-      <path d="M12 4 2 20h20z" />
-      <path d="M12 10v4M12 16.5v.01" />
-    </svg>
-  );
-}
-
-function PackagesIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-      <path d="M3 8 12 4l9 4-9 4-9-4Z" />
-      <path d="M3 8v8l9 4 9-4V8M12 12v8" />
-    </svg>
-  );
-}
-
-const ITEMS: { kind: PanelKind; label: string; Icon: ComponentType }[] = [
-  { kind: "file-tree", label: "Explorer", Icon: ExplorerIcon },
-  { kind: "outline", label: "Outline", Icon: OutlineIcon },
-  { kind: "problems", label: "Problems", Icon: ProblemsIcon },
-  { kind: "packages", label: "Packages", Icon: PackagesIcon },
+const ITEMS: { kind: PanelKind; label: string; Icon: LucideIcon }[] = [
+  { kind: "file-tree", label: "Explorer", Icon: Folder },
+  { kind: "outline", label: "Outline", Icon: ListTree },
+  { kind: "problems", label: "Problems", Icon: AlertTriangle },
+  { kind: "packages", label: "Packages", Icon: Package },
 ];
 
 export function ActivityBar({ active, onSelect, problemCount }: ActivityBarProps) {
@@ -62,7 +29,7 @@ export function ActivityBar({ active, onSelect, problemCount }: ActivityBarProps
           title={label}
           onClick={() => onSelect(kind)}
         >
-          <Icon />
+          <Icon aria-hidden="true" strokeWidth={1.6} />
           {kind === "problems" && problemCount > 0 && (
             <span className="activity-bar__badge">{problemCount > 99 ? "99+" : problemCount}</span>
           )}

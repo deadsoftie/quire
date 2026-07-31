@@ -20,6 +20,7 @@ import { Seam } from "./Seam";
 import type { SeamState } from "./Seam";
 import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
+import { basename } from "./paths";
 import { normalizeSession, type SessionState } from "./session";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
 import { StatusBar } from "./StatusBar";
@@ -68,11 +69,6 @@ interface OpenTab {
   /** CM6 selection head, restored on remount whenever this tab becomes active again. */
   cursor: number;
   scrollTop: number | null;
-}
-
-function basename(p: string): string {
-  const parts = p.split(/[/\\]/).filter(Boolean);
-  return parts[parts.length - 1] ?? p;
 }
 
 const PANEL_TITLES: Record<PanelKind, string> = {
@@ -148,6 +144,10 @@ function AppShell() {
   // tabsRef is authoritative and updated outside React state; `tabs` state only exists to repaint the tab bar.
   const tabsRef = useRef<OpenTab[]>([]);
   const editorRef = useRef<EditorHandle>(null);
+  // Set only when a diagnostic click targets a file that isn't the active tab -- Editor only seeds
+  // its cursor from `restoreCursor` on mount, so opening that tab first means `revealPosition` has
+  // to be deferred to the effect below (keyed on `activeUri`) rather than called inline.
+  const pendingRevealRef = useRef<{ uri: string; line: number; column: number } | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
   const errorTimeoutRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -340,6 +340,30 @@ function AppShell() {
     },
     [runCompile],
   );
+
+  const revealDiagnostic = useCallback(
+    (diagnostic: Diagnostic) => {
+      if (!diagnostic.uri) return;
+      const { line, column } = diagnostic.range?.start ?? { line: 0, column: 0 };
+      if (diagnostic.uri === activeUri) {
+        editorRef.current?.revealPosition(line, column);
+        return;
+      }
+      pendingRevealRef.current = { uri: diagnostic.uri, line, column };
+      openTab(diagnostic.uri);
+    },
+    [activeUri, openTab],
+  );
+
+  // Consumed on the very next activeUri change, whichever uri that turns out to be -- so a reveal
+  // whose openTab failed (readFile error) is simply dropped by the following unrelated tab switch,
+  // never misapplied to it.
+  useEffect(() => {
+    const pending = pendingRevealRef.current;
+    if (!pending) return;
+    pendingRevealRef.current = null;
+    if (pending.uri === activeUri) editorRef.current?.revealPosition(pending.line, pending.column);
+  }, [activeUri]);
 
   const closeTab = useCallback((uri: string) => {
     const current = tabsRef.current;
@@ -791,7 +815,7 @@ function AppShell() {
       case "outline":
         return <OutlinePanel projectId={project?.projectId ?? ""} uri={activeUri ?? ""} refreshToken={compileVersion} />;
       case "problems":
-        return <ProblemsPanel diagnostics={diagnostics} />;
+        return <ProblemsPanel diagnostics={diagnostics} onSelect={revealDiagnostic} />;
       case "packages":
         return <PackagesPanel onChanged={() => setPackagesRefreshToken((t) => t + 1)} />;
     }

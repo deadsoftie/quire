@@ -194,6 +194,8 @@ interface EditorProps {
 export interface EditorHandle {
   /** Replaces the whole document, e.g. for format-on-save -- a no-op if `newText` matches the current content. */
   replaceContent(newText: string): void;
+  /** Moves the cursor to a 0-based line/column (clamped to the document), scrolls it into view, and focuses the editor. */
+  revealPosition(line: number, column: number): void;
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
@@ -231,7 +233,18 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
   }
 
-  useImperativeHandle(ref, () => ({ replaceContent: applyFormatted }), []);
+  // line/column here are 0-based (the wire's Position convention, e.g. Diagnostic.range), distinct
+  // from the 1-based line numbers and UTF-16 columns this component reports out via onCursorActivity.
+  function revealPosition(line: number, column: number) {
+    const view = viewRef.current;
+    if (!view) return;
+    const lineInfo = view.state.doc.line(Math.max(1, Math.min(line + 1, view.state.doc.lines)));
+    const pos = Math.max(lineInfo.from, Math.min(lineInfo.from + column, lineInfo.to));
+    view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+    view.focus();
+  }
+
+  useImperativeHandle(ref, () => ({ replaceContent: applyFormatted, revealPosition }), []);
 
   // No keybinding: basicSetup's own historyKeymap already handles ⌘Z/⇧⌘Z as a CM6-internal keymap
   // bound directly to the editor's contenteditable node. These commands exist purely so the

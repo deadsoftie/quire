@@ -1,37 +1,90 @@
 .problems-panel {
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
   margin: 0;
-  padding: 0;
+  padding: var(--s-2);
 }
 
 .problems-panel__item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-  padding: var(--s-2);
   border-radius: var(--radius);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  border-left: 2px solid transparent;
 }
 
-.problems-panel__item--error {
+.problems-panel__button {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.problems-panel__button:hover:not(:disabled) {
+  background: var(--ink-700);
+}
+
+.problems-panel__button:disabled {
+  cursor: default;
+}
+
+.problems-panel__item--error .problems-panel__button {
   border-left-color: var(--proof-red);
 }
 
-.problems-panel__item--warning {
+.problems-panel__item--warning .problems-panel__button {
   border-left-color: var(--proof-amber);
 }
 
-.problems-panel__item--info {
+.problems-panel__item--info .problems-panel__button {
   border-left-color: var(--type-lo);
+}
+
+.problems-panel__icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.problems-panel__item--error .problems-panel__icon {
+  color: var(--proof-red);
+}
+
+.problems-panel__item--warning .problems-panel__icon {
+  color: var(--proof-amber);
+}
+
+.problems-panel__item--info .problems-panel__icon {
+  color: var(--type-lo);
+}
+
+.problems-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
 }
 
 .problems-panel__message {
   color: var(--type-hi);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
   white-space: pre-wrap;
 }
 
 .problems-panel__hint {
   color: var(--type-mid);
+  font-size: var(--t-xs);
+}
+
+.problems-panel__location {
+  color: var(--type-lo);
+  font-size: var(--t-xs);
 }
