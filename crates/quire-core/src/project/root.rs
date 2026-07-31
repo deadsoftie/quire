@@ -192,9 +192,12 @@ fn compute_out_degrees(files: &[PathBuf], project_dir: &Path) -> HashMap<PathBuf
             continue;
         };
         let refs = parse_references(&content, project_dir);
+        // Neither a graphic nor a bibliography is a candidate sub-document, so neither should
+        // count toward "how many other documents does this file pull in" -- and every real root
+        // document has exactly one \bibliography, so counting it wouldn't discriminate anyway.
         let distinct: HashSet<PathBuf> = refs
             .into_iter()
-            .filter(|r| r.command != IncludeCommand::IncludeGraphics)
+            .filter(|r| r.command != IncludeCommand::IncludeGraphics && r.command != IncludeCommand::Bibliography)
             .filter_map(|r| r.resolved)
             .collect();
         degrees.insert(file.clone(), distinct.len());

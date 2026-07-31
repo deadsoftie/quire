@@ -17,12 +17,18 @@ pub enum IncludeCommand {
     Include,
     IncludeGraphics,
     Subfile,
+    /// `\bibliography{...}` (classic BibTeX, comma-separated, `.bib` implied) and
+    /// `\addbibresource{...}` (biblatex, single resource) both land here -- `parse_references`
+    /// tracks which one matched locally to decide whether to split on commas, since neither the
+    /// graph traversal nor the shadow-dir mirroring downstream cares which macro was used.
+    Bibliography,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
     Tex,
     Graphic,
+    Bib,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,7 +92,9 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
 
         let references = parse_references(&content, base_dir);
         for r in &references {
-            if r.command != IncludeCommand::IncludeGraphics {
+            // Neither is itself LaTeX source to scan further -- a graphic has no references of
+            // its own, and a .bib file's internal syntax isn't LaTeX at all.
+            if r.command != IncludeCommand::IncludeGraphics && r.command != IncludeCommand::Bibliography {
                 if let Some(resolved) = &r.resolved {
                     queue.push(resolved.clone());
                 }
@@ -100,20 +108,18 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         });
     }
 
-    let graphic_paths: Vec<PathBuf> = files
-        .iter()
-        .flat_map(|f| &f.references)
-        .filter(|r| r.command == IncludeCommand::IncludeGraphics)
-        .filter_map(|r| r.resolved.clone())
-        .collect();
-
-    for path in graphic_paths {
-        if visited.insert(path.clone()) {
-            files.push(FileNode {
-                path,
-                kind: FileKind::Graphic,
-                references: Vec::new(),
-            });
+    let leaf_kinds = [(IncludeCommand::IncludeGraphics, FileKind::Graphic), (IncludeCommand::Bibliography, FileKind::Bib)];
+    for (command, kind) in leaf_kinds {
+        let paths: Vec<PathBuf> = files
+            .iter()
+            .flat_map(|f| &f.references)
+            .filter(|r| r.command == command)
+            .filter_map(|r| r.resolved.clone())
+            .collect();
+        for path in paths {
+            if visited.insert(path.clone()) {
+                files.push(FileNode { path, kind, references: Vec::new() });
+            }
         }
     }
 
@@ -157,11 +163,18 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
         }
 
         let rest = &stripped[i..];
-        let (command, name_len) = match () {
-            _ if rest.starts_with("\\includegraphics") => (IncludeCommand::IncludeGraphics, "\\includegraphics".len()),
-            _ if rest.starts_with("\\input") => (IncludeCommand::Input, "\\input".len()),
-            _ if rest.starts_with("\\include") => (IncludeCommand::Include, "\\include".len()),
-            _ if rest.starts_with("\\subfile") => (IncludeCommand::Subfile, "\\subfile".len()),
+        // is_multi_bib tracks which of the two bib-resource macros matched, since \bibliography
+        // (classic BibTeX) takes a comma-separated list while \addbibresource (biblatex) takes
+        // exactly one -- both still resolve to the same IncludeCommand::Bibliography below.
+        let (command, name_len, is_multi_bib) = match () {
+            _ if rest.starts_with("\\includegraphics") => (IncludeCommand::IncludeGraphics, "\\includegraphics".len(), false),
+            _ if rest.starts_with("\\input") => (IncludeCommand::Input, "\\input".len(), false),
+            _ if rest.starts_with("\\include") => (IncludeCommand::Include, "\\include".len(), false),
+            _ if rest.starts_with("\\subfile") => (IncludeCommand::Subfile, "\\subfile".len(), false),
+            // The following `{`-check (shared with every other command below) rejects
+            // \bibliographystyle{...}, which would otherwise false-match \bibliography's prefix.
+            _ if rest.starts_with("\\bibliography") => (IncludeCommand::Bibliography, "\\bibliography".len(), true),
+            _ if rest.starts_with("\\addbibresource") => (IncludeCommand::Bibliography, "\\addbibresource".len(), false),
             _ => {
                 i += 1;
                 continue;
@@ -189,17 +202,24 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
         };
         let raw_arg = after_brace[..end].trim().to_string();
 
-        let resolved = if command == IncludeCommand::IncludeGraphics {
-            resolve_graphic(&raw_arg, base_dir)
+        if is_multi_bib {
+            // \bibliography{refs1,refs2} -- one Reference per name, matching every other
+            // command's one-Reference-per-target convention (Reference.resolved is singular).
+            for name in raw_arg.split(',') {
+                let name = name.trim();
+                if name.is_empty() {
+                    continue;
+                }
+                refs.push(Reference { command, raw_arg: name.to_string(), resolved: resolve_bib(name, base_dir) });
+            }
         } else {
-            resolve_tex(&raw_arg, base_dir)
-        };
-
-        refs.push(Reference {
-            command,
-            raw_arg,
-            resolved,
-        });
+            let resolved = match command {
+                IncludeCommand::IncludeGraphics => resolve_graphic(&raw_arg, base_dir),
+                IncludeCommand::Bibliography => resolve_bib(&raw_arg, base_dir),
+                _ => resolve_tex(&raw_arg, base_dir),
+            };
+            refs.push(Reference { command, raw_arg, resolved });
+        }
 
         i += name_len;
     }
@@ -228,6 +248,20 @@ fn resolve_tex(raw: &str, base_dir: &Path) -> Option<PathBuf> {
     }
     if candidate.extension().is_none() {
         let with_ext = base_dir.join(format!("{raw}.tex"));
+        if let Some(resolved) = resolve_within(base_dir, with_ext) {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
+fn resolve_bib(raw: &str, base_dir: &Path) -> Option<PathBuf> {
+    let candidate = base_dir.join(raw);
+    if let Some(resolved) = resolve_within(base_dir, candidate.clone()) {
+        return Some(resolved);
+    }
+    if candidate.extension().is_none() {
+        let with_ext = base_dir.join(format!("{raw}.bib"));
         if let Some(resolved) = resolve_within(base_dir, with_ext) {
             return Some(resolved);
         }
@@ -284,6 +318,62 @@ mod tests {
         assert_eq!(tex_paths.len(), 2, "each file visited exactly once: {tex_paths:?}");
         assert!(tex_paths.contains(&dir.join("a.tex").as_path()));
         assert!(tex_paths.contains(&dir.join("b.tex").as_path()));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn bibliography_command_resolves_and_becomes_a_bib_leaf() {
+        let dir = temp_dir("bib-single");
+        fs::write(dir.join("refs.bib"), "@article{k,}").unwrap();
+        fs::write(dir.join("a.tex"), "\\bibliography{refs}").unwrap();
+
+        let graph = build_file_graph(&dir.join("a.tex"));
+        let bib_files: Vec<&FileNode> = graph.files.iter().filter(|f| f.kind == FileKind::Bib).collect();
+        assert_eq!(bib_files.len(), 1, "{graph:?}");
+        assert_eq!(bib_files[0].path, dir.join("refs.bib"));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn bibliography_command_splits_comma_separated_names() {
+        let dir = temp_dir("bib-multi");
+        fs::write(dir.join("refs1.bib"), "@article{k,}").unwrap();
+        fs::write(dir.join("refs2.bib"), "@article{k,}").unwrap();
+        fs::write(dir.join("a.tex"), "\\bibliography{refs1,refs2}").unwrap();
+
+        let graph = build_file_graph(&dir.join("a.tex"));
+        let bib_paths: HashSet<&Path> =
+            graph.files.iter().filter(|f| f.kind == FileKind::Bib).map(|f| f.path.as_path()).collect();
+        assert_eq!(bib_paths.len(), 2, "{graph:?}");
+        assert!(bib_paths.contains(dir.join("refs1.bib").as_path()));
+        assert!(bib_paths.contains(dir.join("refs2.bib").as_path()));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn addbibresource_resolves_like_bibliography() {
+        let dir = temp_dir("bib-biblatex");
+        fs::write(dir.join("refs.bib"), "@article{k,}").unwrap();
+        fs::write(dir.join("a.tex"), "\\addbibresource{refs.bib}").unwrap();
+
+        let graph = build_file_graph(&dir.join("a.tex"));
+        let bib_files: Vec<&FileNode> = graph.files.iter().filter(|f| f.kind == FileKind::Bib).collect();
+        assert_eq!(bib_files.len(), 1, "{graph:?}");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn bibliographystyle_is_not_mistaken_for_bibliography() {
+        let dir = temp_dir("bib-style");
+        fs::write(dir.join("a.tex"), "\\bibliographystyle{plain}").unwrap();
+
+        let graph = build_file_graph(&dir.join("a.tex"));
+        assert!(graph.files.iter().all(|f| f.kind != FileKind::Bib), "{graph:?}");
+        assert!(graph.files[0].references.is_empty(), "{graph:?}");
 
         fs::remove_dir_all(&dir).unwrap();
     }

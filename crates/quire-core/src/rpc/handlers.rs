@@ -31,12 +31,17 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     let files = graph
         .files
         .iter()
+        // A .bib file is compiled with (see compile() below) but not itself an openable document
+        // -- FileNodeKind (the wire contract) has no variant for it, and adding one is a bigger,
+        // deliberate call than this fix makes; it stays invisible to the Explorer/file tree for now.
+        .filter(|f| f.kind != FileKind::Bib)
         .map(|f| FileNode {
             uri: f.path.display().to_string(),
             name: f.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             kind: match f.kind {
                 FileKind::Tex => FileNodeKind::Tex,
                 FileKind::Graphic => FileNodeKind::Graphic,
+                FileKind::Bib => unreachable!("filtered out above"),
             },
         })
         .collect();
@@ -91,7 +96,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
 
     for file in &graph.files {
         if file.kind != FileKind::Tex {
-            continue; // graphics are copied as-is below, never dirty-buffer-overridden
+            continue; // non-Tex files (graphics, bib resources) are copied as-is below, never dirty-buffer-overridden
         }
 
         let uri = file.path.display().to_string();
@@ -107,8 +112,10 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
         write_into_shadow(&project_dir, &shadow_dir, &file.path, content.as_bytes())?;
     }
 
-    // Graphics never come from dirty buffers -- copy the real bytes across.
-    for file in graph.files.iter().filter(|f| f.kind == FileKind::Graphic) {
+    // Non-Tex files (graphics, .bib resources) never come from dirty buffers -- copy the real
+    // bytes across. BibTeX needs its .bib physically present in the shadow dir at the same
+    // relative path the root document's \bibliography{...}/\addbibresource{...} names it by.
+    for file in graph.files.iter().filter(|f| f.kind != FileKind::Tex) {
         let bytes = fs::read(&file.path).unwrap_or_default();
         write_into_shadow(&project_dir, &shadow_dir, &file.path, &bytes)?;
     }

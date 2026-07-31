@@ -163,6 +163,36 @@ fn compile_mirrors_the_whole_graph_and_produces_a_real_pdf() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
+/// Closes the gap `docs/CONTRACT.md` used to flag: `refs.bib` was invisible to `FileGraph`, so
+/// `write_into_shadow` never copied it into the build dir and BibTeX had no `.bib` to read --
+/// `\cite{...}` compiled but never actually resolved. `project::IncludeCommand::Bibliography`
+/// fixes that; this proves it end to end through the real `compile()` handler, not just at the
+/// `FileGraph`/`rerun.rs` unit level.
+#[test]
+fn compile_resolves_a_real_bibliography_citation() {
+    let project_dir = fresh_project_copy("compile_with_bibliography", "compile-bib");
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
+    })
+    .expect("compile should succeed");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+    assert!(
+        !resp.diagnostics.iter().any(|d| d.code.as_deref() == Some("undefined-citation")),
+        "the citation should have resolved via the mirrored .bib, not stayed undefined: {:?}",
+        resp.diagnostics
+    );
+
+    let shadow = project_dir.join(".quire").join("build");
+    assert!(shadow.join("refs.bib").is_file(), "refs.bib must be mirrored into the shadow build dir");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
 /// Task 4.9, wired end to end through the real RPC handler rather than `system_tex::compile()`
 /// directly (see `tests/system_tex.rs` for that) -- proves `handlers::compile()`'s own
 /// `engine: System` branch actually resolves the root document's shadow-dir-relative path

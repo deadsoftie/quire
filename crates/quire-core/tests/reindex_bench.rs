@@ -8,7 +8,9 @@ use quire_core::project::build_file_graph;
 fn full_reindex_of_a_50_file_thesis_stays_well_under_budget() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/thesis_50/main.tex");
     let graph = build_file_graph(&root);
-    assert_eq!(graph.files.len(), 51, "fixture should be main.tex + 50 chapters: {}", graph.files.len());
+    // main.tex + 50 chapters + refs.bib (main.tex's own \bibliography{refs}) -- the .bib is a
+    // real FileGraph leaf as of project::IncludeCommand::Bibliography, not silently dropped.
+    assert_eq!(graph.files.len(), 52, "fixture should be main.tex + 50 chapters + refs.bib: {}", graph.files.len());
 
     let _ = ProjectIndex::build(&graph);
 
@@ -18,7 +20,7 @@ fn full_reindex_of_a_50_file_thesis_stays_well_under_budget() {
         let _index = ProjectIndex::build(&graph);
     }
     let avg = start.elapsed() / RUNS;
-    println!("ProjectIndex::build average over {RUNS} runs on a 51-file thesis: {avg:?}");
+    println!("ProjectIndex::build average over {RUNS} runs on a 52-file thesis: {avg:?}");
 
     assert!(
         avg.as_millis() < 30,
