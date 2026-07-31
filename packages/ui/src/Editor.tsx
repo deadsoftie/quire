@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { autocompletion, snippet } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
@@ -10,6 +10,7 @@ import { toEditorDiagnostics } from "./diagnostics";
 import {
   focusCompartment,
   focusModeExtension,
+  mathHighlightExtension,
   proseCompartment,
   proseModeExtension,
   typewriterCompartment,
@@ -17,6 +18,7 @@ import {
   wordWrapCompartment,
 } from "./editorModes";
 import { environmentSync } from "./environmentSync";
+import { formatLatex } from "./latex/formatter";
 import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
 import { renderSymbolPreview } from "./symbolPreview";
@@ -93,6 +95,11 @@ const baseEditorTheme = EditorView.theme(
       color: "var(--nonrepro)",
       textDecoration: "none",
       fontWeight: "600",
+    },
+    // Matches the ink-cyan family math delimiters/brackets now use (latex/language.ts).
+    ".cm-math-region": {
+      backgroundColor: "var(--ink-cyan-dim)",
+      borderRadius: "2px",
     },
     ".cm-symbolPreview": {
       padding: "10px 14px",
@@ -189,26 +196,46 @@ interface EditorProps {
   diagnostics?: Diagnostic[];
 }
 
-export function Editor({
-  initialDoc,
-  projectId,
-  uri,
-  focusMode,
-  typewriterMode,
-  proseMode,
-  wordWrap,
-  restoreCursor,
-  restoreScrollTop,
-  onChange,
-  onCursorActivity,
-  diagnostics,
-}: EditorProps) {
+export interface EditorHandle {
+  /** Replaces the whole document, e.g. for format-on-save -- a no-op if `newText` matches the current content. */
+  replaceContent(newText: string): void;
+}
+
+export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
+  {
+    initialDoc,
+    projectId,
+    uri,
+    focusMode,
+    typewriterMode,
+    proseMode,
+    wordWrap,
+    restoreCursor,
+    restoreScrollTop,
+    onChange,
+    onCursorActivity,
+    diagnostics,
+  },
+  ref,
+) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onCursorActivityRef = useRef(onCursorActivity);
   onCursorActivityRef.current = onCursorActivity;
+
+  // Shared by the manual "Format Document" command and the imperative handle App.tsx uses for
+  // format-on-save -- one dispatch helper, two entry points.
+  function applyFormatted(newText?: string) {
+    const view = viewRef.current;
+    if (!view) return;
+    const formatted = newText ?? formatLatex(view.state.doc.toString());
+    if (formatted === view.state.doc.toString()) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
+  }
+
+  useImperativeHandle(ref, () => ({ replaceContent: applyFormatted }), []);
 
   // No keybinding: basicSetup's own historyKeymap already handles ⌘Z/⇧⌘Z as a CM6-internal keymap
   // bound directly to the editor's contenteditable node. These commands exist purely so the
@@ -230,6 +257,13 @@ export function Editor({
       if (viewRef.current) cmRedo(viewRef.current);
     },
   });
+  useCommand({
+    id: "editor.format-document",
+    title: "Format Document",
+    shortcut: "⇧⌥F",
+    // No keybinding: routed through the native Edit menu accelerator instead, same reason undo/redo are.
+    run: () => applyFormatted(),
+  });
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -243,6 +277,7 @@ export function Editor({
         basicSetup,
         baseEditorTheme,
         latex(),
+        mathHighlightExtension(),
         environmentSync(),
         linter(null),
         lintGutter(),
@@ -343,4 +378,4 @@ export function Editor({
   }, [diagnostics]);
 
   return <div ref={hostRef} style={{ height: "100%" }} />;
-}
+});

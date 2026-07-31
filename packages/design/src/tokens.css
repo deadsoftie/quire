@@ -15,6 +15,20 @@
   --proof-red: #e5534b;
   --proof-amber: #d9a03c;
 
+  /* Syntax highlighting's own ink family -- distinct, saturated hues for elements --nonrepro/
+     --type-* can't tell apart from each other (comments, section headings, references,
+     environments, verbatim, math). Deliberately vivid (One Dark/Dracula register), not a pastel
+     variant of the base accent -- a first pass at this used muted pastels close in lightness to
+     surrounding text and they read as barely-there; these are picked to actually pop against
+     --ink-900/800. */
+  --ink-green: #89ca78;
+  --ink-gold: #e5c07b;
+  --ink-orange: #d19a66;
+  --ink-purple: #c678dd;
+  --ink-cyan: #56b6c2;
+  --ink-cyan-dim: #56b6c233;
+  --ink-brown: #be9270;
+
   --paper: #ffffff;
 }
 
@@ -34,6 +48,16 @@
   /* Darker than dark mode's #e5534b/#d9a03c -- those drop under WCAG AA's 4.5:1 against these lighter surfaces. */
   --proof-red: #dc2920;
   --proof-amber: #966a1d;
+
+  /* Same reasoning as proof-red/amber above -- dark mode's lighter ink family drops under
+     WCAG AA against these lighter surfaces, so light mode gets its own darker, more saturated set. */
+  --ink-green: #4c9a46;
+  --ink-gold: #a6821f;
+  --ink-orange: #a15f1f;
+  --ink-purple: #8a3fae;
+  --ink-cyan: #1b818c;
+  --ink-cyan-dim: #1b818c33;
+  --ink-brown: #8a6248;
 
   --paper: #ffffff;
 }

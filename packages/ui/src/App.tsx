@@ -4,6 +4,8 @@ import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
 import { Editor, INITIAL_SOURCE } from "./Editor";
+import type { EditorHandle } from "./Editor";
+import { formatLatex } from "./latex/formatter";
 import { useMenuBridge } from "./menuBridge";
 import { buildFileTree } from "./panels/fileTree";
 import { FileTreePanel } from "./panels/FileTreePanel";
@@ -145,6 +147,7 @@ function AppShell() {
   const projectRef = useRef<Project | null>(null);
   // tabsRef is authoritative and updated outside React state; `tabs` state only exists to repaint the tab bar.
   const tabsRef = useRef<OpenTab[]>([]);
+  const editorRef = useRef<EditorHandle>(null);
   const debounceRef = useRef<number | undefined>(undefined);
   const errorTimeoutRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -358,10 +361,25 @@ function AppShell() {
       const idx = tabsRef.current.findIndex((t) => t.uri === uri);
       if (idx === -1) return;
       const tab = tabsRef.current[idx];
+      const formatted = formatLatex(tab.text);
+      if (formatted !== tab.text) {
+        if (uri === activeUri) {
+          // -> onChange -> scheduleCompile updates tabsRef[idx].text synchronously (CM6 dispatch
+          // and its updateListener run synchronously) and arms a debounced "edit" recompile,
+          // cancelled below so it can't race the "save" compile.
+          editorRef.current?.replaceContent(formatted);
+        } else {
+          // Not the mounted tab -- no live view to push into; initialDoc only re-seeds on remount.
+          const next = tabsRef.current.slice();
+          next[idx] = { ...tab, text: formatted };
+          tabsRef.current = next;
+        }
+      }
+      const current = tabsRef.current[idx];
       try {
-        await window.quire.writeFile(uri, tab.text);
+        await window.quire.writeFile(uri, current.text);
         const next = tabsRef.current.slice();
-        next[idx] = { ...tab, savedText: tab.text };
+        next[idx] = { ...tabsRef.current[idx], savedText: current.text };
         tabsRef.current = next;
         setTabs(next);
         if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
@@ -370,7 +388,7 @@ function AppShell() {
         setError(String((err as Error)?.message ?? err));
       }
     },
-    [runCompile],
+    [runCompile, activeUri],
   );
 
   const saveAndCloseTab = useCallback(
@@ -672,9 +690,13 @@ function AppShell() {
       const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
       if (idx === -1) return;
       const tab = tabsRef.current[idx];
-      await window.quire.writeFile(path, tab.text);
+      // No live-view push needed here (unlike saveTab) -- the tab's `uri` changes below, which
+      // changes <Editor>'s `key` in the JSX and forces a remount, so the new `initialDoc` picks
+      // up this already-formatted text naturally.
+      const formatted = formatLatex(tab.text);
+      await window.quire.writeFile(path, formatted);
       const next = tabsRef.current.slice();
-      next[idx] = { ...tab, uri: path, savedText: tab.text };
+      next[idx] = { ...tab, uri: path, text: formatted, savedText: formatted };
       tabsRef.current = next;
       setTabs(next);
       setActiveUri(path);
@@ -825,6 +847,7 @@ function AppShell() {
             <div className="app__pane app__pane--editor">
               {project && activeTab && (
                 <Editor
+                  ref={editorRef}
                   key={activeTab.uri}
                   initialDoc={activeTab.text}
                   projectId={project.projectId}

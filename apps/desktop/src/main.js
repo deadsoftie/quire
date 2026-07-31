@@ -57,6 +57,8 @@ function buildMenu() {
         { role: "copy" },
         { role: "paste" },
         { role: "selectAll" },
+        { type: "separator" },
+        { label: "Format Document", accelerator: "Shift+Alt+F", click: () => sendMenuCommand("editor.format-document") },
       ],
     },
     {

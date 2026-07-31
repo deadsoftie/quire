@@ -11,6 +11,8 @@
 content {
   Command |
   TextCommand TextArg |
+  SectionCommand |
+  RefCommand |
   Environment |
   MathEnvironment |
   VerbatimEnvironment |
@@ -22,10 +24,15 @@ content {
   Text
 }
 
-// Same as `content` minus text-mode-only constructs; `Group` becomes `MathGroup`.
+// Same as `content` minus text-mode-only constructs; `Group` becomes `MathGroup`. SectionCommand
+// isn't valid LaTeX inside math mode, but RefCommand plausibly is (e.g. \ref inside an aligned
+// equation) -- both are listed anyway, matching this grammar's own "forgiving, not a validator"
+// stance (see the module comment) rather than making math mode reject a section command outright.
 mathContent {
   Command |
   TextCommand TextArg |
+  SectionCommand |
+  RefCommand |
   MathGroup |
   Text
 }
@@ -66,6 +73,11 @@ VerbatimEnvironment { BeginKw "{" VerbatimEnvName "}" VerbatimBody? EndKw "{" Ve
 
 // Specialized by exact text out of Command/EnvName, not given their own token rules -- two rules matching the same characters is a lexical conflict Lezer can't resolve.
 TextCommand { @specialize<Command, "\\text" | "\\mbox" | "\\textrm" | "\\textbf" | "\\textit" | "\\textsf" | "\\texttt" | "\\emph" | "\\textnormal" | "\\intertext" | "\\caption"> }
+
+// Structurally just a bare Command (its `{...}` argument, if any, parses as an ordinary
+// following Group/content item -- same as any unspecialized \cite{...}/\ref{...} did before this).
+SectionCommand { @specialize<Command, "\\part" | "\\chapter" | "\\section" | "\\subsection" | "\\subsubsection" | "\\paragraph" | "\\subparagraph"> }
+RefCommand { @specialize<Command, "\\ref" | "\\eqref" | "\\autoref" | "\\pageref" | "\\nameref" | "\\cite" | "\\citep" | "\\citet" | "\\label"> }
 
 BeginKw { @specialize<Command, "\\begin"> }
 EndKw { @specialize<Command, "\\end"> }

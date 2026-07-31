@@ -1,5 +1,6 @@
 import { Compartment, RangeSetBuilder } from "@codemirror/state";
 import type { EditorState, Extension } from "@codemirror/state";
+import { syntaxTree } from "@codemirror/language";
 import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 
@@ -84,4 +85,56 @@ const focusModeTheme = EditorView.theme({
 
 export function focusModeExtension(): Extension {
   return [focusModePlugin, focusModeTheme];
+}
+
+const MATH_SPAN_NODE_NAMES = new Set([
+  "InlineMath",
+  "DisplayMathDollar",
+  "DisplayMathBracket",
+  "InlineMathParen",
+  "MathEnvironment",
+]);
+
+// Exported and tested directly, same reasoning as `activeParagraphRange` above -- real coverage
+// without needing a full EditorView.
+export function mathHighlightSpans(state: EditorState): { from: number; to: number }[] {
+  const spans: { from: number; to: number }[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (!MATH_SPAN_NODE_NAMES.has(node.name)) return;
+      spans.push({ from: node.from, to: node.to });
+      return false; // math doesn't nest (module comment in latex.grammar) -- no need to descend
+    },
+  });
+  return spans;
+}
+
+const mathRegionMark = Decoration.mark({ class: "cm-math-region" });
+
+function buildMathDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of mathHighlightSpans(state)) {
+    if (from < to) builder.add(from, to, mathRegionMark);
+  }
+  return builder.finish();
+}
+
+const mathHighlightPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildMathDecorations(view.state);
+    }
+    update(update: ViewUpdate) {
+      // Unlike focus mode, math regions depend only on document content, never cursor position.
+      if (update.docChanged) this.decorations = buildMathDecorations(update.state);
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+// Always on, unlike the compartmentalized toggles above -- a permanent readability aid, not an
+// editing mode.
+export function mathHighlightExtension(): Extension {
+  return mathHighlightPlugin;
 }

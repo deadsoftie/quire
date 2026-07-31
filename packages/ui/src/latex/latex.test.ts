@@ -116,6 +116,24 @@ describe("LaTeX grammar", () => {
     ).toBe(true);
   });
 
+  it("specializes sectioning and reference/citation commands, without swallowing unrecognized ones", () => {
+    const source = "\\section{Intro}\nSee \\ref{fig:1} and \\cite{knuth1984}.\n\\foobarbaz\n";
+    const tree = parse(source);
+    expect(hasErrorNodes(tree)).toBe(false);
+
+    expect(nodesOf(tree, source, "SectionCommand").map((n) => n.text)).toEqual(["\\section"]);
+    expect(nodesOf(tree, source, "RefCommand").map((n) => n.text)).toEqual(["\\ref", "\\cite"]);
+    // An unrecognized command still falls back to plain Command -- specialization doesn't swallow it.
+    expect(nodesOf(tree, source, "Command").map((n) => n.text)).toEqual(["\\foobarbaz"]);
+  });
+
+  it("recognizes a reference command inside math mode too", () => {
+    const source = "\\begin{align}\nx &= y \\ref{eq:previous}\n\\end{align}\n";
+    const tree = parse(source);
+    expect(hasErrorNodes(tree)).toBe(false);
+    expect(nodesOf(tree, source, "RefCommand").map((n) => n.text)).toEqual(["\\ref"]);
+  });
+
   it("leaves verbatim content unparsed", () => {
     const source =
       "\\begin{verbatim}\n\\no{command}[parsing]$here$ % not a comment\n\\end{verbatim}\n";

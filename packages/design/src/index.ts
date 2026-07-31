@@ -16,6 +16,13 @@ export const palettes = {
     nonreproDim: "#8fc7e833",
     proofRed: "#e5534b",
     proofAmber: "#d9a03c",
+    inkGreen: "#89ca78",
+    inkGold: "#e5c07b",
+    inkOrange: "#d19a66",
+    inkPurple: "#c678dd",
+    inkCyan: "#56b6c2",
+    inkCyanDim: "#56b6c233",
+    inkBrown: "#be9270",
     paper: "#ffffff",
   },
   light: {
@@ -31,6 +38,13 @@ export const palettes = {
     // See tokens.css: darkened to stay >=4.5:1 against light surfaces.
     proofRed: "#dc2920",
     proofAmber: "#966a1d",
+    inkGreen: "#4c9a46",
+    inkGold: "#a6821f",
+    inkOrange: "#a15f1f",
+    inkPurple: "#8a3fae",
+    inkCyan: "#1b818c",
+    inkCyanDim: "#1b818c33",
+    inkBrown: "#8a6248",
     paper: "#ffffff",
   },
 } as const;
