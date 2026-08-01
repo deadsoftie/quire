@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod root;
-pub use root::{detect_root, RootConfidence, RootDetectionResult};
+pub use root::{detect_root, detect_root_with_dirty, RootConfidence, RootDetectionResult};
 pub(crate) use root::documentclass_name;
 
 mod watcher;

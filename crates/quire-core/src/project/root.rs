@@ -4,6 +4,16 @@ use std::path::{Path, PathBuf};
 
 use super::{parse_references, strip_comments, IncludeCommand, SKIP_NAMES};
 
+/// Reads `path`'s content, preferring an unsaved editor buffer over disk -- lets root detection
+/// see a brand-new file's pasted-but-not-yet-saved `\documentclass` instead of the empty file
+/// `desktop:createFile` writes to disk.
+fn read_content(path: &Path, dirty: &HashMap<PathBuf, &str>) -> Option<String> {
+    if let Some(text) = dirty.get(path) {
+        return Some((*text).to_string());
+    }
+    fs::read_to_string(path).ok()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RootConfidence {
     Explicit,
@@ -20,9 +30,16 @@ pub struct RootDetectionResult {
 }
 
 pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
+    detect_root_with_dirty(project_dir, &HashMap::new())
+}
+
+/// Same as `detect_root`, but `dirty` (unsaved editor buffers, keyed by absolute path) takes
+/// precedence over on-disk content -- `compile` needs this so a file created and pasted into but
+/// not yet saved can still be recognized as the root document.
+pub fn detect_root_with_dirty(project_dir: &Path, dirty: &HashMap<PathBuf, &str>) -> RootDetectionResult {
     let tex_files = find_all_tex_files(project_dir);
 
-    if let Some(root) = detect_explicit(&tex_files) {
+    if let Some(root) = detect_explicit(&tex_files, dirty) {
         return RootDetectionResult {
             root: Some(root),
             confidence: RootConfidence::Explicit,
@@ -30,7 +47,7 @@ pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
         };
     }
 
-    let documentclass_files = files_with_real_documentclass(&tex_files);
+    let documentclass_files = files_with_real_documentclass(&tex_files, dirty);
     if documentclass_files.len() == 1 {
         return RootDetectionResult {
             root: Some(documentclass_files[0].clone()),
@@ -46,7 +63,7 @@ pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
         documentclass_files
     };
 
-    let out_degrees = compute_out_degrees(&search_scope, project_dir);
+    let out_degrees = compute_out_degrees(&search_scope, project_dir, dirty);
     let max_degree = out_degrees.values().copied().max().unwrap_or(0);
 
     if max_degree > 0 {
@@ -117,11 +134,11 @@ fn find_all_tex_files_into(dir: &Path, visited: &mut HashSet<PathBuf>, results: 
 }
 
 /// `% !TEX root = <path>` markers (TeXShop/TeXWorks convention); disagreeing markers fall through to inference rather than guessing.
-fn detect_explicit(tex_files: &[PathBuf]) -> Option<PathBuf> {
+fn detect_explicit(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Option<PathBuf> {
     let mut resolved: HashSet<PathBuf> = HashSet::new();
 
     for file in tex_files {
-        let Ok(content) = fs::read_to_string(file) else { continue };
+        let Some(content) = read_content(file, dirty) else { continue };
         for line in content.lines().take(20) {
             let trimmed = line.trim();
             let Some(rest) = trimmed
@@ -155,12 +172,11 @@ fn detect_explicit(tex_files: &[PathBuf]) -> Option<PathBuf> {
 }
 
 /// Excludes `subfiles`-classed files -- each subfiles chapter has its own `\documentclass` too, which would otherwise make such a project always look ambiguous.
-fn files_with_real_documentclass(tex_files: &[PathBuf]) -> Vec<PathBuf> {
+fn files_with_real_documentclass(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Vec<PathBuf> {
     tex_files
         .iter()
         .filter(|f| {
-            fs::read_to_string(f)
-                .ok()
+            read_content(f, dirty)
                 .map(|content| strip_comments(&content))
                 .and_then(|content| documentclass_name(&content))
                 .is_some_and(|name| name != "subfiles")
@@ -184,10 +200,10 @@ pub(crate) fn documentclass_name(content: &str) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
-fn compute_out_degrees(files: &[PathBuf], project_dir: &Path) -> HashMap<PathBuf, usize> {
+fn compute_out_degrees(files: &[PathBuf], project_dir: &Path, dirty: &HashMap<PathBuf, &str>) -> HashMap<PathBuf, usize> {
     let mut degrees = HashMap::new();
     for file in files {
-        let Ok(content) = fs::read_to_string(file) else {
+        let Some(content) = read_content(file, dirty) else {
             degrees.insert(file.clone(), 0);
             continue;
         };

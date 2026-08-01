@@ -78,14 +78,16 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let project_dir = PathBuf::from(&req.project_id);
     let shadow_dir = project_dir.join(".quire").join("build");
 
-    let detection = project::detect_root(&project_dir);
+    let dirty: HashMap<PathBuf, &str> =
+        req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
+
+    // Detection must see unsaved buffers too -- otherwise a file just created (and written to
+    // disk empty by desktop:createFile) can't be recognized as the root until it's saved.
+    let detection = project::detect_root_with_dirty(&project_dir, &dirty);
     let root = detection.root.ok_or_else(|| CompileError {
         message: "project root is ambiguous or missing; call openProject/setRoot first".to_string(),
         log: None,
     })?;
-
-    let dirty: HashMap<&str, &str> =
-        req.dirty_buffers.iter().map(|b| (b.uri.as_str(), b.text.as_str())).collect();
 
     let graph = project::build_file_graph(&root);
     let mut root_source = None;
@@ -95,8 +97,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             continue; // non-Tex files (graphics, bib resources) are copied as-is below, never dirty-buffer-overridden
         }
 
-        let uri = file.path.display().to_string();
-        let content = match dirty.get(uri.as_str()) {
+        let content = match dirty.get(&file.path) {
             Some(text) => text.to_string(),
             None => fs::read_to_string(&file.path).unwrap_or_default(),
         };

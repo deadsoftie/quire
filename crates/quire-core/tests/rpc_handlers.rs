@@ -241,6 +241,33 @@ fn compile_with_system_engine_produces_a_real_pdf_when_a_system_install_exists()
     fs::remove_dir_all(&project_dir).ok();
 }
 
+/// `desktop:createFile` writes a brand-new tab's file to disk empty before any save -- pasting
+/// a real document into the editor and compiling without saving first must still detect that
+/// file as the root, not fail because the on-disk copy has no `\documentclass` yet.
+#[test]
+fn compile_recognizes_root_from_a_dirty_buffer_on_an_unsaved_new_file() {
+    let project_dir = std::env::temp_dir().join(format!("quire-core-rpc-handlers-test-compile-new-file-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&project_dir);
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join("main.tex"), "").unwrap();
+
+    let main_uri = project_dir.join("main.tex").display().to_string();
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: vec![DirtyBuffer {
+            uri: main_uri,
+            text: "\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}\n".to_string(),
+        }],
+        reason: CompileReason::Edit,
+        engine: CompileEngine::Tectonic,
+    })
+    .expect("compile should succeed even though main.tex is still empty on disk");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
 #[test]
 fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
     let project_dir = fresh_project_copy("compile_multi_file", "compile-dirty");
