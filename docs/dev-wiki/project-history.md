@@ -11,16 +11,17 @@ instead of pointing at it.
 | M0 — Spike (kill gate) | Prove the core compile loop works at all; throwaway UI |
 | M1 — Core API | The RPC contract, frozen at the end of this milestone |
 | M2 — Editor and design | Real editor, design system |
-| M3 — Own completion | quire-core's own indexing/completion; `texlab` (GPL-3.0 scaffolding) removed |
+| M3 — Own completion | quire-core's own indexing/completion; the GPL-3.0 scaffolding from M0/M1 removed (see `QUIRE_SPEC.md` §2) |
 | M3.5 — Workbench layout | The persistent sidebar/tab-bar/status-bar layout, replacing an earlier chrome-less, ⌘K-summoned-panel model |
 | M4 — Ship desktop | Current milestone — see `M4_TASKS.md` |
 | M5 — Capacitor plugin | iPad groundwork |
 | M6 — Ship iPad | |
 
-`texlab` (GPL-3.0) is worth knowing about specifically: it was real scaffolding through
-M2, deliberately never a production dependency (GPL-3 is incompatible with App Store
-distribution terms) — `QUIRE_SPEC.md` §2 has the licensing table, and CI fails if it
-ever appears outside `tools/scaffold/`.
+That removed scaffolding is worth knowing about specifically: it was real scaffolding
+through M2, deliberately never a production dependency (its GPL-3.0 license is
+incompatible with App Store distribution terms) — `QUIRE_SPEC.md` §2 names it and has
+the full licensing table. CI fails if its name is ever reintroduced anywhere outside
+`QUIRE_SPEC.md` (deliberately not spelled out on this page, for that reason).
 
 ## Non-goals for v1 (`QUIRE_SPEC.md` §3)
 
