@@ -241,6 +241,27 @@ fn compile_with_system_engine_produces_a_real_pdf_when_a_system_install_exists()
     fs::remove_dir_all(&project_dir).ok();
 }
 
+/// A genuinely ambiguous project (two files each with their own real `\documentclass`, e.g. a
+/// project that nests a self-contained sub-document) must still compile against a best guess --
+/// `compile()` used to hard-error on `RootConfidence::Ambiguous` instead of falling back to the
+/// first candidate the way `open_project` already does, so it could never compile at all.
+#[test]
+fn compile_falls_back_to_the_first_candidate_when_root_is_ambiguous() {
+    let project_dir = fresh_project_copy("root_detection/ambiguous", "compile-ambiguous");
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
+    })
+    .expect("compile should fall back to a best-guess root instead of erroring");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
 /// `desktop:createFile` writes a brand-new tab's file to disk empty before any save -- pasting
 /// a real document into the editor and compiling without saving first must still detect that
 /// file as the root, not fail because the on-disk copy has no `\documentclass` yet.

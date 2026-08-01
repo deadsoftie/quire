@@ -84,10 +84,17 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     // Detection must see unsaved buffers too -- otherwise a file just created (and written to
     // disk empty by desktop:createFile) can't be recognized as the root until it's saved.
     let detection = project::detect_root_with_dirty(&project_dir, &dirty);
-    let root = detection.root.ok_or_else(|| CompileError {
-        message: "project root is ambiguous or missing; call openProject/setRoot first".to_string(),
-        log: None,
-    })?;
+
+    // Mirrors open_project's own fallback: nothing surfaces `candidates` for the user to
+    // disambiguate through yet, so an ambiguous project still needs a best guess -- the first
+    // sorted candidate -- rather than refusing to compile at all.
+    let root = detection
+        .root
+        .or_else(|| detection.candidates.first().cloned())
+        .ok_or_else(|| CompileError {
+            message: "no .tex file found in this project".to_string(),
+            log: None,
+        })?;
 
     let graph = project::build_file_graph(&root);
     let mut root_source = None;
