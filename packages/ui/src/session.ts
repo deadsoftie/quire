@@ -3,7 +3,7 @@ import type { PanelKind } from "./panels/types";
 const PANEL_KINDS: PanelKind[] = ["file-tree", "outline", "problems", "packages"];
 
 export interface SessionState {
-  /** `null` means no real project was ever opened (still on the scratch placeholder) -- there's nothing to reopen. */
+  /** `null` means no project is open (the empty/Welcome state) -- there's nothing to reopen. */
   projectPath: string | null;
   /** Every tab that was open, in order. `[]` means nothing to restore. */
   openTabs: string[];

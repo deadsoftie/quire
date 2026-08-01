@@ -14,7 +14,7 @@ export interface CursorPositionStore {
 interface StatusBarProps {
   problemCount: number;
   cursorPosition: CursorPositionStore;
-  /** `null` when unknown (the scratch project never calls real `openProject`) -- the dot only renders on a real `false`. */
+  /** `null` when no project is open -- the dot only renders on a real `false`. */
   engineAvailable: boolean | null;
   /** Task 4.6 -- plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
   bundleVersionNotice: string | null;

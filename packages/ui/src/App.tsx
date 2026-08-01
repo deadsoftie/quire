@@ -161,7 +161,7 @@ function AppShell() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<SessionState>(DEFAULT_SESSION);
   const saveSessionTimeoutRef = useRef<number | undefined>(undefined);
-  // Guards against the save effect below firing before the restore-or-scratch effect finishes.
+  // Guards against the save effect below firing before the session-restore effect finishes.
   const initializedRef = useRef(false);
 
   const scheduleSaveSession = useCallback(() => {
@@ -616,7 +616,7 @@ function AppShell() {
               scrollTop: isActive ? session.scrollTop : null,
             });
           }
-          // If even the root is unreadable this throws into the outer catch, degrading to the scratch project below.
+          // If even the root is unreadable this throws into the outer catch, degrading to the empty state below.
           if (loadedTabs.length === 0) {
             const text = await window.quire.readFile(opened.root);
             loadedTabs.push({ uri: opened.root, text, savedText: text, cursor: 0, scrollTop: null });
