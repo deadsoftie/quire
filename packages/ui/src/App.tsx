@@ -56,8 +56,7 @@ const DEBOUNCE_MS = 500;
 // Duplicated literal (not imported) -- mirrors @quire/client's SIDECAR_CALL_CANCELLED, avoiding CJS/ESM resolution issues across the Electron IPC boundary.
 const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
-// A Project only ever exists after a real openProject() call -- there is no more scratch/throwaway
-// variant, so both fields below are always the real response values, never a placeholder.
+// A Project only exists after a real openProject() call, so both fields below are always real, never placeholders.
 interface Project {
   projectId: string;
   label: string;
@@ -152,9 +151,7 @@ function AppShell() {
   // tabsRef is authoritative and updated outside React state; `tabs` state only exists to repaint the tab bar.
   const tabsRef = useRef<OpenTab[]>([]);
   const editorRef = useRef<EditorHandle>(null);
-  // Set only when a diagnostic click targets a file that isn't the active tab -- Editor only seeds
-  // its cursor from `restoreCursor` on mount, so opening that tab first means `revealPosition` has
-  // to be deferred to the effect below (keyed on `activeUri`) rather than called inline.
+  // Set only when a diagnostic click targets a file that isn't the active tab; the reveal is deferred to the effect below.
   const pendingRevealRef = useRef<{ uri: string; line: number; column: number } | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
   const errorTimeoutRef = useRef<number | undefined>(undefined);
@@ -186,10 +183,7 @@ function AppShell() {
     [activeUri, cursorStore, scheduleSaveSession],
   );
 
-  // Swallows SIDECAR_CALL_CANCELLED specifically -- a superseded compile's rejection, not a real error.
-  // Returns the real response so a caller that needs to know the outcome (Export, below) can wait
-  // on it -- every existing caller triggers this fire-and-forget and ignores the return value, so
-  // this is purely additive.
+  // Swallows SIDECAR_CALL_CANCELLED (a superseded compile's rejection, not a real error); returns the response for callers that need it.
   const runCompile = useCallback(
     async (reason: CompileReason): Promise<CompileResponse | null> => {
       const proj = projectRef.current;
@@ -211,8 +205,7 @@ function AppShell() {
           setMissingPackages(null);
           setCompileVersion((v) => v + 1);
         } else if (result.status === "packages-missing") {
-          // Not a raw error -- keep whatever PDF is already showing (9.6: "nothing has gone
-          // wrong"), and let the card (not the error box) own this state.
+          // Not a raw error -- keep whatever PDF is already showing; the card owns this state, not the error box.
           setError(null);
           setMissingPackages(result.missingPackages);
           setPackageInstallState("idle");
@@ -233,9 +226,7 @@ function AppShell() {
     [useSystemTex],
   );
 
-  // Best-effort: a prefetch failure (offline, RPC error) just means the first compile falls
-  // back to fetching on demand, mid-flight, the same as before this existed -- never a reason
-  // to block opening the project.
+  // Best-effort: a prefetch failure just means the first compile falls back to fetching on demand, never blocking the open.
   const prefetchThenCompile = useCallback(
     async (projectId: string) => {
       try {
@@ -248,9 +239,7 @@ function AppShell() {
     [runCompile],
   );
 
-  // Reuses 4.3's prefetchPackages wholesale rather than a separate "install these specific
-  // packages" RPC -- it re-scans the same project for the same \usepackage/\documentclass/
-  // \RequirePackage commands, so it naturally targets the same missing set.
+  // Reuses prefetchPackages wholesale: it re-scans the project for the same commands, so it naturally targets the same missing set.
   const installMissingPackages = useCallback(async () => {
     const proj = projectRef.current;
     if (!proj) return;
@@ -277,8 +266,7 @@ function AppShell() {
     }
   }, [runCompile]);
 
-  // Real reconnect signal (Chromium's own network-state detection), not a poll -- 9.6's "queued
-  // retry on reconnect".
+  // Real reconnect signal (Chromium's own network-state detection), not a poll.
   useEffect(() => {
     if (packageInstallState !== "offline") return;
     const retry = () => installMissingPackages();
@@ -286,8 +274,7 @@ function AppShell() {
     return () => window.removeEventListener("online", retry);
   }, [packageInstallState, installMissingPackages]);
 
-  // Sidebar caption's cache-size number -- only fetched while the packages section is actually
-  // visible, and refetched whenever PackagesPanel reports an install/remove (packagesRefreshToken).
+  // Sidebar caption's cache-size number, fetched only while the packages section is visible.
   useEffect(() => {
     if (sidebarSection !== "packages") return;
     let cancelled = false;
@@ -299,10 +286,7 @@ function AppShell() {
     };
   }, [sidebarSection, packagesRefreshToken]);
 
-  // Task 4.9: checked once at startup, not reactively -- a system TeX install doesn't come or go
-  // while the app is running. Self-heals a persisted `useSystemTex: true` from a prior session if
-  // the install is no longer there, rather than letting the next compile surface an avoidable
-  // "engine missing" error for a state the Settings dialog would already show as unavailable.
+  // Checked once at startup, not reactively; self-heals a persisted useSystemTex if the install vanished.
   useEffect(() => {
     let cancelled = false;
     window.quire.detectSystemTex().then((status) => {
@@ -368,9 +352,7 @@ function AppShell() {
     [activeUri, openTab],
   );
 
-  // Consumed on the very next activeUri change, whichever uri that turns out to be -- so a reveal
-  // whose openTab failed (readFile error) is simply dropped by the following unrelated tab switch,
-  // never misapplied to it.
+  // Consumed on the very next activeUri change; a reveal whose openTab failed is simply dropped, never misapplied.
   useEffect(() => {
     const pending = pendingRevealRef.current;
     if (!pending) return;
@@ -378,8 +360,7 @@ function AppShell() {
     if (pending.uri === activeUri) editorRef.current?.revealPosition(pending.line, pending.column);
   }, [activeUri]);
 
-  // Closing the last tab is allowed -- the project stays open with zero tabs, same empty state
-  // "Close All Files" can also reach (the editor pane shows its own empty message for it).
+  // Closing the last tab is allowed -- the project stays open with zero tabs, same as "Close All Files".
   const closeTab = useCallback((uri: string) => {
     const current = tabsRef.current;
     const idx = current.findIndex((t) => t.uri === uri);
@@ -404,11 +385,7 @@ function AppShell() {
         const next = tabsRef.current.slice();
         next[idx] = { ...tab, text: formatted };
         tabsRef.current = next;
-        // Also sync the live view when this is the mounted tab -- initialDoc only re-seeds on
-        // remount, so without this the on-screen editor would still show the unformatted text.
-        // That dispatch's own onChange -> scheduleCompile harmlessly rewrites tabsRef with the
-        // same value again, and arms a debounced "edit" recompile -- cancelled below so it can't
-        // race the "save" compile.
+        // Also sync the live view when this is the mounted tab -- initialDoc only re-seeds on remount.
         if (uri === activeUri) editorRef.current?.replaceContent(formatted);
       }
       const current = tabsRef.current[idx];
@@ -435,9 +412,7 @@ function AppShell() {
     [saveTab, closeTab],
   );
 
-  // Shared by "Close Folder" and "Close All Files" -- both need the same "N unsaved files, Save
-  // all/Discard all/Cancel" batch confirmation before proceeding. Returns false on Cancel, so the
-  // caller can bail out of whatever it was about to do.
+  // Shared batch-confirmation for "Close Folder" and "Close All Files"; returns false on Cancel.
   const confirmAndSaveDirtyTabs = useCallback(async (): Promise<boolean> => {
     const dirty = tabsRef.current.filter((t) => t.text !== t.savedText);
     if (dirty.length === 0) return true;
@@ -459,9 +434,7 @@ function AppShell() {
     setActiveUri(activeUri);
   }, []);
 
-  // Shared by "Open Folder…" and "New Project…" (once New Project has scaffolded a folder on
-  // disk, opening it is identical to opening any other real folder) -- one real openProject() call
-  // path, not two copies of it.
+  // Shared by "Open Folder…" and "New Project…" -- once scaffolded, opening it is identical to any other real folder.
   const openProjectAtPath = useCallback(
     async (path: string) => {
       try {
@@ -498,10 +471,7 @@ function AppShell() {
     await openTab(path);
   }, [project, openTab]);
 
-  // "manual" -- CompileReason had this value reserved but unused everywhere else; a real,
-  // explicit, user-triggered recompile outside the normal edit-debounce flow is exactly what it's
-  // for. Forced so the exported PDF always matches the current (possibly unsaved) editor state,
-  // per this feature's own acceptance bar.
+  // "manual": a real, user-triggered recompile outside the debounce flow, forced so the exported PDF matches the current editor state.
   const handleExport = useCallback(
     async (includeSource: boolean) => {
       setExportBusy(true);
@@ -518,10 +488,7 @@ function AppShell() {
         setExportBusy(false);
         return;
       }
-      // Open (unsaved) tabs contribute their live in-memory text instead of the stale on-disk
-      // copy -- same reasoning the compile call itself already applies via dirtyBuffers, so the
-      // exported source actually matches the exported PDF. Everything else main.js reads fresh
-      // from disk itself. Graphics are never open as tabs, so this lookup naturally no-ops for them.
+      // Open tabs contribute live in-memory text instead of stale disk content, same as compile's dirtyBuffers.
       const sourceFiles = includeSource
         ? proj.files.map((f) => ({ path: f.uri, dirtyText: tabsRef.current.find((t) => t.uri === f.uri)?.text }))
         : undefined;
@@ -636,9 +603,7 @@ function AppShell() {
         }
       }
 
-      // No restorable session, or it didn't pan out -- project/tabs/activeUri stay at their empty
-      // initial state; the WelcomeScreen (rendered below whenever project is null) offers Open
-      // Folder / New Project instead of silently substituting a throwaway document.
+      // No restorable session, or it didn't pan out -- state stays empty; WelcomeScreen offers Open/New instead.
       initializedRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -685,9 +650,7 @@ function AppShell() {
     scheduleSaveSession,
   ]);
 
-  // Electron menu items don't reactively bind to renderer state -- this keeps the native View
-  // menu's checkboxes (apps/desktop/src/main.js) in sync whenever any of them changes, regardless
-  // of whether the change came from the menu itself, the command palette, or a keybinding.
+  // Electron menu items don't reactively bind to renderer state, so this keeps the native View menu's checkboxes in sync.
   useEffect(() => {
     if (!initializedRef.current) return;
     window.quireDesktop.reportViewState({
@@ -710,8 +673,7 @@ function AppShell() {
         if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
         setSeamState("compiling");
       } else if (event.kind === "compile-finished") {
-        // packages-missing reads as "idle," not "error" -- 9.6: nothing has gone wrong, the card
-        // owns that messaging, not a red seam flash.
+        // packages-missing reads as "idle," not "error" -- the card owns that messaging, not a red seam flash.
         if (event.result.status === "ok" || event.result.status === "packages-missing") {
           if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
           setSeamState("idle");
@@ -731,8 +693,7 @@ function AppShell() {
     id: "project.open",
     title: "Open Folder…",
     shortcut: "⌘O",
-    // No keybinding: the File menu's native "Open Folder…" accelerator (⌘O) dispatches through
-    // menuBridge instead -- registering both here would double-fire on the same keypress.
+    // No keybinding: the File menu's native accelerator dispatches through menuBridge instead.
     run: openFolderPicker,
   });
 
@@ -740,8 +701,7 @@ function AppShell() {
     id: "project.new",
     title: "New Project…",
     shortcut: "⇧⌘N",
-    // No keybinding: the File menu's native "New Project…" accelerator dispatches through
-    // menuBridge instead -- see project.open's comment above.
+    // No keybinding: see project.open's comment above.
     run: () => setNewProjectOpen(true),
   });
 
@@ -786,8 +746,7 @@ function AppShell() {
     id: "file.close-all",
     title: "Close All Files",
     shortcut: "⇧⌘W",
-    // No keybinding: the File menu's native "Close All Files" accelerator dispatches through
-    // menuBridge instead -- see project.open's comment above.
+    // No keybinding: see project.open's comment above.
     run: async () => {
       if (!(await confirmAndSaveDirtyTabs())) return;
       tabsRef.current = [];
@@ -826,9 +785,7 @@ function AppShell() {
       const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
       if (idx === -1) return;
       const tab = tabsRef.current[idx];
-      // No live-view push needed here (unlike saveTab) -- the tab's `uri` changes below, which
-      // changes <Editor>'s `key` in the JSX and forces a remount, so the new `initialDoc` picks
-      // up this already-formatted text naturally.
+      // No live-view push needed here -- the tab's `uri` change below forces an <Editor> remount.
       const formatted = formatLatex(tab.text);
       await window.quire.writeFile(path, formatted);
       const next = tabsRef.current.slice();
@@ -843,8 +800,7 @@ function AppShell() {
     id: "file.export",
     title: "Export…",
     shortcut: "⇧⌘E",
-    // No keybinding: the File menu's native "Export…" accelerator dispatches through menuBridge
-    // instead -- see project.open's comment above.
+    // No keybinding: see project.open's comment above.
     run: () => {
       if (!project) return;
       setExportError(null);
@@ -894,8 +850,7 @@ function AppShell() {
     id: "app.open-settings",
     title: "Settings…",
     shortcut: "⌘,",
-    // No keybinding: the File menu's native "Settings…" accelerator (⌘,) dispatches through
-    // menuBridge instead -- registering both here would double-fire on the same keypress.
+    // No keybinding: see project.open's comment above.
     run: () => setSettingsOpen(true),
   });
 
@@ -903,8 +858,7 @@ function AppShell() {
     setSidebarSection((current) => (current === kind ? null : kind));
   }, []);
 
-  // No keybinding on these three: the View menu's native ⌘1/⌘2/⌘3 accelerators dispatch through
-  // menuBridge instead (see project.open's comment for why -- registering both risks a double-fire).
+  // No keybinding on these three: see project.open's comment for why.
   useCommand({
     id: "panel.file-tree",
     title: "Show Explorer",

@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 
 use super::{parse_references, strip_comments, IncludeCommand, SKIP_NAMES};
 
-/// Reads `path`'s content, preferring an unsaved editor buffer over disk -- lets root detection
-/// see a brand-new file's pasted-but-not-yet-saved `\documentclass` instead of the empty file
-/// `desktop:createFile` writes to disk.
+/// Prefers an unsaved editor buffer over disk, so a pasted-but-unsaved `\documentclass` is still seen.
 fn read_content(path: &Path, dirty: &HashMap<PathBuf, &str>) -> Option<String> {
     if let Some(text) = dirty.get(path) {
         return Some((*text).to_string());
@@ -33,9 +31,7 @@ pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
     detect_root_with_dirty(project_dir, &HashMap::new())
 }
 
-/// Same as `detect_root`, but `dirty` (unsaved editor buffers, keyed by absolute path) takes
-/// precedence over on-disk content -- `compile` needs this so a file created and pasted into but
-/// not yet saved can still be recognized as the root document.
+/// Same as `detect_root`, but `dirty` (unsaved buffers, keyed by absolute path) wins over disk content.
 pub fn detect_root_with_dirty(project_dir: &Path, dirty: &HashMap<PathBuf, &str>) -> RootDetectionResult {
     let tex_files = find_all_tex_files(project_dir);
 
@@ -106,8 +102,7 @@ fn find_all_tex_files(dir: &Path) -> Vec<PathBuf> {
     results
 }
 
-/// `Path::is_dir()` follows symlinks, so a self-referential symlink would otherwise recurse
-/// forever; tracking `visited` by canonicalized path breaks the cycle.
+/// Tracks `visited` by canonicalized path to break a self-referential symlink cycle.
 fn find_all_tex_files_into(dir: &Path, visited: &mut HashSet<PathBuf>, results: &mut Vec<PathBuf>) {
     let Ok(real_dir) = dir.canonicalize() else {
         return;
@@ -208,9 +203,7 @@ fn compute_out_degrees(files: &[PathBuf], project_dir: &Path, dirty: &HashMap<Pa
             continue;
         };
         let refs = parse_references(&content, project_dir);
-        // Neither a graphic nor a bibliography is a candidate sub-document, so neither should
-        // count toward "how many other documents does this file pull in" -- and every real root
-        // document has exactly one \bibliography, so counting it wouldn't discriminate anyway.
+        // Neither a graphic nor a bibliography counts as a candidate sub-document.
         let distinct: HashSet<PathBuf> = refs
             .into_iter()
             .filter(|r| r.command != IncludeCommand::IncludeGraphics && r.command != IncludeCommand::Bibliography)

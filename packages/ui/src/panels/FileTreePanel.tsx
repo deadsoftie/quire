@@ -35,8 +35,7 @@ function FileTreeItem({
 }) {
   const [expanded, setExpanded] = useState(true);
   const isDirectory = node.kind === "directory";
-  // Graphics and .bib files show in the tree but have nothing to open them into yet -- neither
-  // has editor support (no bib syntax highlighting, no image viewer).
+  // Graphics and .bib files show in the tree but have nothing to open them into yet.
   const isSelectable = node.kind === "tex";
   const isInert = node.kind === "graphic" || node.kind === "bib";
 

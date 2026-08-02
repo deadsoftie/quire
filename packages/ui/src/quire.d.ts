@@ -2,8 +2,7 @@
 import type { CoreApi } from "@quire/client";
 import type { SessionState } from "./session";
 
-// Keys matter exactly to apps/desktop/src/main.js's VIEW_MENU_CHECK_IDS -- deliberate duplication
-// across the Electron process boundary (plain JS there, no shared TS import possible).
+// Keys matter exactly to apps/desktop/src/main.js's VIEW_MENU_CHECK_IDS -- deliberate duplication across the Electron boundary.
 interface ViewMenuState {
   "file-tree": boolean;
   outline: boolean;
@@ -29,12 +28,7 @@ declare global {
       chooseNewProjectFolder: () => Promise<string | null>;
       /** Writes `main.tex` into `dirPath` -- the chosen template's content, or blank boilerplate when `templateId` is `null`. Rejects if `dirPath` isn't empty or `templateId` isn't a real template. */
       scaffoldProject: (dirPath: string, templateId: string | null) => Promise<void>;
-      /**
-       * Native save dialog for the compiled PDF (`.pdf`) or, when `includeSource`, a `.zip` with
-       * the PDF plus every `sourceFiles` entry under `source/`. `dirtyText` set means an open,
-       * unsaved tab -- its live text is bundled instead of the on-disk copy; omitted otherwise,
-       * to be read fresh from disk. Returns the chosen path, or `null` if cancelled.
-       */
+      /** Native save dialog for the compiled PDF, or a `.zip` with source when `includeSource`; `dirtyText` bundles live tab text instead of disk. */
       exportProject: (options: {
         projectDir: string;
         pdfPath: string;

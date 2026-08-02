@@ -1,12 +1,4 @@
-//! Proves task 4.2's three-tier resolution (bundle -> cache -> network) actually holds up with
-//! network access genuinely cut, not just structurally guaranteed by reading the code. Cutting
-//! network access literally: pointing `HTTPS_PROXY` at a closed local port makes any real fetch
-//! attempt fail fast with a connection error, verified empirically against this exact bundle
-//! backend (a file already on local disk still resolves `Ok`; a file that genuinely isn't
-//! resolves `Err` naming the network problem, not a hang or a silent false positive).
-//!
-//! Both tiers are exercised in one test, not split across files/threads: `HTTPS_PROXY` is
-//! process-global state, and `cargo test` runs everything in one file concurrently by default.
+//! Proves the three-tier bundle resolution holds up with network access genuinely cut, not just structurally guaranteed by reading the code.
 
 use std::path::PathBuf;
 
@@ -14,8 +6,7 @@ use quire_core::bundle::resolve_bundle;
 use tectonic::io::{InputHandle, IoProvider, OpenResult};
 use tectonic::status::NoopStatusBackend;
 
-// `OpenResult<InputHandle>` isn't `Debug` (`InputHandle` isn't), so describe it by hand for
-// panic messages.
+// `OpenResult<InputHandle>` isn't `Debug`, so describe it by hand for panic messages.
 fn describe(result: &OpenResult<InputHandle>) -> &'static str {
     match result {
         OpenResult::Ok(_) => "Ok",
@@ -48,8 +39,7 @@ fn bundle_and_cache_tiers_resolve_files_with_network_disabled() {
 
     let mut status = NoopStatusBackend::default();
 
-    // Tier 1: a file the curated core bundle actually ships. This must never require network
-    // (or even a pre-existing cache) at all -- it's what 4.1's "clean install" bar depends on.
+    // Tier 1: a file the curated core bundle actually ships must never require network at all.
     set_network_cut(true);
     let mut bundle = resolve_bundle().expect("resolve_bundle should not need network for this");
     let result = bundle.input_open_name("article.cls", &mut status);
@@ -58,9 +48,7 @@ fn bundle_and_cache_tiers_resolve_files_with_network_disabled() {
     }
     drop(bundle);
 
-    // Tier 2 (cache): a file core deliberately excludes (`tikz.sty` -- see manifest.json's
-    // `excluded` section). Warm the cache for it with network allowed first, then prove a fresh
-    // resolution reuses the cache without needing network again.
+    // Tier 2 (cache): warm a file core excludes with network allowed, then reuse it with network cut.
     set_network_cut(false);
     let mut bundle = resolve_bundle().expect("resolve_bundle with network allowed");
     let result = bundle.input_open_name("tikz.sty", &mut status);

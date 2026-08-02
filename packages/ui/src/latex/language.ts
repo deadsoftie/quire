@@ -2,23 +2,19 @@ import { HighlightStyle, LRLanguage, LanguageSupport, syntaxHighlighting } from 
 import { styleTags, tags as t } from "@lezer/highlight";
 import { parser } from "./parser";
 
-// The four inline/display math node shapes this grammar produces -- exported so editorModes.ts's
-// math-region background decoration can build its own node set (that one also includes
-// MathEnvironment, which isn't itself math-atom-tagged here) without re-typing this list.
+// The four inline/display math node shapes this grammar produces; exported so editorModes.ts can build its own node set without re-typing this list.
 export const MATH_DELIMITED_NODE_NAMES = ["InlineMath", "DisplayMathDollar", "DisplayMathBracket", "InlineMathParen"];
 
 const highlighting = styleTags({
   Comment: t.lineComment,
   Command: t.macroName,
-  // A variant of macroName, not a separate color -- same family as a bare command, but the
-  // text-styling family (\textbf/\emph/...) reads visually distinct from e.g. \ref or a custom macro.
+  // A variant of macroName -- same family as a bare command, but reads visually distinct for \textbf/\emph/etc.
   TextCommand: t.special(t.macroName),
   SectionCommand: t.heading,
   RefCommand: t.link,
   "BeginKw EndKw": t.keyword,
   "EnvName MathEnvName": t.typeName,
-  // A variant of typeName -- groups a verbatim environment's own name with its monospace body,
-  // rather than with ordinary/math environment names.
+  // A variant of typeName, grouping a verbatim environment's name with its monospace body.
   VerbatimEnvName: t.special(t.typeName),
   [MATH_DELIMITED_NODE_NAMES.join(" ")]: t.special(t.atom),
   "MathBracketOpen MathBracketClose MathParenOpen MathParenClose": t.processingInstruction,
@@ -26,17 +22,7 @@ const highlighting = styleTags({
   "{ }": t.brace,
 });
 
-// `basicSetup` already brings its own syntaxHighlighting(defaultHighlightStyle), whose colors
-// assume a light background -- illegible against this app's dark editor theme. This layers a
-// second, dark-appropriate style on top of it for the tags used above.
-//
-// Each element family gets its own ink color (tokens.css's --ink-* set) rather than sharing
-// --type-hi/mid/lo the way the original, more minimal version of this file did -- comments,
-// environments, headings, references, verbatim, and math now each read as a distinctly colored
-// element instead of a variant of the same one or two accents. Deliberately vivid (One Dark/
-// Dracula register) rather than a muted pastel variant of the base accent -- a first pass here
-// used pastels too close in lightness to the surrounding text to actually read as distinct.
-// --nonrepro (the app's signature blue) stays reserved for plain macros specifically.
+// Layers a dark-appropriate style over basicSetup's light-background default; each element family gets its own vivid ink color.
 const latexHighlightStyle = HighlightStyle.define([
   { tag: t.lineComment, color: "var(--ink-green)", fontStyle: "italic" },
   { tag: t.macroName, color: "var(--nonrepro)" },

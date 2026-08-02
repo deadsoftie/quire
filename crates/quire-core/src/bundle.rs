@@ -9,9 +9,7 @@ use tectonic_bundles::{dir::DirBundle, Bundle};
 
 use crate::CompileError;
 
-/// Resolved relative to this crate's own manifest dir -- the only path that's actually correct
-/// today. A packaged app (task 4.12) will need its own resolution for wherever the bundle
-/// actually ships; this is the one place that future change has to touch.
+/// Resolved relative to this crate's manifest dir; a packaged app will need a different path.
 fn core_bundle_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles/core"))
 }
@@ -21,16 +19,7 @@ fn open_network_bundle() -> Result<Box<dyn Bundle>, CompileError> {
     Ok(config.default_bundle(false)?)
 }
 
-/// Chains the curated, offline core bundle in front of Tectonic's own network-fetching bundle.
-/// That network bundle already caches every file it ever fetches to local disk and only hits
-/// the network again on a genuine cache miss (`tectonic_bundles::cache::BundleCache`) -- so this
-/// is the real three-tier resolution (bundle -> cache -> network) in a single chain, not three
-/// paths every caller has to try in order itself.
-///
-/// The network tier is constructed lazily, on the first name core doesn't have -- never eagerly.
-/// Eagerly constructing it would defeat the whole point: a document core fully covers must
-/// never require network access (or even a pre-existing local cache) to compile, matching 4.1's
-/// "compiles fully offline from a clean install" bar.
+/// Chains the offline core bundle in front of Tectonic's network bundle, built lazily so a fully-core-covered compile never touches the network.
 struct TieredBundle {
     core: Box<dyn Bundle>,
     network: Option<Box<dyn Bundle>>,
@@ -61,8 +50,7 @@ impl IoProvider for TieredBundle {
 
 impl Bundle for TieredBundle {
     fn get_digest(&mut self) -> tectonic::Result<tectonic::io::digest::DigestData> {
-        // The core bundle defines this compile's identity (and 4.6's future version-pinning) --
-        // an amalgam with whatever the network tier happens to also serve wouldn't be stable.
+        // Core's digest defines the compile's identity; mixing in the network tier's is unstable.
         self.core.get_digest()
     }
 
@@ -71,10 +59,7 @@ impl Bundle for TieredBundle {
     }
 }
 
-/// Prefers the curated core bundle (built by the `build_core_bundle` example from
-/// `bundles/manifest.json`) when it's present, falling back to Tectonic's own network-fetching
-/// default entirely when it's not -- so a fresh clone that hasn't run that example yet still
-/// compiles, just not offline.
+/// Falls back to Tectonic's network bundle when the curated core bundle hasn't been built yet.
 pub fn resolve_bundle() -> Result<Box<dyn Bundle>, CompileError> {
     let core_dir = core_bundle_dir();
     if core_dir.join("SHA256SUM").is_file() {
@@ -85,11 +70,7 @@ pub fn resolve_bundle() -> Result<Box<dyn Bundle>, CompileError> {
     open_network_bundle()
 }
 
-/// The subset of `candidates` that can't be resolved right now without touching the network --
-/// neither from the curated core bundle nor from a prior fetch already sitting in local cache.
-/// This is the "diff against bundle + cache" step task 4.3 (prefetch) needs before it fetches
-/// anything -- checked here with the network tier forced into cache-only mode, so calling this
-/// never itself triggers a fetch, unlike `resolve_bundle()`'s own normal (network-allowed) path.
+/// The subset of `candidates` resolvable neither from the core bundle nor the local cache; never itself triggers a fetch.
 pub fn missing_from_cache(candidates: &[String]) -> Vec<String> {
     let mut status = NoopStatusBackend::default();
 
@@ -112,12 +93,7 @@ pub fn missing_from_cache(candidates: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Actually fetches `name` through the normal bundle -> cache -> network chain, caching it
-/// permanently on success, and returns its size in bytes -- the real number the missing-package
-/// card (task 4.4) reports *after* installing, since nothing in Tectonic's `Bundle`/`FileInfo`
-/// API exposes a file's size before it's actually been read. `Ok` also covers "turned out to
-/// already be available" -- callers that only care about genuinely new fetches should check
-/// `missing_from_cache` first.
+/// Fetches and permanently caches `name`, returning its byte size; `Ok` also covers "already available".
 pub fn fetch(name: &str) -> Result<u64, CompileError> {
     let mut status = NoopStatusBackend::default();
     let mut bundle = resolve_bundle()?;
@@ -132,18 +108,12 @@ pub fn fetch(name: &str) -> Result<u64, CompileError> {
     }
 }
 
-/// The network/cache tier's own digest -- deliberately *not* `resolve_bundle()` +
-/// `TieredBundle::get_digest()`, which reports core's digest (4.2's own choice, since core
-/// defines a compile's identity). The package manager (task 4.5) needs the cache tier's digest
-/// specifically, to find *its* on-disk cache directory below.
+/// The network/cache tier's own digest, distinct from `TieredBundle`'s, needed to locate its own cache dir.
 fn network_bundle_digest_hex() -> Result<String, CompileError> {
     Ok(open_network_bundle()?.get_digest()?.to_string())
 }
 
-/// Tectonic's own on-disk cache root for the network bundle tier -- `get_user_cache_dir` is the
-/// exact function `tectonic_bundles::cache::BundleCache` uses internally to pick this location
-/// (confirmed by reading that crate's source), not a reimplementation of its path logic. Real
-/// files live under here at `{name}`, e.g. `tikz.sty` -- not content-hashed blobs.
+/// Tectonic's own on-disk cache root for the network bundle tier; files live here by bare name.
 fn cache_data_dir() -> Result<PathBuf, CompileError> {
     let root = tectonic_io_base::app_dirs::get_user_cache_dir("bundles")?;
     Ok(root.join("data").join(network_bundle_digest_hex()?))
@@ -156,11 +126,7 @@ struct CoreManifest {
     packages: Vec<String>,
 }
 
-/// The curated, human-meaningful list of what core ships (task 4.1's own manifest) -- 18 names a
-/// user would recognize from `\usepackage{}`/`\documentclass{}`, not a raw walk of
-/// `bundles/core/`'s ~50 flat files, most of which are internal transitive dependencies
-/// (`amsbsy.sty`, `amsopn.sty`, ...) nobody ever typed. Empty on a fresh clone that hasn't run
-/// `build_core_bundle` yet, matching `resolve_bundle()`'s own graceful fallback.
+/// The curated, human-meaningful package/class names core ships; empty until `build_core_bundle` has run.
 pub fn core_packages() -> Vec<String> {
     let manifest_path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles/manifest.json"));
     let Ok(text) = fs::read_to_string(manifest_path) else { return Vec::new() };
@@ -171,9 +137,7 @@ pub fn core_packages() -> Vec<String> {
     names
 }
 
-/// Every `.sty`/`.cls` file actually sitting in the cache tier right now, as `(bare_name, bytes)`
-/// -- the real, removable "installed packages" list the manager panel (task 4.5) shows, distinct
-/// from `core_packages()`'s fixed, non-removable set. Empty if the cache tier has never been used.
+/// Removable `.sty`/`.cls` files actually sitting in the cache tier, distinct from `core_packages()`'s fixed set.
 pub fn cached_packages() -> Vec<(String, u64)> {
     let Ok(dir) = cache_data_dir() else { return Vec::new() };
     let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
@@ -193,9 +157,7 @@ pub fn cached_packages() -> Vec<(String, u64)> {
         .collect()
 }
 
-/// Total bytes the cache tier is actually using on disk -- every file under it, not just the
-/// `.sty`/`.cls` subset `cached_packages()` lists (fonts, engine data, etc. land here too), for
-/// `bundleStatus().cacheBytes` (task 4.5).
+/// Total on-disk bytes used by the cache tier, not just the `.sty`/`.cls` subset `cached_packages()` lists.
 pub fn cache_size_bytes() -> u64 {
     let Ok(dir) = cache_data_dir() else { return 0 };
     fn walk(dir: &std::path::Path) -> u64 {
@@ -212,10 +174,7 @@ pub fn cache_size_bytes() -> u64 {
     walk(&dir)
 }
 
-/// Removes a cache-tier package by name, trying `{name}.sty` then `{name}.cls`. Not finding
-/// either is success, not an error (already gone) -- same "success also covers already-satisfied"
-/// precedent as `fetch` above. Never touches `core_packages()`'s files -- those aren't in this
-/// directory at all, so there's nothing here for a core name to accidentally match.
+/// Removes a cached `.sty`/`.cls` by name; not found is success, not an error.
 pub fn remove_cached_package(name: &str) -> Result<(), CompileError> {
     let dir = cache_data_dir()?;
     for candidate in [format!("{name}.sty"), format!("{name}.cls")] {
@@ -227,10 +186,7 @@ pub fn remove_cached_package(name: &str) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// The active bundle's digest, hex-formatted -- core's own when `bundles/core/` exists (per 4.2,
-/// core defines a compile's identity), Tectonic's default bundle's otherwise. Used for both
-/// `bundleStatus().version` and the version pin below; deliberately not `network_bundle_digest_hex`
-/// above, which is scoped to locating the cache tier's own on-disk directory specifically.
+/// The active bundle's digest, hex-formatted, for both status reporting and the version pin below.
 pub fn digest_hex() -> Result<String, CompileError> {
     let mut bundle = resolve_bundle()?;
     Ok(bundle.get_digest()?.to_string())
@@ -247,13 +203,7 @@ fn project_metadata_path(project_dir: &Path) -> PathBuf {
     project_dir.join(".quire").join("project.json")
 }
 
-/// Task 4.6: compares the project's pinned bundle version (`.quire/project.json`, sibling to the
-/// compile shadow dir at `.quire/build/` -- already excluded from the file watcher and file tree)
-/// against the currently active one, returning a plain-English notice on a mismatch, then updates
-/// the pin to the current version either way. `None` covers both "versions match" and "nothing was
-/// pinned yet" (first open ever -- there's nothing to compare against). Best-effort: a read or
-/// write failure here never blocks opening the project, matching 4.3's own "swallow and proceed"
-/// precedent for prefetch failures.
+/// Compares the pinned bundle version against the current one, returns a notice on mismatch, then re-pins either way.
 pub fn record_version_pin(project_dir: &Path) -> Option<String> {
     let Ok(current) = digest_hex() else { return None };
 

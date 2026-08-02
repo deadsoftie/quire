@@ -1,8 +1,7 @@
 import { snippetCompletion } from "@codemirror/autocomplete";
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 
-// A repeated tabstop number across a template (e.g. `beg`'s `${1:environment}` on both lines)
-// mirrors that field between both instances as the user types -- CM6's own snippet() behavior.
+// A repeated tabstop number (e.g. `beg`'s `${1:environment}` on both lines) mirrors that field as the user types.
 const SNIPPETS: { trigger: string; detail: string; template: string }[] = [
   {
     trigger: "fig",
@@ -42,8 +41,7 @@ const OPTIONS: Completion[] = SNIPPETS.map((s) =>
   snippetCompletion(s.template, { label: s.trigger, detail: s.detail }),
 );
 
-// Rejected right after a backslash so it doesn't double up with command completion there
-// (typing "\sec" should offer \section, not the "sec" snippet).
+// Rejected right after a backslash so it doesn't double up with command completion there.
 export function snippetCompletionSource(context: CompletionContext): CompletionResult | null {
   const word = context.matchBefore(/[a-zA-Z]+/);
   if (!word || (word.from === word.to && !context.explicit)) return null;

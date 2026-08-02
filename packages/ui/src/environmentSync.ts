@@ -5,9 +5,7 @@ import type { SyntaxNode, Tree } from "@lezer/common";
 
 const ENV_NAME_NODE_NAMES = new Set(["EnvName", "MathEnvName", "VerbatimEnvName"]);
 
-// side: 1 resolves a pure insertion at a name's end boundary into whatever token *starts*
-// there (the closing `}`), not the name; side: -1 (prefers the token that *ends* there) recovers
-// that case.
+// side: 1 resolves a pure insertion at a name's end boundary into the token that starts there, not the name; side: -1 recovers that.
 function resolveEnvName(tree: Tree, pos: number): SyntaxNode {
   const forward = tree.resolveInner(pos, 1);
   if (ENV_NAME_NODE_NAMES.has(forward.name)) return forward;
@@ -28,8 +26,7 @@ function mirrorEdit(tr: Transaction): ChangeSpec | null {
   if (!envNode) return null;
   const pair = envNode.getChildren(node.type.id);
   if (pair.length !== 2) return null;
-  // Lezer hands out fresh SyntaxNode wrapper objects per call, so `pair[0] === node` is never
-  // reliably true even when they point at the same tree position -- compare by position instead.
+  // Lezer hands out fresh SyntaxNode wrappers per call, so `pair[0] === node` is unreliable -- compare by position.
   const sibling = pair[0].from === node.from ? pair[1] : pair[0];
   if (sibling.from === node.from) return null;
 
@@ -47,9 +44,7 @@ export function environmentSync(): Extension {
     const mirror = mirrorEdit(tr);
     if (!mirror) return tr;
     return [
-      // Rebuilt rather than passed through as `tr` itself: `Transaction` has no public `.annotations`
-      // (only per-type `.annotation()` lookup), so passing `tr` as a spec would silently drop its
-      // `userEvent` -- history's undo-grouping keys off exactly that annotation.
+      // Rebuilt rather than passed through as `tr`: passing `tr` as a spec would silently drop its `userEvent`.
       {
         changes: tr.changes,
         selection: tr.selection,

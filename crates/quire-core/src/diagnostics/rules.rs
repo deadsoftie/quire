@@ -54,9 +54,7 @@ impl Rule {
     }
 }
 
-/// Finds the next `l.<N> <text>` marker after `from` -- how the engine reports where it stopped
-/// scanning for most `!`-prefixed errors. `<text>` is the source line's content up to the error
-/// point, so its length is a real (if approximate) column.
+/// Finds the next `l.<N> <text>` marker after `from`, how the engine reports where it stopped for most `!` errors.
 fn forward_line_marker(log: &str, from: usize) -> Option<(u32, u32)> {
     let re = Regex::new(r"(?m)^l\.(\d+) (.*)$").unwrap();
     let caps = re.captures(&log[from..])?;
@@ -241,9 +239,7 @@ fn simple_rules() -> Vec<Rule> {
     ]
 }
 
-/// `! Undefined control sequence.` never names the command on its own trigger line -- the name is
-/// on the following `l.N <command>` marker, so this needs the forward-scanned text itself, not
-/// just its line/column.
+/// The undefined command's name lives on the following `l.N <command>` marker, not the trigger line.
 fn undefined_command_rule(log: &str) -> Vec<Hit> {
     let trigger = Regex::new(r"! Undefined control sequence\.").unwrap();
     let name_re = Regex::new(r"\\(\w+)\s*$").unwrap();
@@ -269,15 +265,10 @@ fn undefined_command_rule(log: &str) -> Vec<Hit> {
         .collect()
 }
 
-/// `\s+` everywhere a literal space would otherwise be -- Tectonic's log hard-wraps at a fixed
-/// column, and a long package/class name routinely pushes " not found" onto its own line,
-/// splitting a plain-space version of this pattern.
+/// `\s+` everywhere a space would be -- Tectonic hard-wraps long package names onto their own line.
 const MISSING_FILE_PATTERN: &str = r"LaTeX Error:\s+File\s+`([^']+)'\s+not\s+found";
 
-/// The bare names (no extension) of every missing `.sty`/`.cls` mentioned in `log` -- used by
-/// `handlers::compile` to decide `CompileStatus::PackagesMissing` and populate
-/// `CompileResponse.missing_packages`. `Hit` (below) has no structured field for this, only the
-/// rendered message text, so this reads the log directly rather than post-processing `Hit`s.
+/// Bare names (no extension) of every missing `.sty`/`.cls` mentioned in `log`.
 pub fn missing_package_or_class_names(log: &str) -> Vec<String> {
     let trigger = Regex::new(MISSING_FILE_PATTERN).unwrap();
     trigger
@@ -289,9 +280,7 @@ pub fn missing_package_or_class_names(log: &str) -> Vec<String> {
         .collect()
 }
 
-/// `File 'X' not found` covers three different situations (missing package, missing class,
-/// missing project file) that share one message shape but need different codes/hints depending on
-/// what kind of file it was.
+/// "File 'X' not found" covers package/class/project-file misses, each needing its own code and hint.
 fn missing_file_rule(log: &str) -> Vec<Hit> {
     let trigger = Regex::new(MISSING_FILE_PATTERN).unwrap();
     trigger
@@ -321,9 +310,7 @@ fn missing_file_rule(log: &str) -> Vec<Hit> {
         .collect()
 }
 
-/// Two shapes depending on whether the overfull box came from an explicit `\hbox to <width>` or
-/// from ordinary paragraph breaking; both name the same `(N.Mpt too wide)` figure that's used to
-/// suppress noise for small overflows.
+/// Matches both explicit `\hbox to <width>` and ordinary paragraph-breaking overfull shapes.
 fn overfull_hbox_rule(log: &str) -> Vec<Hit> {
     let trigger = Regex::new(r"Overfull \\hbox \(([\d.]+)pt too wide\)(?:.*?(?:detected at line (\d+)|in paragraph at lines (\d+)))?").unwrap();
     trigger

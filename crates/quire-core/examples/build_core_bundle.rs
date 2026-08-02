@@ -1,16 +1,4 @@
-//! Compiles the fixtures in `examples/fixtures/core_bundle_discovery/` -- plus, as of task 4.8,
-//! the real shipped templates in `templates/` -- against Tectonic's real (network/cache-backed)
-//! default bundle while logging every filename it resolves, then copies that observed file
-//! closure into `bundles/core/` as a flat directory bundle.
-//!
-//! Run with: cargo run -p quire-core --example build_core_bundle
-//!
-//! Re-run whenever `bundles/manifest.json` changes. The `core_bundle_discovery/` fixtures are
-//! deliberately kept alongside the real templates, not replaced by them: the real templates are
-//! intentionally minimal (a clean starting point, not a showcase), so several manifest packages
-//! (`xcolor`, `booktabs`, `enumitem`, `natbib`+citations, `amsthm`) are only ever exercised by the
-//! kitchen-sink `article.tex` fixture -- dropping it would silently drop their files from
-//! `bundles/core/` even though the manifest still lists them.
+//! Compiles the fixtures and real templates against Tectonic's default bundle while logging every filename resolved, then copies that closure into `bundles/core/`. Run with: cargo run -p quire-core --example build_core_bundle
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
@@ -39,8 +27,7 @@ const FIXTURES: &[(&str, &[&str])] = &[
     ("acm.tex", &[]),
 ];
 
-/// Task 4.8's real, user-facing starter documents -- see the module doc comment for why these
-/// are discovered *in addition to*, not instead of, the fixtures above.
+/// The real, user-facing starter documents, discovered in addition to (not instead of) the fixtures above.
 const TEMPLATES: &[&str] = &["article.tex", "ieee.tex", "acm.tex", "beamer.tex"];
 
 struct LoggingBundle {
@@ -85,13 +72,7 @@ fn open_default_bundle() -> Box<dyn Bundle> {
     config.default_bundle(false).expect("open default bundle")
 }
 
-/// A from-scratch clean install has no cached `.fmt` file, and Tectonic keys its format cache by
-/// bundle digest -- so `bundles/core`'s own (different-from-network-bundle) digest would force a
-/// from-scratch format rebuild the first time anyone compiles against it. That rebuild reads
-/// `tectonic-format-latex.tex` (the LaTeX kernel's initex entry point) and everything it in turn
-/// `\input`s, none of which a normal document-compiling pass ever touches since it just reuses an
-/// already-built format. Forcing that rebuild here, against a throwaway format cache dir, is the
-/// only way to discover that closure too.
+/// Forces a from-scratch format rebuild against a throwaway cache dir, the only way to discover that file closure too.
 fn prime_format_cache(bundle_factory: &dyn Fn() -> Result<Box<dyn Bundle>, CompileError>) {
     let scratch_cache = std::env::temp_dir()
         .join(format!("quire-core-build-core-bundle-fmtcache-{}", std::process::id()));
@@ -171,8 +152,7 @@ fn discover() -> BTreeSet<String> {
     Rc::try_unwrap(seen).expect("no other references left").into_inner()
 }
 
-/// `DirBundle` is flat, so every discovered name collapses to its basename -- this is where a
-/// real collision (two different subpaths sharing a basename) would surface.
+/// `DirBundle` is flat, so every discovered name collapses to its basename -- a real collision would surface here.
 fn assemble(discovered: &BTreeSet<String>, core_dir: &Path) {
     let mut by_basename: HashMap<String, String> = HashMap::new();
     for name in discovered {

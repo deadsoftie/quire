@@ -79,9 +79,7 @@ pub struct OpenProjectResponse {
     pub candidates: Vec<DocUri>,
     pub files: Vec<FileNode>,
     pub engine_available: bool,
-    /// Plain-English, ready to display as-is (task 4.6) -- `null` when the project's pinned
-    /// bundle version matches the currently active one, or nothing was pinned yet (first open).
-    /// A notice only, never blocking: `openProject` still succeeds either way.
+    /// Plain-English; `null` when versions match or nothing was pinned yet. Never blocks `openProject`.
     pub bundle_version_notice: Option<String>,
 }
 
@@ -120,9 +118,7 @@ pub enum CompileReason {
     Save,
 }
 
-/// Task 4.9: `Tectonic` is the default, embedded engine; `System` shells out to a detected
-/// TeX Live/MiKTeX install instead. Explicit per request rather than a server-side setting --
-/// `quire-core` holds no state (1.4), so every call has to say which engine it wants.
+/// `Tectonic` is the default, embedded engine; `System` shells out to a detected TeX Live/MiKTeX install.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -149,8 +145,7 @@ pub enum CompileStatus {
     Errors,
     /// Never produced: the caller kills the process before a response is built.
     Cancelled,
-    /// Real as of task 4.9: produced when `CompileRequest.engine` is `"system"` and
-    /// `system_tex::detect()` finds no working install at compile time.
+    /// Produced when `CompileRequest.engine` is `"system"` and `system_tex::detect()` finds no working install.
     EngineMissing,
     PackagesMissing,
 }
@@ -167,8 +162,7 @@ pub struct CompileResponse {
     pub page_count: u32,
     pub duration_ms: u32,
     pub diagnostics: Vec<Diagnostic>,
-    /// Bare package/class names (no extension), populated only when `status` is
-    /// `"packages-missing"`.
+    /// Bare package/class names (no extension), populated only when `status` is `"packages-missing"`.
     pub missing_packages: Vec<String>,
     /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
     pub bundle_version: String,
@@ -183,9 +177,7 @@ pub struct CancelCompileRequest {
 
 // ---------- System TeX ----------
 
-/// Task 4.9: which real, working system engine `system_tex::detect()` found -- `xelatex` is
-/// preferred (checked first) over `pdflatex` since Tectonic's own embedded engine is XeTeX-based,
-/// so it's the closer match to what the app's users already expect from a compile.
+/// `xelatex` is preferred (checked first) since Tectonic's own embedded engine is XeTeX-based too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -194,8 +186,7 @@ pub enum SystemTexEngine {
     Pdflatex,
 }
 
-/// `engine`/`version` are `None` together iff `available` is `false` -- there's no partial state
-/// where an engine was found but couldn't be identified.
+/// `engine`/`version` are `None` together iff `available` is `false`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -353,9 +344,7 @@ pub struct PrefetchPackagesRequest {
     pub project_id: ProjectId,
 }
 
-/// `name` is the package/class name, not a filename -- what the missing-package UI (task 4.4)
-/// shows. `bytes` is the real downloaded size, known only after the fact -- nothing in
-/// Tectonic's own bundle API exposes a file's size ahead of fetching it.
+/// `name` is the package/class name, not a filename. `bytes` is the real downloaded size, known only after the fact.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -381,9 +370,7 @@ pub struct BundleStatusResponse {
     pub cache_bytes: u32,
 }
 
-/// `Core` ships in the app (task 4.1's curated bundle) and is never removable. `Cache` was
-/// fetched on demand and lives in Tectonic's own local cache -- removable, task 4.5's manager
-/// panel.
+/// `Core` ships in the app and is never removable; `Cache` was fetched on demand and is removable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -392,9 +379,7 @@ pub enum PackageSource {
     Cache,
 }
 
-/// `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number
-/// (core is one flat directory of ~50 files shared across many packages' transitive deps, not
-/// cleanly attributable one-to-one).
+/// `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]

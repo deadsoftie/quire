@@ -32,8 +32,7 @@ async function renderPageOnto(
   const page = await doc.getPage(pageNumber);
   const viewport = page.getViewport({ scale });
 
-  // Bitmap resolution can exceed the CSS-visible size (still governed by the wrapper's inline
-  // width/height, unaffected below) so retina displays don't get a blurry render at 100%/fit-width.
+  // Bitmap resolution can exceed the CSS-visible size so retina displays don't get a blurry render.
   const outputScale = window.devicePixelRatio || 1;
   canvas.width = Math.floor(viewport.width * outputScale);
   canvas.height = Math.floor(viewport.height * outputScale);
@@ -65,8 +64,7 @@ interface PdfViewerProps {
 
 export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
-  // Natural size (viewport at scale 1) per page -- doesn't change with zoom or pane resizing, only
-  // when the document itself changes.
+  // Natural size (viewport at scale 1) per page; only changes when the document itself changes.
   const [naturalSizes, setNaturalSizes] = useState<Map<number, PageSize>>(new Map());
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set());
   const [containerWidth, setContainerWidth] = useState(0);
@@ -76,10 +74,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const wrapperRefs = useRef(new Map<number, HTMLDivElement>());
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>());
-  // Per-page ref callbacks, cached by page number so the same function identity is passed to
-  // `ref=` across renders -- an inline `(el) => ...` in JSX gets a new identity every render,
-  // which makes React detach+reattach the ref (and everything that does, like re-observing the
-  // IntersectionObserver or clearing renderedForDocRef) on every re-render, not just real mount/unmount.
+  // Per-page ref callbacks, cached by page number so `ref=` keeps the same identity across renders, not just real mount/unmount.
   const wrapperRefCallbacks = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
   const canvasRefCallbacks = useRef(new Map<number, (el: HTMLCanvasElement | null) => void>());
   const renderTasks = useRef(new Map<number, RenderTask>());
@@ -87,8 +82,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const renderedForDocRef = useRef(new Map<number, PDFDocumentProxy>());
   // The doc a page's bitmap must match for changedPages' skip to be valid -- see shouldRenderPage.
   const previousPdfDocRef = useRef<PDFDocumentProxy | null>(null);
-  // Detects "the render resolution itself must change" (zoom/resize), which shouldRenderPage's
-  // doc-identity check knows nothing about -- see the render effect below.
+  // Detects a render-resolution change (zoom/resize), which shouldRenderPage's doc-identity check knows nothing about.
   const lastScaleKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -129,8 +123,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     };
   }, [pdfDoc]);
 
-  // Tracks the pane's own available width, for "fit-width" -- resizing the window or dragging the
-  // editor/preview seam both need to re-fit the page.
+  // Tracks the pane's available width for "fit-width" -- resizing the window or the seam both need to re-fit the page.
   useEffect(() => {
     const root = scrollRootRef.current;
     if (!root) return;
@@ -182,9 +175,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     const doc = pdfDoc;
     const changedSet = new Set(changedPages);
 
-    // The doc hasn't changed but the render resolution has (zoom or pane width) -- every visible
-    // page's existing bitmap is now the wrong size, regardless of what shouldRenderPage's
-    // doc-identity check would otherwise conclude.
+    // The doc hasn't changed but the render resolution has -- every visible page's bitmap is now the wrong size.
     const scaleKey = `${zoomMode}:${containerWidth}`;
     if (lastScaleKeyRef.current !== scaleKey) {
       lastScaleKeyRef.current = scaleKey;
@@ -265,8 +256,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const numPages = pdfDoc?.numPages ?? 0;
   const pageNumbers = Array.from({ length: numPages }, (_, i) => i + 1);
 
-  // Any page's natural width is a reasonable stand-in for the whole document's -- real-world
-  // documents essentially never mix page widths, and the zoom control shows one figure regardless.
+  // Any page's natural width is a reasonable stand-in for the whole document's -- pages essentially never mix widths.
   const firstNaturalWidth = naturalSizes.get(1)?.width ?? 0;
   const currentPercent = Math.round(resolveScale(zoomMode, containerWidth, firstNaturalWidth) * 100);
 

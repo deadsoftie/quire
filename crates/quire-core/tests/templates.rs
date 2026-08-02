@@ -1,8 +1,4 @@
-//! Task 4.8's own acceptance criterion, and the real, non-proxy version of what 4.1's Done note
-//! deferred: "each shipped template compiles clean from new-project" against the *curated core
-//! bundle specifically* -- nothing installed on demand. Mirrors `tests/core_bundle.rs`'s harness,
-//! but against `templates/` (the real, user-facing starter documents 4.11's onboarding flow will
-//! copy from) rather than `core_bundle_discovery`'s deliberately exhaustive stand-ins.
+//! Proves each shipped template compiles clean against the curated core bundle, nothing installed on demand.
 
 use std::fs;
 use std::path::PathBuf;

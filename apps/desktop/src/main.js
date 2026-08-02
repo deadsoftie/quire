@@ -6,23 +6,17 @@ const { StdioTransport } = require("@quire/client");
 const DEV_SERVER_URL = "http://localhost:5173";
 const isMac = process.platform === "darwin";
 
-// Duplicated literal (not imported) -- same reasoning as App.tsx's SIDECAR_CALL_CANCELLED comment:
-// avoids CJS/ESM resolution issues across the Electron IPC boundary. Must have real body content,
-// since an empty \begin{document}\end{document} reproducibly fails to compile.
+// Duplicated literal, not imported, same reasoning as App.tsx's SIDECAR_CALL_CANCELLED comment; needs real body content since an empty document fails to compile.
 const BLANK_PROJECT_SOURCE = "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-// templates/*.tex, resolved relative to this dev checkout -- apps/desktop/src/main.js is three
-// levels under the repo root. Packaging (task 4.12, not yet built) will need these bundled as
-// extraResources and this path swapped for one relative to `process.resourcesPath` instead.
+// templates/*.tex, resolved relative to this dev checkout; a packaged build will need this path swapped for process.resourcesPath instead.
 const TEMPLATES_DIR = path.join(__dirname, "..", "..", "..", "templates");
 const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 
 let client;
 let mainWindow;
 
-// Every non-role menu item dispatches through this single channel into the renderer's command
-// registry (packages/ui/src/commands/CommandContext.tsx) by id, so a menu click, its keyboard
-// accelerator, and the command palette all ultimately run the exact same command.
+// Every non-role menu item dispatches through this single channel by id, so a menu click, its accelerator, and the palette all run the same command.
 function sendMenuCommand(id) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("menu:command", id);
@@ -56,14 +50,11 @@ function buildMenu() {
     {
       label: "Edit",
       submenu: [
-        // Not `role: "undo"/"redo"` -- CM6 manages its own history independently of Chromium's
-        // native editable-widget undo stack, so the native role would be a silent no-op with
-        // focus in the editor. These dispatch through the same command-registry path instead.
+        // Not `role: "undo"/"redo"` -- CM6 manages its own history, so the native role would be a silent no-op with focus in the editor.
         { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => sendMenuCommand("editor.undo") },
         { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", click: () => sendMenuCommand("editor.redo") },
         { type: "separator" },
-        // Cut/copy/paste/select-all DO work correctly via native roles -- CM6 integrates with the
-        // browser's own clipboard/selection events for these, unlike undo/redo.
+        // Cut/copy/paste/select-all DO work correctly via native roles -- CM6 integrates with browser clipboard events for these.
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
@@ -75,11 +66,7 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
-        // Parity with the command palette (⌘K) -- everything here is already a command over
-        // there; this just gives the same actions a second, discoverable surface. Checkbox
-        // `checked` state is kept in sync by updateViewMenuChecks, called whenever the renderer's
-        // own state changes (App.tsx's reportViewState effect), since Electron menu items don't
-        // reactively bind to renderer state on their own.
+        // Parity with the command palette -- checkbox state is kept in sync by updateViewMenuChecks, since Electron menus don't reactively bind on their own.
         { id: "view.file-tree", label: "Show Explorer", type: "checkbox", accelerator: "CmdOrCtrl+1", click: () => sendMenuCommand("panel.file-tree") },
         { id: "view.outline", label: "Show Outline", type: "checkbox", accelerator: "CmdOrCtrl+2", click: () => sendMenuCommand("panel.outline") },
         { id: "view.problems", label: "Show Problems", type: "checkbox", accelerator: "CmdOrCtrl+3", click: () => sendMenuCommand("panel.problems") },
@@ -107,8 +94,7 @@ function buildMenu() {
   return Menu.buildFromTemplate(template);
 }
 
-// Keys match exactly what App.tsx's reportViewState effect sends -- deliberate duplication across
-// the Electron process boundary, same as sendMenuCommand's ids (no shared TS import is possible here).
+// Keys match exactly what App.tsx's reportViewState effect sends -- deliberate duplication, no shared TS import possible here.
 const VIEW_MENU_CHECK_IDS = {
   "file-tree": "view.file-tree",
   outline: "view.outline",
@@ -149,11 +135,9 @@ function createWindow() {
   });
 }
 
-// `templateId` is renderer-supplied IPC input -- validated against TEMPLATE_IDS before it ever
-// touches a path, so a compromised renderer can't read arbitrary files via e.g. "../../etc/passwd".
+// `templateId` is renderer-supplied IPC input, validated against TEMPLATE_IDS so a compromised renderer can't read arbitrary paths.
 function scaffoldProject(dirPath, templateId) {
-  // Dotfiles ignored -- a freshly created Finder folder already has a .DS_Store, which isn't
-  // meaningfully "not empty" from the user's point of view.
+  // Dotfiles ignored -- a freshly created Finder folder already has a .DS_Store, not meaningfully "not empty".
   const visibleEntries = fs.readdirSync(dirPath).filter((name) => !name.startsWith("."));
   if (visibleEntries.length > 0) {
     throw new Error("That folder isn't empty. Choose a new or empty folder for a new project.");
@@ -169,11 +153,7 @@ function scaffoldProject(dirPath, templateId) {
   fs.writeFileSync(path.join(dirPath, "main.tex"), source);
 }
 
-// `sourceFiles` entries come from the renderer's own `project.files` (itself sourced from a real
-// openProject() response, not arbitrary user input), so their paths are already trusted -- unlike
-// scaffoldProject's templateId, no allowlist is needed here. `dirtyText` set means an open,
-// unsaved tab -- its live in-memory text is used instead of re-reading the (stale) file on disk,
-// so the bundled source always matches the PDF that was just compiled from it.
+// `sourceFiles` paths come from a real openProject() response, already trusted, unlike scaffoldProject's templateId. `dirtyText` set means an open tab's live text is used instead of stale disk content.
 async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }) {
   const projectName = path.basename(projectDir);
   const documentsDir = app.getPath("documents");
@@ -194,8 +174,7 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
   });
   if (result.canceled || !result.filePath) return null;
 
-  // ESM-only package ("archiver" >=8 dropped its old CJS factory-function API for a `ZipArchive`
-  // class) -- dynamic import from this CJS file rather than a top-level require().
+  // ESM-only package ("archiver" >=8 dropped its old CJS factory-function API) -- dynamic import from this CJS file.
   const { ZipArchive } = await import("archiver");
 
   await new Promise((resolve, reject) => {
@@ -223,8 +202,7 @@ app.whenReady().then(() => {
   client = new StdioTransport();
   const sessionFile = path.join(app.getPath("userData"), "session.json");
 
-  // On macOS the app can outlive the window past window-all-closed, so a background event can
-  // still fire after the window's gone -- isDestroyed() guards that.
+  // On macOS the app can outlive the window past window-all-closed; isDestroyed() guards a late event.
   client.onEvent((event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("core-event", event);
@@ -253,10 +231,7 @@ app.whenReady().then(() => {
     return result.filePaths[0];
   });
 
-  // "createDirectory" adds the native "New Folder" affordance to the picker (macOS shows it by
-  // default; Windows/Linux directory pickers already offer their own) -- one dialog lets the user
-  // either pick an existing empty folder or create+name a new one, instead of a bespoke two-step
-  // pick-parent-then-type-a-name flow.
+  // "createDirectory" adds the native "New Folder" affordance, letting one dialog pick or create+name a folder.
   ipcMain.handle("desktop:chooseNewProjectFolder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -285,9 +260,7 @@ app.whenReady().then(() => {
     return result.filePaths[0];
   });
 
-  // Mirrors the same Save/Discard/Cancel choice TabBar.tsx's own inline confirmation already
-  // offers when closing a dirty tab by click -- this is the same guard for the ⌘W/Close Folder
-  // command paths, which don't go through that component at all.
+  // Mirrors TabBar.tsx's own Save/Discard/Cancel confirmation, for the ⌘W/Close Folder paths that don't go through that component.
   ipcMain.handle("desktop:confirmDiscard", async (_event, message) => {
     const result = await dialog.showMessageBox(mainWindow, {
       type: "warning",
@@ -303,9 +276,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:readPdfFile", (_event, pdfPath) => new Uint8Array(fs.readFileSync(pdfPath)));
 
-  // Task 4.7: writes a pasted image's raw bytes into <projectDir>/figures/, creating that
-  // directory on first use. Returns the project-relative path so the renderer can insert it
-  // straight into an \includegraphics call without knowing the absolute path.
+  // Writes a pasted image's raw bytes into <projectDir>/figures/; returns the project-relative path for \includegraphics.
   ipcMain.handle("desktop:pasteImage", (_event, projectDir, bytes, extension) => {
     const figuresDir = path.join(projectDir, "figures");
     fs.mkdirSync(figuresDir, { recursive: true });

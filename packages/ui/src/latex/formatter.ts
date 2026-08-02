@@ -9,13 +9,9 @@ interface EnvSpan {
   endLine: number;
 }
 
-// Line-based, not a full tree re-serialization -- every line's own content is left exactly as
-// written; only its leading indentation and blank-line context change. This is what keeps prose
-// reflow out of scope for free: there's no line-width-fitting decision to make, since line breaks
-// within a paragraph are never touched.
+// Line-based, not a full tree re-serialization -- every line's content is left exactly as written; only indentation and blank-line context change.
 export function formatLatex(source: string): string {
-  // Split on "\n" only (not /\r?\n/) so this Text's offsets exactly match the raw `source` string
-  // the parser below sees -- a CRLF split would shift every offset after the first line ending.
+  // Split on "\n" only, not /\r?\n/, so this Text's offsets exactly match the raw `source` string the parser sees.
   const doc = Text.of(source.split("\n"));
   const tree = latexLanguage.parser.parse(source);
 
@@ -34,10 +30,7 @@ export function formatLatex(source: string): string {
     },
   });
 
-  // Depth per line via a delta sweep rather than checking every span against every line: each
-  // span only ever adjusts the running count twice (its own two boundary lines), regardless of
-  // how many lines the document has, so this whole pass is O(lines + environments) rather than
-  // O(lines x environments).
+  // Depth per line via a delta sweep, O(lines + environments), rather than checking every span against every line.
   const depthDelta = new Array<number>(doc.lines + 2).fill(0);
   for (const span of envSpans) {
     depthDelta[span.beginLine + 1]++;
@@ -49,14 +42,11 @@ export function formatLatex(source: string): string {
   let depth = 0;
 
   for (let i = 1; i <= doc.lines; i++) {
-    // depth now equals how many environment spans strictly contain line i -- the
-    // \begin{...}/\end{...} lines themselves sit at the *outer* depth, not indented into their
-    // own body (depthDelta's +1 lands one line after beginLine, and its -1 lands exactly on endLine).
+    // depth equals how many environment spans strictly contain line i; \begin/\end lines themselves sit at the outer depth.
     depth += depthDelta[i];
     const rawLine = doc.line(i).text;
 
-    // Verbatim/lstlisting/minted body content is deliberately opaque to this grammar (tokens.ts) --
-    // passed through byte-for-byte, never reindented or trimmed, even a blank line inside one.
+    // Verbatim/lstlisting/minted body content is opaque to this grammar; passed through byte-for-byte, even blank lines.
     if (verbatimLines.has(i)) {
       outLines.push(rawLine);
       blankRun = 0;

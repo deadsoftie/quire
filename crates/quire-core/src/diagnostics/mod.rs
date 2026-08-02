@@ -7,15 +7,10 @@ use file_tracker::FileTimeline;
 
 use crate::rpc::{Diagnostic, DiagnosticRange, Position};
 
-/// Every tex pass in `rerun.rs` compiles under this fixed input name regardless of the project's
-/// real root filename, so it's the one name in the log that maps back to `root_uri` rather than a
-/// project-relative path.
+/// Every tex pass compiles under this fixed name, the one that maps back to `root_uri` in the log.
 const ROOT_TEX_INPUT_NAME: &str = "texput.tex";
 
-/// Parses one tex pass's full log into structured diagnostics. Callers should pass the *last* tex
-/// pass's log, not an intermediate one -- that's what makes "rerun to fix cross-references"
-/// resolve itself into silence when a later pass actually fixes it, without this module needing
-/// to know anything about the rerun loop itself.
+/// Parses one tex pass's log into diagnostics; pass the *last* pass's log so a later-resolving fix stays silent.
 pub fn translate_log(log: &str, root_uri: &str, project_dir: &Path) -> Vec<Diagnostic> {
     let timeline = FileTimeline::build(log);
 
@@ -43,8 +38,7 @@ pub fn translate_log(log: &str, root_uri: &str, project_dir: &Path) -> Vec<Diagn
         .collect()
 }
 
-/// The bare names (no extension) of every missing `.sty`/`.cls` this log reports -- used to
-/// decide `CompileStatus::PackagesMissing` and populate `CompileResponse.missing_packages`.
+/// Bare names (no extension) of every missing `.sty`/`.cls` this log reports.
 pub fn missing_packages(log: &str) -> Vec<String> {
     rules::missing_package_or_class_names(log)
 }

@@ -1,8 +1,4 @@
-//! No `cancel_compile` here: `quire-sidecar` is one process per compile with no in-process handle
-//! to interrupt -- the caller kills the OS process instead, a transport-layer concern.
-//!
-//! `quire-core` holds no project registry -- `ProjectId` is the project's root directory path
-//! itself, and every function re-derives what it needs from that.
+//! No `cancel_compile`: the caller kills the OS process instead. No project registry either -- `ProjectId` is just the project's root directory path.
 
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -71,8 +67,7 @@ pub fn close_project(_req: &CloseProjectRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// A LaTeX failure is a normal `status: "errors"` result, never an `Err` -- `Err` is reserved for
-/// the request itself being unserviceable.
+/// A LaTeX failure is a normal `status: "errors"` result; `Err` is reserved for an unserviceable request.
 pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let start = Instant::now();
     let project_dir = PathBuf::from(&req.project_id);
@@ -81,13 +76,10 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let dirty: HashMap<PathBuf, &str> =
         req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
 
-    // Detection must see unsaved buffers too -- otherwise a file just created (and written to
-    // disk empty by desktop:createFile) can't be recognized as the root until it's saved.
+    // Detection must see unsaved buffers, or a just-created empty file can't be the root until saved.
     let detection = project::detect_root_with_dirty(&project_dir, &dirty);
 
-    // Mirrors open_project's own fallback: nothing surfaces `candidates` for the user to
-    // disambiguate through yet, so an ambiguous project still needs a best guess -- the first
-    // sorted candidate -- rather than refusing to compile at all.
+    // Mirrors open_project's own fallback: a best guess beats refusing to compile at all.
     let root = detection
         .root
         .or_else(|| detection.candidates.first().cloned())
@@ -116,9 +108,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
         write_into_shadow(&project_dir, &shadow_dir, &file.path, content.as_bytes())?;
     }
 
-    // Non-Tex files (graphics, .bib resources) never come from dirty buffers -- copy the real
-    // bytes across. BibTeX needs its .bib physically present in the shadow dir at the same
-    // relative path the root document's \bibliography{...}/\addbibresource{...} names it by.
+    // Non-Tex files never come from dirty buffers -- copy the real bytes into the shadow dir.
     for file in graph.files.iter().filter(|f| f.kind != FileKind::Tex) {
         let bytes = fs::read(&file.path).unwrap_or_default();
         write_into_shadow(&project_dir, &shadow_dir, &file.path, &bytes)?;
@@ -140,8 +130,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             let root_relative = root.strip_prefix(&project_dir).unwrap_or(&root);
             match crate::system_tex::detect() {
                 Some((engine, _version)) => crate::system_tex::compile(engine, root_relative, &shadow_dir),
-                // Re-detected here rather than trusting the caller's earlier `detectSystemTex()`
-                // call -- core holds no state (1.4), and the install may have vanished mid-session.
+                // Re-detected here, not trusted from an earlier detectSystemTex() call, since core holds no state.
                 None => {
                     return Ok(CompileResponse {
                         compile_id,
@@ -189,8 +178,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
                 .as_deref()
                 .map(|log| crate::diagnostics::translate_log(log, &root_uri, &project_dir))
                 .unwrap_or_default();
-            // A log the translator recognized nothing in (or no log at all -- some engine-level
-            // failures never produce one) still needs to reach the user as something, not silence.
+            // A log the translator recognized nothing in still needs to reach the user as something.
             let diagnostics = if translated.is_empty() {
                 vec![Diagnostic {
                     uri: None,
@@ -204,9 +192,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             } else {
                 translated
             };
-            // A missing package takes priority over generic errors -- it's the one failure mode
-            // with a real fix path (task 4.4's install-and-recompile flow), even if the same log
-            // also has unrelated errors after the point compilation gave up.
+            // A missing package takes priority over generic errors -- it's the one failure mode with a real fix path.
             let status = if missing_packages.is_empty() { CompileStatus::Errors } else { CompileStatus::PackagesMissing };
             CompileResponse {
                 compile_id,
@@ -225,9 +211,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     Ok(response)
 }
 
-/// Last line of defense, not the primary control -- `resolve_within` already confines every
-/// reference to `project_dir`, but a failing `strip_prefix` or a leftover `..` component here is
-/// treated as a bug to refuse, never silently followed.
+/// Last line of defense: `resolve_within` already confines references, but any escape here is refused, never followed.
 fn write_into_shadow(
     project_dir: &Path,
     shadow_dir: &Path,
@@ -258,8 +242,7 @@ fn generate_compile_id() -> String {
 }
 
 
-/// Reads from disk like every handler in this file -- `OutlineRequest` carries no dirty-buffer
-/// text, so this reflects the last saved content, not unsaved editor state.
+/// Reads from disk -- `OutlineRequest` carries no dirty-buffer text, so this reflects last-saved content only.
 pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     let project_dir = Path::new(&req.project_id);
     let Some(root) = project::detect_root(project_dir).root else {
@@ -270,8 +253,7 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     index.outline_for(Path::new(&req.uri))
 }
 
-/// Checked before touching disk: no reason to rebuild the whole project index for a keystroke
-/// inside an argument none of these triggers recognize.
+/// Checked before touching disk: no reason to rebuild the index for a keystroke none of these triggers recognize.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
     let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);
@@ -302,9 +284,7 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     }
 }
 
-// Project-local symbols outrank package commands, which outrank the global fallback (math
-// symbols). These constants only matter relative to each other within the same response --
-// command_completions is the one place all three tiers appear together.
+// Project-local symbols outrank package commands, which outrank the global math-symbol fallback.
 const PROJECT_LOCAL_PRIORITY: i32 = 0;
 const PACKAGE_PRIORITY: i32 = 10;
 const SYMBOL_PRIORITY: i32 = 20;
@@ -343,8 +323,7 @@ fn citation_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionIte
     items
 }
 
-/// The full path (extension included) is inserted rather than an extension-less form: unambiguous
-/// even if two candidates share a basename with different extensions (`plot.pdf`/`plot.png`).
+/// Inserts the full path with extension, unambiguous even when two candidates share a basename.
 fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = paths
         .map(|p| CompletionItem {
@@ -361,9 +340,7 @@ fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionI
     items
 }
 
-/// `label`/`insert` deliberately omit the leading backslash -- the client's bare-command trigger
-/// (`Editor.tsx`'s `wordMatch`) replaces starting right after the backslash already in the
-/// document, matching how label/citation completions already replace starting after `{`.
+/// `label`/`insert` omit the leading backslash -- the client's trigger replaces starting right after it.
 fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
         .macros()
@@ -397,8 +374,7 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
         insert: s.name.clone(),
         detail: Some(s.detail),
         documentation: None,
-        // KaTeX renders this client-side (`packages/ui`); the leading backslash belongs here even
-        // though `insert`/`label` omit it, since this is TeX source, not a document edit.
+        // TeX source for client-side KaTeX rendering, so the backslash belongs here unlike insert/label.
         symbol_preview: Some(format!("\\{}", s.name)),
         sort_priority: SYMBOL_PRIORITY,
     }));
@@ -407,9 +383,7 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
     items
 }
 
-/// `\vect` (arity 1) becomes `vect{${1:arg1}}`, `\greet` (arity 2) becomes
-/// `greet{${1:arg1}}{${2:arg2}}`, and arity 0 is just the bare name with no braces. `${N:argN}`
-/// rather than empty `${N}` since neither a macro definition nor the CTAN database names its own arguments.
+/// `\vect` (arity 1) becomes `vect{${1:arg1}}`; arity 0 is just the bare name with no braces.
 fn insert_with_tabstops(name: &str, arity: u32) -> String {
     let mut s = name.to_string();
     for n in 1..=arity {
@@ -420,10 +394,7 @@ fn insert_with_tabstops(name: &str, arity: u32) -> String {
     s
 }
 
-/// Scans every `\usepackage`/`\RequirePackage`/`\documentclass` across the project, diffs the
-/// resulting file candidates against bundle + cache (`crate::bundle::missing_from_cache`), and
-/// fetches whatever's missing in parallel -- so the first compile after opening a project never
-/// stalls mid-flight on a serial, one-at-a-time network fetch.
+/// Scans every package/class the project uses and fetches whatever's missing in parallel, so the first compile never stalls on serial fetches.
 pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
     let project_dir = Path::new(&req.project_id);
     let Some(root) = project::detect_root(project_dir).root else {
@@ -432,8 +403,7 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
     let graph = project::build_file_graph(&root);
     let index = crate::index::ProjectIndex::build(&graph);
 
-    // File -> the package/class name it stands for, so the response can report names (what the
-    // eventual missing-package UI, task 4.4, actually shows) rather than raw filenames.
+    // File -> the package/class name it stands for, so the response reports names, not raw filenames.
     let mut name_for_file: HashMap<String, String> = HashMap::new();
     for name in index.packages() {
         name_for_file.insert(format!("{name}.sty"), name.to_string());
@@ -481,9 +451,7 @@ pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
     })
 }
 
-/// Task 4.9: whether a real, working system TeX install exists right now -- checked fresh on
-/// every call, not cached, since the whole point is never offering the Settings toggle for a
-/// fallback that turns out not to work.
+/// Checked fresh every call, never cached, so the Settings toggle is never offered for a fallback that doesn't actually work.
 pub fn detect_system_tex() -> DetectSystemTexResponse {
     match crate::system_tex::detect() {
         Some((engine, version)) => {
@@ -493,9 +461,7 @@ pub fn detect_system_tex() -> DetectSystemTexResponse {
     }
 }
 
-/// Core (task 4.1's curated bundle, never removable) merged with whatever the cache tier
-/// currently holds (task 4.3/4.4's on-demand fetches, removable) -- the real list task 4.5's
-/// manager panel shows, sorted by name.
+/// The curated core bundle (never removable) merged with whatever the cache tier currently holds (removable), sorted by name.
 pub fn list_installed_packages() -> Vec<InstalledPackage> {
     let mut packages: Vec<InstalledPackage> = crate::bundle::core_packages()
         .into_iter()
@@ -510,10 +476,7 @@ pub fn list_installed_packages() -> Vec<InstalledPackage> {
     packages
 }
 
-/// Installs a package by name directly (task 4.5's manager panel), rather than 4.3's project-scan
-/// path -- a name typed here may not appear anywhere in the currently open document. Thin wrapper
-/// over the same `bundle::fetch` 4.3/4.4 already use, not a second fetch mechanism: tries it as a
-/// package first, then as a document class.
+/// Installs a package by name directly, not via a project scan -- tries it as a package first, then as a document class.
 pub fn install_package(req: &InstallPackageRequest) -> Result<FetchedPackage, CompileError> {
     let name = req.name.clone();
     match crate::bundle::fetch(&format!("{name}.sty")) {

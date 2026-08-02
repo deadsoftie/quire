@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import { usePaletteCommands } from "./commands/CommandContext";
 
-// Native menu items (apps/desktop/src/main.js) dispatch by command id over IPC rather than
-// duplicating each action's logic -- this is the one place that turns an incoming id back into a
-// run() call, reusing the exact same registry the command palette already lists from.
+// Native menu items dispatch by command id over IPC; this turns an incoming id back into a run() call.
 export function useMenuBridge() {
   const commands = usePaletteCommands();
 

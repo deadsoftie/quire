@@ -1,8 +1,4 @@
-//! Runs for real against whatever system TeX install exists on the machine running this test --
-//! this dev machine has a real TeX Live 2026 (`xelatex`/`pdflatex`/`bibtex` all on `PATH`,
-//! confirmed via `xelatex --version` while planning task 4.9). A machine with no install just
-//! skips the compile tests rather than failing -- `detect()` returning `None` is a legitimate,
-//! expected outcome there, not a bug.
+//! Runs for real against whatever system TeX install exists; a machine with no install just skips these tests rather than failing.
 
 use std::fs;
 use std::path::Path;
@@ -62,9 +58,7 @@ fn compiles_end_to_end_with_a_bibtex_rerun_via_subprocess() {
     assert!(out1.pdf.starts_with(b"%PDF-"), "first pass should produce a real PDF");
     assert!(build_dir.join("texput.bbl").is_file(), "a citation should have triggered a real bibtex subprocess run");
 
-    // A second compile with a new citation exercises the shared `run_passes_with_rerun` decision
-    // loop's BibTeX-rerun branch specifically -- the trickiest part of this whole feature, since
-    // it's the one place a subprocess (bibtex) has to run *between* two xelatex/pdflatex passes.
+    // A second compile with a new citation exercises the BibTeX-rerun branch of the shared rerun loop.
     fs::write(build_dir.join("main.tex"), SRC_TWO_CITES).expect("rewrite main.tex");
     let out2 = system_tex::compile(engine, Path::new("main.tex"), &build_dir).expect("second compile");
     assert!(out2.pdf.starts_with(b"%PDF-"));

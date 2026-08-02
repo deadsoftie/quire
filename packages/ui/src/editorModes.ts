@@ -5,8 +5,7 @@ import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { MATH_DELIMITED_NODE_NAMES } from "./latex/language";
 
-// One compartment per toggle, shared across Editor instances -- reconfiguring
-// a compartment only ever affects whichever EditorView it's dispatched to.
+// One compartment per toggle, shared across Editor instances; reconfiguring only affects the dispatched-to EditorView.
 export const proseCompartment = new Compartment();
 export const typewriterCompartment = new Compartment();
 export const focusCompartment = new Compartment();
@@ -19,8 +18,7 @@ export function proseModeExtension(): Extension {
   });
 }
 
-// ViewPlugin (not a plain updateListener) so destroy() can cancel an in-flight rAF before it
-// dispatches to an already-destroyed EditorView.
+// ViewPlugin, not a plain updateListener, so destroy() can cancel an in-flight rAF before it dispatches to a dead view.
 export function typewriterScrollingExtension(): Extension {
   return ViewPlugin.fromClass(
     class {
@@ -88,15 +86,10 @@ export function focusModeExtension(): Extension {
   return [focusModePlugin, focusModeTheme];
 }
 
-// MathEnvironment isn't itself math-atom-tagged in language.ts (its EnvName is what's tagged),
-// but it still needs a background span here, so it's added on top of the shared delimiter list
-// rather than duplicating all four names independently.
+// MathEnvironment isn't itself math-atom-tagged in language.ts, so it's added on top of the shared delimiter list.
 const MATH_SPAN_NODE_NAMES = new Set([...MATH_DELIMITED_NODE_NAMES, "MathEnvironment"]);
 
-// Exported and tested directly, same reasoning as `activeParagraphRange` above -- real coverage
-// without needing a full EditorView. `from`/`to` default to the whole document for that
-// standalone testability; the real plugin below passes the visible range instead, so a keystroke
-// in a large document doesn't re-walk content that isn't even on screen.
+// `from`/`to` default to the whole document for standalone testability; the real plugin passes the visible range instead.
 export function mathHighlightSpans(state: EditorState, from = 0, to = state.doc.length): { from: number; to: number }[] {
   const spans: { from: number; to: number }[] = [];
   syntaxTree(state).iterate({
@@ -130,23 +123,19 @@ const mathHighlightPlugin = ViewPlugin.fromClass(
       this.decorations = buildMathDecorations(view);
     }
     update(update: ViewUpdate) {
-      // Unlike focus mode, math regions depend only on document content and the visible range,
-      // never cursor position.
+      // Unlike focus mode, math regions depend only on document content and the visible range, never cursor position.
       if (update.docChanged || update.viewportChanged) this.decorations = buildMathDecorations(update.view);
     }
   },
   { decorations: (plugin) => plugin.decorations },
 );
 
-// Reuses the ink-cyan family math delimiters/brackets already use (latex/language.ts) -- no new
-// color. Colocated with the plugin it styles, matching focusModeExtension's own pattern above,
-// rather than living in Editor.tsx's unrelated base theme.
+// Reuses the ink-cyan family math delimiters/brackets already use (latex/language.ts) -- no new color.
 const mathHighlightTheme = EditorView.theme({
   ".cm-math-region": { backgroundColor: "var(--ink-cyan-dim)", borderRadius: "2px" },
 });
 
-// Always on, unlike the compartmentalized toggles above -- a permanent readability aid, not an
-// editing mode.
+// Always on, unlike the compartmentalized toggles above -- a permanent readability aid, not an editing mode.
 export function mathHighlightExtension(): Extension {
   return [mathHighlightPlugin, mathHighlightTheme];
 }

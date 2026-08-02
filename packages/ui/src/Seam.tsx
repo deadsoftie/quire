@@ -5,21 +5,15 @@ import "./Seam.css";
 export type SeamState = "idle" | "compiling" | "error";
 
 const MIN_PANE_PX = 200;
-// Matches --s-2 (packages/design/src/tokens.css) -- App.tsx's grid-template-columns is
-// `{frac}fr var(--s-2) {1-frac}fr`, so `frac` is a fraction of the width *remaining after* this
-// fixed column, not of the container's full width. Using the full width here was a real,
-// confirmed bug: the boundary the grid actually draws drifts from where the cursor computed it
-// should be, growing with pane size.
+// Matches --s-2 (packages/design/src/tokens.css); `frac` is a fraction of the width remaining after this fixed column, not the full width.
 const SEAM_WIDTH_PX = 8;
 
-// Pure so it's testable without a DOM -- rectLeft/rectWidth are just the container's own
-// getBoundingClientRect() fields.
+// Pure so it's testable without a DOM -- rectLeft/rectWidth are just getBoundingClientRect()'s fields.
 export function computeSplitFraction(clientX: number, rectLeft: number, rectWidth: number): number | null {
   const usableWidth = rectWidth - SEAM_WIDTH_PX;
   if (rectWidth === 0 || usableWidth <= 0) return null;
   const minFraction = Math.min(0.5, MIN_PANE_PX / usableWidth);
-  // Measured against the seam's own center, so the boundary itself (not some offset edge) is what
-  // actually tracks the cursor.
+  // Measured against the seam's own center, so the boundary itself tracks the cursor, not some offset edge.
   const x = clientX - rectLeft - SEAM_WIDTH_PX / 2;
   const raw = x / usableWidth;
   return Math.min(1 - minFraction, Math.max(minFraction, raw));

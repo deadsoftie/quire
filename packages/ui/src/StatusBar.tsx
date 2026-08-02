@@ -16,7 +16,7 @@ interface StatusBarProps {
   cursorPosition: CursorPositionStore;
   /** `null` when no project is open -- the dot only renders on a real `false`. */
   engineAvailable: boolean | null;
-  /** Task 4.6 -- plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
+  /** Plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
   bundleVersionNotice: string | null;
   onDismissBundleVersionNotice: () => void;
 }

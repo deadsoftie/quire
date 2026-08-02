@@ -23,16 +23,12 @@ import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
 import { renderSymbolPreview } from "./symbolPreview";
 
-// Chromium normalizes most clipboard images -- including a macOS screenshot-to-clipboard, this
-// feature's own acceptance case -- to `image/png` regardless of source, so `png` is the safe
-// default; only an explicit JPEG source keeps its own extension, since Tectonic reads the image
-// bytes by extension, not by sniffing content.
+// Chromium normalizes most clipboard images to `image/png` regardless of source; only explicit JPEG keeps its own extension.
 export function extensionForMimeType(mimeType: string): string {
   return mimeType === "image/jpeg" || mimeType === "image/jpg" ? "jpg" : "png";
 }
 
-// @codemirror/lint's own underline bakes a fixed color into the SVG itself (not `currentColor`),
-// so recoloring it means supplying our own copy of that same SVG rather than a plain CSS override.
+// @codemirror/lint's own underline bakes a fixed color into the SVG, so recoloring needs our own copy, not a CSS override.
 function underline(): string {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="6" height="3">' +
@@ -41,9 +37,7 @@ function underline(): string {
   return `url('data:image/svg+xml,${encodeURIComponent(svg)}')`;
 }
 
-// `{ dark: true }` is more than a flag here: @codemirror/autocomplete's base theme gates its
-// popup colors behind CM6's internal `&dark` scope class, which only gets added when some
-// registered theme declares one -- without it the autocomplete popup gets no background at all.
+// `{ dark: true }` is more than a flag: without it the autocomplete popup's `&dark` scope never gets added, and it gets no background.
 const baseEditorTheme = EditorView.theme(
   {
     "&": {
@@ -98,8 +92,7 @@ const baseEditorTheme = EditorView.theme(
       fontSize: "1.6em",
       textAlign: "center",
     },
-    // Errors red, warnings amber, nothing louder than that -- same two colors and 2px accent
-    // width already used by StatusBar/ProblemsPanel.
+    // Errors red, warnings amber, same two colors and 2px accent width already used by StatusBar/ProblemsPanel.
     ".cm-diagnostic": {
       borderLeftWidth: "2px",
       padding: "6px 8px",
@@ -115,8 +108,7 @@ const baseEditorTheme = EditorView.theme(
     ".cm-lintPoint-error:after": { borderBottomColor: "var(--proof-red)" },
     ".cm-lintPoint-warning:after": { borderBottomColor: "var(--proof-amber)" },
     ".cm-lintPoint-info:after": { borderBottomColor: "var(--type-lo)" },
-    // A quiet dot, not the library's default triangle/square/circle mix -- matches ProblemsPanel's
-    // own restrained accent-only treatment rather than adding a third visual vocabulary.
+    // A quiet dot, not the library's default triangle/square/circle mix -- matches ProblemsPanel's restraint.
     ".cm-lint-marker": {
       width: "0.5em",
       height: "0.5em",
@@ -156,8 +148,7 @@ function makeCompletionSource(projectId: string, uri: string) {
 
     return {
       from,
-      // sortPriority is ascending (lower = higher priority); CM6's own boost is the opposite
-      // sense (higher = higher priority), hence the negation below.
+      // sortPriority is ascending (lower wins); CM6's boost is the opposite sense, hence the negation below.
       options: items.map((item) => ({
         label: item.label,
         detail: item.detail ?? undefined,
@@ -181,8 +172,7 @@ interface EditorProps {
   // Applied a frame after mount so the content it scrolls has actually been laid out.
   restoreScrollTop?: number | null;
   onChange: (text: string) => void;
-  // line/column here are 1-based (StatusBar's convention), distinct from the 0-based UTF-16
-  // columns Position uses on the wire.
+  // line/column here are 1-based (StatusBar's convention), distinct from the wire's 0-based UTF-16 columns.
   onCursorActivity?: (cursor: number, scrollTop: number, line: number, column: number) => void;
   // Already filtered to this file's own uri -- Editor doesn't know about other open tabs.
   diagnostics?: Diagnostic[];
@@ -219,8 +209,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const onCursorActivityRef = useRef(onCursorActivity);
   onCursorActivityRef.current = onCursorActivity;
 
-  // Shared by the manual "Format Document" command and the imperative handle App.tsx uses for
-  // format-on-save -- one dispatch helper, two entry points.
+  // Shared by the manual "Format Document" command and the format-on-save imperative handle -- one dispatch helper, two entry points.
   function applyFormatted(newText?: string) {
     const view = viewRef.current;
     if (!view) return;
@@ -230,8 +219,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
   }
 
-  // line/column here are 0-based (the wire's Position convention, e.g. Diagnostic.range), distinct
-  // from the 1-based line numbers and UTF-16 columns this component reports out via onCursorActivity.
+  // line/column here are 0-based (the wire's Position convention), distinct from onCursorActivity's 1-based report.
   function revealPosition(line: number, column: number) {
     const view = viewRef.current;
     if (!view) return;
@@ -243,10 +231,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
   useImperativeHandle(ref, () => ({ replaceContent: applyFormatted, revealPosition }), []);
 
-  // No keybinding: basicSetup's own historyKeymap already handles ⌘Z/⇧⌘Z as a CM6-internal keymap
-  // bound directly to the editor's contenteditable node. These commands exist purely so the
-  // native Edit menu (which can't use role: "undo"/"redo" -- see apps/desktop/src/main.js) and the
-  // command palette have something to dispatch into.
+  // No keybinding: basicSetup's historyKeymap already binds ⌘Z/⇧⌘Z; these exist so the native Edit menu and palette have something to dispatch into.
   useCommand({
     id: "editor.undo",
     title: "Undo",
@@ -308,8 +293,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             const line = editorView.state.doc.lineAt(head);
             onCursorActivityRef.current?.(head, editorView.scrollDOM.scrollTop, line.number, head - line.from + 1);
           },
-          // Task 4.7: only intercepts an actual image on the clipboard -- a normal text/file paste
-          // falls through to CM6's own default handling untouched (returning false below).
+          // Only intercepts an actual image on the clipboard; a normal text/file paste falls through to CM6's default handling.
           paste: (event, editorView) => {
             const item = Array.from(event.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
             if (!item) return false;
@@ -318,8 +302,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             const file = item.getAsFile();
             if (!file) return true;
 
-            // Captured now, not read again once the async write resolves -- the user may have
-            // moved the cursor or kept typing while the paste is still in flight.
+            // Captured now, not re-read once the async write resolves -- the cursor may have moved by then.
             const { from, to } = editorView.state.selection.main;
             const extension = extensionForMimeType(item.type);
 
@@ -330,8 +313,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                 editorView.dispatch({ changes: { from, to, insert: `\\includegraphics[width=0.8\\linewidth]{${relativePath}}` } });
               })
               .catch(() => {
-                // Best-effort, matching 4.3's own "swallow and proceed" precedent for a failed
-                // write -- nothing inserted rather than a broken image reference.
+                // Best-effort: swallow a failed write -- nothing inserted rather than a broken image reference.
               });
 
             return true;

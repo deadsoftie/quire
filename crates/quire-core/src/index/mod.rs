@@ -179,8 +179,7 @@ fn classify(rest: &str) -> Option<(OutlineNodeKind, usize)> {
     COMMANDS.iter().find(|(name, _)| rest.starts_with(name)).map(|(name, kind)| (*kind, name.len()))
 }
 
-/// Deliberately doesn't skip past a heading's `{...}` argument -- continues scanning into it, so a
-/// nested `\label{}` (e.g. `\section{Intro\label{sec:intro}}`) is still found in its natural position.
+/// Scans into a heading's `{...}` argument rather than skipping it, so a nested `\label{}` is still found.
 fn scan_into(stripped: &str, entries: &mut Vec<RawEntry>) {
     let bytes = stripped.as_bytes();
     let mut i = 0;
@@ -222,8 +221,7 @@ fn scan_into(stripped: &str, entries: &mut Vec<RawEntry>) {
     }
 }
 
-/// Char-based (not byte indexing) so skipping an escaped character can't land mid multi-byte
-/// UTF-8 sequence and panic on slicing.
+/// Char-based, not byte indexing, so skipping an escaped character can't land mid multi-byte UTF-8 and panic.
 fn matching_brace(s: &str, open_byte: usize) -> Option<usize> {
     let mut depth = 0i32;
     let mut chars = s[open_byte..].char_indices();
@@ -245,8 +243,7 @@ fn matching_brace(s: &str, open_byte: usize) -> Option<usize> {
     None
 }
 
-/// Only `\label` is stripped -- other markup (`\textbf{}`, etc.) is left as-is; rendering LaTeX
-/// to plain text is out of scope here.
+/// Only `\label` is stripped; other markup is left as-is -- rendering LaTeX to plain text is out of scope.
 fn strip_label_commands(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut spans = Vec::new();
@@ -289,8 +286,7 @@ fn find_bib_resources(stripped: &str, base_dir: &Path) -> Vec<PathBuf> {
             continue;
         }
         let rest = &stripped[i..];
-        // \bibliographystyle{...} would otherwise false-match \bibliography's prefix; the
-        // following `{`-check rejects it.
+        // The following `{`-check rejects \bibliographystyle{...} false-matching this prefix.
         let (is_multi, name_len) = if rest.starts_with("\\bibliography") {
             (true, "\\bibliography".len())
         } else if rest.starts_with("\\addbibresource") {
@@ -407,8 +403,7 @@ fn parse_bib_body(body: &str) -> Option<BibEntry> {
     Some(BibEntry { key, author, title, year })
 }
 
-/// Splits on `sep` only at brace/quote depth 0 -- a bib field value routinely contains commas
-/// itself (`author = {Smith, John}`), so a naive split would misparse it.
+/// Splits on `sep` only at brace/quote depth 0 -- a bib value routinely contains a raw comma itself.
 fn split_top_level(body: &str, sep: char) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0i32;
@@ -443,8 +438,7 @@ fn find_top_level_eq(field: &str) -> Option<usize> {
     None
 }
 
-/// Also strips any remaining brace characters -- BibTeX's case-protection braces (`{The {TeX}book}`)
-/// are a typesetting artifact, not something a readable completion detail should show literally.
+/// Also strips remaining brace characters -- BibTeX's case-protection braces are a typesetting artifact.
 fn unwrap_bib_value(raw: &str) -> String {
     let trimmed = raw.trim();
     let unwrapped = trimmed
@@ -487,8 +481,7 @@ fn classify_macro_command(rest: &str) -> Option<(&'static str, usize)> {
     COMMANDS.iter().find(|(name, _)| rest.starts_with(name)).map(|(name, tag)| (*tag, name.len()))
 }
 
-/// Unlike `scan_into`, an entry that doesn't parse as one of these three shapes is dropped rather
-/// than guessed at -- a wrong arity is worse than a missing completion.
+/// An entry that doesn't parse as one of these three shapes is dropped -- a wrong arity is worse than a missing completion.
 fn find_macros(stripped: &str) -> Vec<MacroDef> {
     let mut macros = Vec::new();
     let bytes = stripped.as_bytes();
@@ -587,9 +580,7 @@ fn parse_declare_math_operator(stripped: &str, after: usize) -> Option<(MacroDef
     Some((MacroDef { name, arity: 0, body }, body_close + 1))
 }
 
-/// Only the common undelimited `#1#2...#N` shape is supported -- TeX's `\def` also allows
-/// delimited parameters with literal tokens between `#`s, which is unparseable here on purpose
-/// (dropped rather than guessed).
+/// Only the common undelimited `#1#2...#N` shape is supported; delimited `\def` params are dropped, not guessed.
 fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     let bytes = stripped.as_bytes();
     let pos = skip_spaces(stripped, after);
@@ -628,8 +619,7 @@ fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
     Some((MacroDef { name, arity, body }, close + 1))
 }
 
-/// `\usepackage` and `\RequirePackage` share the same `[options]{name1,name2}` shape and mean
-/// the same thing for our purposes -- a package the project needs resolved.
+/// `\usepackage` and `\RequirePackage` share the same `[options]{name1,name2}` shape and meaning here.
 fn find_packages(stripped: &str) -> Vec<String> {
     let mut packages = find_brace_list_command(stripped, "\\usepackage");
     packages.extend(find_brace_list_command(stripped, "\\RequirePackage"));
@@ -667,9 +657,7 @@ fn find_brace_list_command(stripped: &str, cmd: &str) -> Vec<String> {
     names
 }
 
-/// Walks the filesystem directly (the candidate set is "what files exist," not what's already
-/// referenced) -- deliberately not reusing `project::root`'s own walk, to avoid risking a
-/// regression there for a DRY win.
+/// Walks the filesystem directly for what exists, not reusing `project::root`'s own walk of what's referenced.
 fn find_path_candidates(base_dir: &Path) -> (Vec<String>, Vec<String>) {
     let mut visited = HashSet::new();
     let mut tex_paths = Vec::new();
@@ -722,8 +710,7 @@ fn walk_project_files(
     }
 }
 
-/// Byte offset -> `Position` (0-based line, 0-based UTF-16 code units, matching CodeMirror/LSP
-/// convention). O(n) per call is fine -- called a handful of times per file, never in a hot loop.
+/// Byte offset -> `Position` (0-based line, 0-based UTF-16 units), CodeMirror/LSP convention.
 fn position_at(content: &str, byte_offset: usize) -> Position {
     let mut line = 0u32;
     let mut line_start = 0usize;
@@ -737,8 +724,7 @@ fn position_at(content: &str, byte_offset: usize) -> Position {
     Position { line, column }
 }
 
-/// Inverse of [`position_at`]. Out-of-range lines/columns clamp to the nearest valid offset
-/// rather than panicking -- the caller supplies whatever the editor's own cursor position happens to be.
+/// Inverse of [`position_at`]; out-of-range lines/columns clamp to the nearest valid offset rather than panicking.
 fn byte_offset_of(text: &str, position: &Position) -> usize {
     let mut offset = 0usize;
     for (line_no, line) in text.split('\n').enumerate() {
@@ -757,8 +743,7 @@ fn byte_offset_of(text: &str, position: &Position) -> usize {
     text.len()
 }
 
-/// A `\label` never opens a new nesting level -- it always attaches as a leaf under whichever
-/// heading is currently innermost-open (or top-level).
+/// A `\label` never opens a nesting level -- it attaches as a leaf under the innermost-open heading.
 fn build_outline(entries: Vec<RawEntry>) -> Vec<OutlineNode> {
     let mut stack: Vec<OutlineNode> = Vec::new();
     let mut top: Vec<OutlineNode> = Vec::new();
@@ -797,8 +782,7 @@ fn attach(stack: &mut [OutlineNode], top: &mut Vec<OutlineNode>, node: OutlineNo
     }
 }
 
-/// Scans backward from the cursor tracking brace depth; stops at the first line break, since a
-/// completion-relevant command argument is never expected to span multiple lines.
+/// Scans backward tracking brace depth, stopping at the first line break -- a command argument here never spans lines.
 fn enclosing_command(text: &str, position: &Position) -> Option<String> {
     let cursor = byte_offset_of(text, position).min(text.len());
     let before = &text[..cursor];
@@ -815,8 +799,7 @@ fn enclosing_command(text: &str, position: &Position) -> Option<String> {
                     depth -= 1;
                     continue;
                 }
-                // An optional [options] block can sit between the command name and this brace
-                // (`\includegraphics[width=5cm]{...}`, `\cite[p. 5]{...}`) -- skip backward over it first.
+                // An optional [options] block can sit between the command name and this brace; skip it first.
                 let mut prefix = &before[..i];
                 if prefix.ends_with(']') {
                     let open = find_matching_open_bracket(prefix)?;
@@ -832,8 +815,7 @@ fn enclosing_command(text: &str, position: &Position) -> Option<String> {
     None
 }
 
-/// Mirrors [`matching_brace`] but for `[...]` in reverse. No escape handling -- option blocks
-/// don't realistically contain `\[`/`\]`.
+/// Mirrors [`matching_brace`] but for `[...]` in reverse; no escape handling since option blocks don't need it.
 fn find_matching_open_bracket(prefix: &str) -> Option<usize> {
     let bytes = prefix.as_bytes();
     let mut depth = 0i32;
@@ -858,14 +840,12 @@ pub fn is_ref_completion_context(text: &str, position: &Position) -> bool {
     matches!(enclosing_command(text, position).as_deref(), Some("ref") | Some("eqref") | Some("autoref"))
 }
 
-/// Just `\cite` -- natbib/biblatex variants (`\citep`, `\parencite`, ...) aren't offered since
-/// this project compiles with classic BibTeX only, so they'd suggest syntax the pipeline can't use.
+/// Just `\cite` -- natbib/biblatex variants aren't offered since this pipeline only supports classic BibTeX.
 pub fn is_cite_completion_context(text: &str, position: &Position) -> bool {
     enclosing_command(text, position).as_deref() == Some("cite")
 }
 
-/// True when the cursor is right after `\` plus zero or more letters and nothing else --
-/// deliberately distinct from (and mutually exclusive with) [`enclosing_command`]'s "inside a `{` argument" shape.
+/// True right after `\` plus letters and nothing else; mutually exclusive with [`enclosing_command`]'s shape.
 pub fn is_command_completion_context(text: &str, position: &Position) -> bool {
     let cursor = byte_offset_of(text, position).min(text.len());
     let before = &text[..cursor];
@@ -891,8 +871,7 @@ mod tests {
 
     #[test]
     fn position_at_counts_utf16_units_not_bytes() {
-        // "café" -- 'é' is 2 bytes in UTF-8 but 1 UTF-16 code unit; a 4-byte emoji is 2 UTF-16
-        // units (a surrogate pair). Both must be counted the CodeMirror/LSP way, not by byte.
+        // "café" + emoji covers both a 2-byte non-surrogate char and a surrogate pair.
         let content = "café \u{1F600} x";
         let x_byte = content.rfind('x').unwrap();
         let pos = position_at(content, x_byte);
@@ -1153,9 +1132,7 @@ mod tests {
 
     #[test]
     fn find_packages_also_matches_requirepackage() {
-        // `\usepackage` matches are collected before `\RequirePackage` matches regardless of
-        // source order -- callers (`ProjectIndex::packages`) dedupe into a set anyway, so only
-        // this test cares about the exact ordering.
+        // \usepackage matches collect before \RequirePackage's regardless of source order.
         let packages = find_packages("\\RequirePackage{xkeyval}\n\\usepackage{amsmath}\n");
         assert_eq!(packages, vec!["amsmath", "xkeyval"]);
     }

@@ -17,10 +17,7 @@ pub enum IncludeCommand {
     Include,
     IncludeGraphics,
     Subfile,
-    /// `\bibliography{...}` (classic BibTeX, comma-separated, `.bib` implied) and
-    /// `\addbibresource{...}` (biblatex, single resource) both land here -- `parse_references`
-    /// tracks which one matched locally to decide whether to split on commas, since neither the
-    /// graph traversal nor the shadow-dir mirroring downstream cares which macro was used.
+    /// Covers both `\bibliography{...}` (comma-separated) and `\addbibresource{...}` (single).
     Bibliography,
 }
 
@@ -92,8 +89,7 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
 
         let references = parse_references(&content, base_dir);
         for r in &references {
-            // Neither is itself LaTeX source to scan further -- a graphic has no references of
-            // its own, and a .bib file's internal syntax isn't LaTeX at all.
+            // Neither a graphic nor a .bib's internal syntax is itself LaTeX source to scan further.
             if r.command != IncludeCommand::IncludeGraphics && r.command != IncludeCommand::Bibliography {
                 if let Some(resolved) = &r.resolved {
                     queue.push(resolved.clone());
@@ -163,16 +159,13 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
         }
 
         let rest = &stripped[i..];
-        // is_multi_bib tracks which of the two bib-resource macros matched, since \bibliography
-        // (classic BibTeX) takes a comma-separated list while \addbibresource (biblatex) takes
-        // exactly one -- both still resolve to the same IncludeCommand::Bibliography below.
+        // is_multi_bib: \bibliography takes a comma-separated list, \addbibresource takes exactly one.
         let (command, name_len, is_multi_bib) = match () {
             _ if rest.starts_with("\\includegraphics") => (IncludeCommand::IncludeGraphics, "\\includegraphics".len(), false),
             _ if rest.starts_with("\\input") => (IncludeCommand::Input, "\\input".len(), false),
             _ if rest.starts_with("\\include") => (IncludeCommand::Include, "\\include".len(), false),
             _ if rest.starts_with("\\subfile") => (IncludeCommand::Subfile, "\\subfile".len(), false),
-            // The following `{`-check (shared with every other command below) rejects
-            // \bibliographystyle{...}, which would otherwise false-match \bibliography's prefix.
+            // The following `{`-check rejects \bibliographystyle{...} false-matching this prefix.
             _ if rest.starts_with("\\bibliography") => (IncludeCommand::Bibliography, "\\bibliography".len(), true),
             _ if rest.starts_with("\\addbibresource") => (IncludeCommand::Bibliography, "\\addbibresource".len(), false),
             _ => {
@@ -203,8 +196,7 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
         let raw_arg = after_brace[..end].trim().to_string();
 
         if is_multi_bib {
-            // \bibliography{refs1,refs2} -- one Reference per name, matching every other
-            // command's one-Reference-per-target convention (Reference.resolved is singular).
+            // One Reference per name, matching every other command's one-Reference-per-target convention.
             for name in raw_arg.split(',') {
                 let name = name.trim();
                 if name.is_empty() {

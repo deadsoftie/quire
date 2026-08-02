@@ -18,7 +18,7 @@ export interface SessionState {
   wordWrap: boolean;
   theme: "dark" | "light";
   pdfInverted: boolean;
-  /** Task 4.9 -- only ever honored when a real system TeX install is actually detected at runtime. */
+  /** Only ever honored when a real system TeX install is actually detected at runtime. */
   useSystemTex: boolean;
   /** CM6 selection head for whichever tab was active when this was saved; other reopened tabs start at their own beginning. */
   cursor: number | null;

@@ -1,9 +1,6 @@
 use regex::Regex;
 
-/// Tracks which input file was open at each byte offset in a TeX engine log, by walking the
-/// `(filename ... )` push/pop nesting the engine prints as it opens/closes files. A `(` not
-/// immediately followed by a recognizable filename is treated as unnamed (font/box notes etc.
-/// print plenty of these) and only affects nesting depth, not the current file.
+/// Tracks which input file was open at each log offset by walking the `(filename ...)` push/pop nesting.
 pub struct FileTimeline {
     checkpoints: Vec<(usize, Option<String>)>,
 }

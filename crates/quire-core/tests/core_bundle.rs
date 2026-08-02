@@ -1,9 +1,4 @@
-//! Verifies the curated bundle in `bundles/core/` (built by the `build_core_bundle` example from
-//! `bundles/manifest.json`) actually covers the six core_bundle_discovery fixtures on its own --
-//! the closest thing to task 4.1's "four templates compile fully offline" acceptance criterion
-//! available before real templates exist. Fixtures are re-run through the discovery example
-//! whenever they change (see bundles/README.md), so this just has to keep passing against
-//! whatever the current bundle contains.
+//! Verifies the curated bundle in `bundles/core/` actually covers the core_bundle_discovery fixtures on its own.
 
 use std::fs;
 use std::path::PathBuf;

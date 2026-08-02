@@ -57,9 +57,7 @@ fn open_project_finds_root_and_full_file_list() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
-/// FileNodeKind::Bib closes the gap flagged when bib mirroring was first fixed (`docs/CONTRACT.md`)
-/// -- a .bib file is now a real, visible entry in openProject()'s own file list, not just mirrored
-/// into the shadow dir invisibly.
+/// A .bib file is a real, visible entry in openProject()'s file list, not just mirrored into the shadow dir invisibly.
 #[test]
 fn open_project_exposes_bibliography_files_with_the_real_bib_kind() {
     let project_dir = fresh_project_copy("compile_with_bibliography", "open-bib");
@@ -108,11 +106,7 @@ fn prefetch_fetches_a_package_missing_from_bundle_and_cache() {
 
     let resp = prefetch_packages(&PrefetchPackagesRequest { project_id: project_id.clone() });
 
-    // `article` (the documentclass) is always in the core bundle, so it must never show up as
-    // fetched or failed. `media9` (deliberately not in core) may or may not need a real fetch
-    // depending on whether an earlier test run already cached it on this machine -- caching is
-    // permanent by design (4.2), so this test has to be robust to running on an already-warm
-    // cache rather than assuming a fresh one. It must not, however, have genuinely failed.
+    // `article` is always in the core bundle. `media9` may or may not need a fetch depending on cache state, but must not genuinely fail.
     assert!(!resp.fetched.iter().any(|f| f.name == "article"), "{:?}", resp.fetched);
     assert!(!resp.failed.contains(&"article".to_string()), "{:?}", resp.failed);
     assert!(!resp.failed.contains(&"media9".to_string()), "media9 fetch failed: {:?}", resp.failed);
@@ -120,8 +114,7 @@ fn prefetch_fetches_a_package_missing_from_bundle_and_cache() {
         assert!(media9.bytes > 0, "media9 was fetched but reported 0 bytes");
     }
 
-    // Second call: whatever the first call needed (if anything) is cached now, so this must
-    // report nothing missing at all -- the actual point of prefetch persisting to cache.
+    // Second call: whatever the first needed is cached now, so nothing should be reported missing.
     let resp2 = prefetch_packages(&PrefetchPackagesRequest { project_id: project_id.clone() });
     assert!(resp2.fetched.is_empty() && resp2.failed.is_empty(), "fetched={:?} failed={:?}", resp2.fetched, resp2.failed);
 
@@ -144,8 +137,7 @@ fn compile_reports_packages_missing_with_the_real_package_name() {
     assert_eq!(resp.missing_packages, vec!["this-package-definitely-does-not-exist-anywhere"]);
     assert!(resp.pdf_path.is_none());
 
-    // Never a raw, untranslated "File `...' not found" -- the missing-package diagnostic must
-    // still be the plain-English one from 3.10, not a fallback raw dump.
+    // Never a raw, untranslated "File `...' not found" -- must be the plain-English diagnostic.
     let diagnostic = &resp.diagnostics[0];
     assert_eq!(diagnostic.code.as_deref(), Some("missing-package"));
     assert!(diagnostic.message.contains("this-package-definitely-does-not-exist-anywhere"));
@@ -179,11 +171,7 @@ fn compile_mirrors_the_whole_graph_and_produces_a_real_pdf() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
-/// Closes the gap `docs/CONTRACT.md` used to flag: `refs.bib` was invisible to `FileGraph`, so
-/// `write_into_shadow` never copied it into the build dir and BibTeX had no `.bib` to read --
-/// `\cite{...}` compiled but never actually resolved. `project::IncludeCommand::Bibliography`
-/// fixes that; this proves it end to end through the real `compile()` handler, not just at the
-/// `FileGraph`/`rerun.rs` unit level.
+/// Proves end to end that `.bib` mirrors into the shadow dir and `\cite{...}` actually resolves.
 #[test]
 fn compile_resolves_a_real_bibliography_citation() {
     let project_dir = fresh_project_copy("compile_with_bibliography", "compile-bib");
@@ -209,12 +197,7 @@ fn compile_resolves_a_real_bibliography_citation() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
-/// Task 4.9, wired end to end through the real RPC handler rather than `system_tex::compile()`
-/// directly (see `tests/system_tex.rs` for that) -- proves `handlers::compile()`'s own
-/// `engine: System` branch actually resolves the root document's shadow-dir-relative path
-/// correctly and produces a normal `status: Ok` response, same shape as the Tectonic path.
-/// Skips (doesn't fail) on a machine with no system TeX install -- `system_tex::detect()`
-/// returning `None` there is expected, not a bug.
+/// Proves `handlers::compile()`'s `engine: System` branch works end to end; skips (not fails) with no system TeX install.
 #[test]
 fn compile_with_system_engine_produces_a_real_pdf_when_a_system_install_exists() {
     if quire_core::system_tex::detect().is_none() {
@@ -241,10 +224,7 @@ fn compile_with_system_engine_produces_a_real_pdf_when_a_system_install_exists()
     fs::remove_dir_all(&project_dir).ok();
 }
 
-/// A genuinely ambiguous project (two files each with their own real `\documentclass`, e.g. a
-/// project that nests a self-contained sub-document) must still compile against a best guess --
-/// `compile()` used to hard-error on `RootConfidence::Ambiguous` instead of falling back to the
-/// first candidate the way `open_project` already does, so it could never compile at all.
+/// A genuinely ambiguous project (two files each with a real `\documentclass`) must still compile against a best guess.
 #[test]
 fn compile_falls_back_to_the_first_candidate_when_root_is_ambiguous() {
     let project_dir = fresh_project_copy("root_detection/ambiguous", "compile-ambiguous");
@@ -262,9 +242,7 @@ fn compile_falls_back_to_the_first_candidate_when_root_is_ambiguous() {
     fs::remove_dir_all(&project_dir).ok();
 }
 
-/// `desktop:createFile` writes a brand-new tab's file to disk empty before any save -- pasting
-/// a real document into the editor and compiling without saving first must still detect that
-/// file as the root, not fail because the on-disk copy has no `\documentclass` yet.
+/// Pasting into a brand-new, still-empty-on-disk file and compiling before saving must still detect it as the root.
 #[test]
 fn compile_recognizes_root_from_a_dirty_buffer_on_an_unsaved_new_file() {
     let project_dir = std::env::temp_dir().join(format!("quire-core-rpc-handlers-test-compile-new-file-{}", std::process::id()));

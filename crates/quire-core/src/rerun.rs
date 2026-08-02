@@ -16,8 +16,7 @@ const CITATION_FINGERPRINT_FILE: &str = "quire-citations.txt";
 const PAGE_HASHES_FILE: &str = "quire-page-hashes.txt";
 const TEX_INPUT_NAME: &str = "texput.tex";
 
-/// Factory rather than a plain `Box<dyn Bundle>` because each Tectonic pass needs its own
-/// fresh bundle instance -- `ProcessingSessionBuilder::bundle` consumes it.
+/// A factory, not a plain `Box<dyn Bundle>`, since each pass consumes its own fresh bundle instance.
 pub type BundleFactory = dyn Fn() -> Result<Box<dyn Bundle>, CompileError>;
 
 pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOutput, CompileError> {
@@ -50,13 +49,7 @@ pub fn compile_latex_in_dir_with_bundle(
     Ok(CompileOutput { pdf, page_count, changed_pages, log: last_log })
 }
 
-/// Engine-agnostic rerun decision loop, shared by the Tectonic path above and `system_tex`'s
-/// subprocess path -- only *how a single pass runs* differs between engines, not when to rerun.
-/// `run_pass`/`run_bibtex` are closures so each engine supplies its own execution mechanism
-/// (Tectonic's in-process `ProcessingSessionBuilder`, or a subprocess `Command`) while this
-/// function owns the actual decision: run once, diff `.aux`, run BibTeX if the citation
-/// fingerprint changed (invisible to the aux-diff, since BibTeX only touches `.bbl`), then rerun
-/// up to `MAX_PASSES` while `.aux` keeps changing.
+/// Engine-agnostic rerun loop shared by Tectonic and `system_tex`: run, diff `.aux`, rerun BibTeX on a fingerprint change, repeat until `.aux` settles.
 pub(crate) fn run_passes_with_rerun(
     build_dir: &Path,
     mut run_pass: impl FnMut() -> Result<String, CompileError>,
@@ -93,9 +86,7 @@ pub(crate) fn run_passes_with_rerun(
     Ok(last_log)
 }
 
-/// Shared page-hash-caching tail: both engines read the same final `texput.pdf` and cache
-/// against the same `PAGE_HASHES_FILE` in `build_dir`, so this is identical regardless of which
-/// engine produced the PDF.
+/// Shared page-hash-caching tail; identical regardless of which engine produced the final PDF.
 pub(crate) fn hash_and_diff_pages(build_dir: &Path, pdf: &[u8]) -> Result<(u32, Vec<u32>), CompileError> {
     let hashes = crate::page_hash::hash_pages(pdf)?;
     let hashes_path = build_dir.join(PAGE_HASHES_FILE);
@@ -133,8 +124,7 @@ fn run_tex_pass(
 
     let mut sess = sb.create(&mut status)?;
     let result = sess.run(&mut status);
-    // Unlike lib.rs's do_not_write_output_files() path, this builder config keeps a full
-    // transcript in get_stdout_content() on success too, for diagnostics::translate_log.
+    // Unlike lib.rs's do_not_write_output_files() path, this keeps a full transcript on success too.
     let log = String::from_utf8_lossy(&sess.get_stdout_content()).into_owned();
 
     if let Err(e) = result {

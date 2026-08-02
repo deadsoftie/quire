@@ -1,8 +1,7 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
-// throwOnError: false renders KaTeX's own inline error text instead of throwing -- this is
-// best-effort popup content, not something that should ever crash the editor over one bad entry.
+// throwOnError: false renders KaTeX's own inline error text instead of throwing over one bad entry.
 export function renderSymbolPreview(tex: string): HTMLElement {
   const container = document.createElement("div");
   container.className = "cm-symbolPreview";

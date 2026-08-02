@@ -4,9 +4,7 @@ import * as readline from "node:readline";
 
 const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
 
-// Marker string, not an Error subclass -- crossing Electron's IPC boundary (`ipcMain.handle`)
-// reconstructs thrown errors as plain `Error`s and drops the prototype, so `instanceof` would
-// silently never match on the other side.
+// Marker string, not an Error subclass -- Electron's IPC boundary drops the prototype, so instanceof wouldn't match.
 export const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 export interface SidecarCall {
@@ -14,8 +12,7 @@ export interface SidecarCall {
   kill(): void;
 }
 
-// `detached` + process-group kill (not plain child.kill()): Tectonic shells out to biber/bibtex,
-// and only a group-kill reliably takes both out.
+// `detached` + process-group kill, not plain child.kill(): Tectonic shells out to biber/bibtex, and only a group-kill takes both out.
 export function runOnce(method: string, params: unknown, cwd?: string): SidecarCall {
   const proc = spawn(SIDECAR_PATH, [], {
     cwd,

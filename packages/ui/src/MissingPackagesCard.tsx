@@ -10,9 +10,7 @@ interface MissingPackagesCardProps {
   onInstall: () => void;
 }
 
-// "Nothing has gone wrong" (9.6) -- this never uses --proof-red, even in the offline sub-state.
-// Offline gets --proof-amber (a caution, not an error) since it's the one genuine failure mode
-// here, per 9.6's own framing; everything else stays on the neutral --nonrepro accent.
+// "Nothing has gone wrong" -- never uses --proof-red; offline gets --proof-amber, everything else stays --nonrepro.
 export function MissingPackagesCard({ packages, installState, failedNames, onInstall }: MissingPackagesCardProps) {
   const offline = installState === "offline";
   const label = packages.length === 1 ? "package" : "packages";

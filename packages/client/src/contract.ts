@@ -7,9 +7,7 @@ export type CancelCompileRequest = { compileId: string, };
 export type CloseProjectRequest = { projectId: string, };
 
 /**
- * Task 4.9: `Tectonic` is the default, embedded engine; `System` shells out to a detected
- * TeX Live/MiKTeX install instead. Explicit per request rather than a server-side setting --
- * `quire-core` holds no state (1.4), so every call has to say which engine it wants.
+ * `Tectonic` is the default, embedded engine; `System` shells out to a detected TeX Live/MiKTeX install.
  */
 export type CompileEngine = "tectonic" | "system";
 
@@ -25,8 +23,7 @@ export type CompileResponse = { compileId: string, status: CompileStatus,
  */
 pdfPath: string | null, changedPages: Array<number>, pageCount: number, durationMs: number, diagnostics: Array<Diagnostic>, 
 /**
- * Bare package/class names (no extension), populated only when `status` is
- * `"packages-missing"`.
+ * Bare package/class names (no extension), populated only when `status` is `"packages-missing"`.
  */
 missingPackages: Array<string>, 
 /**
@@ -60,8 +57,7 @@ export type CompletionRequest = { projectId: string, uri: string, position: Posi
 export type CoreEvent = { "kind": "compile-started", compileId: string, } | { "kind": "compile-progress", compileId: string, phase: CompilePhase, pass: number, } | { "kind": "compile-finished", result: CompileResponse, } | { "kind": "files-changed", projectId: string, uris: Array<string>, } | { "kind": "index-updated", projectId: string, } | { "kind": "bundle-fetch", package: string, bytes: number, done: boolean, };
 
 /**
- * `engine`/`version` are `None` together iff `available` is `false` -- there's no partial state
- * where an engine was found but couldn't be identified.
+ * `engine`/`version` are `None` together iff `available` is `false`.
  */
 export type DetectSystemTexResponse = { available: boolean, engine: SystemTexEngine | null, version: string | null, };
 
@@ -84,9 +80,7 @@ export type DiagnosticRange = { start: Position, end: Position, };
 export type DirtyBuffer = { uri: string, text: string, };
 
 /**
- * `name` is the package/class name, not a filename -- what the missing-package UI (task 4.4)
- * shows. `bytes` is the real downloaded size, known only after the fact -- nothing in
- * Tectonic's own bundle API exposes a file's size ahead of fetching it.
+ * `name` is the package/class name, not a filename. `bytes` is the real downloaded size, known only after the fact.
  */
 export type FetchedPackage = { name: string, bytes: bigint, };
 
@@ -100,9 +94,7 @@ export type FileNodeKind = "tex" | "graphic" | "bib";
 export type InstallPackageRequest = { name: string, };
 
 /**
- * `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number
- * (core is one flat directory of ~50 files shared across many packages' transitive deps, not
- * cleanly attributable one-to-one).
+ * `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number.
  */
 export type InstalledPackage = { name: string, bytes: bigint | null, source: PackageSource, };
 
@@ -114,9 +106,7 @@ export type OpenProjectResponse = { projectId: string, root: string, rootConfide
  */
 candidates: Array<string>, files: Array<FileNode>, engineAvailable: boolean, 
 /**
- * Plain-English, ready to display as-is (task 4.6) -- `null` when the project's pinned
- * bundle version matches the currently active one, or nothing was pinned yet (first open).
- * A notice only, never blocking: `openProject` still succeeds either way.
+ * Plain-English; `null` when versions match or nothing was pinned yet. Never blocks `openProject`.
  */
 bundleVersionNotice: string | null, };
 
@@ -130,9 +120,7 @@ export type OutlineNodeKind = "part" | "chapter" | "section" | "subsection" | "s
 export type OutlineRequest = { projectId: string, uri: string, };
 
 /**
- * `Core` ships in the app (task 4.1's curated bundle) and is never removable. `Cache` was
- * fetched on demand and lives in Tectonic's own local cache -- removable, task 4.5's manager
- * panel.
+ * `Core` ships in the app and is never removable; `Cache` was fetched on demand and is removable.
  */
 export type PackageSource = "core" | "cache";
 
@@ -161,9 +149,7 @@ export type SetRootRequest = { projectId: string, uri: string, };
 export type Severity = "error" | "warning" | "info";
 
 /**
- * Task 4.9: which real, working system engine `system_tex::detect()` found -- `xelatex` is
- * preferred (checked first) over `pdflatex` since Tectonic's own embedded engine is XeTeX-based,
- * so it's the closer match to what the app's users already expect from a compile.
+ * `xelatex` is preferred (checked first) since Tectonic's own embedded engine is XeTeX-based too.
  */
 export type SystemTexEngine = "xelatex" | "pdflatex";
 

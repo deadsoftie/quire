@@ -7,8 +7,7 @@ function stateAt(doc: string, pos: number): EditorState {
   return EditorState.create({ doc, selection: { anchor: pos } });
 }
 
-// mathHighlightSpans reads the parsed syntax tree, so (unlike activeParagraphRange, which is
-// purely line-based) its test state needs the real LaTeX language attached.
+// mathHighlightSpans reads the parsed syntax tree, unlike the purely line-based activeParagraphRange, so it needs the real LaTeX language attached.
 function stateWithLatex(doc: string): EditorState {
   return EditorState.create({ doc, extensions: [latexLanguage] });
 }
