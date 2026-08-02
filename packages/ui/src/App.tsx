@@ -160,6 +160,8 @@ function AppShell() {
   const saveSessionTimeoutRef = useRef<number | undefined>(undefined);
   // Guards against the save effect below firing before the session-restore effect finishes.
   const initializedRef = useRef(false);
+  // Guards the restore effect against StrictMode's dev-only double-invocation.
+  const restoreStartedRef = useRef(false);
 
   const scheduleSaveSession = useCallback(() => {
     if (saveSessionTimeoutRef.current !== undefined) window.clearTimeout(saveSessionTimeoutRef.current);
@@ -540,6 +542,8 @@ function AppShell() {
   );
 
   useEffect(() => {
+    if (restoreStartedRef.current) return;
+    restoreStartedRef.current = true;
     (async () => {
       const loaded = await window.quireDesktop.loadSession();
       const session = loaded ? normalizeSession(loaded, DEFAULT_SESSION) : null;
