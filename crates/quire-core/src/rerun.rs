@@ -1,9 +1,10 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
 use tectonic::config::PersistentConfig;
 use tectonic::driver::{OutputFormat, PassSetting, ProcessingSessionBuilder};
-use tectonic::io::{InputHandle, IoProvider, MemoryIo, OpenResult, OutputHandle};
+use tectonic::io::{FilesystemIo, InputHandle, IoProvider, MemoryIo, OpenResult, OutputHandle};
 use tectonic::status::{NoopStatusBackend, StatusBackend};
 use tectonic_bridge_core::{CoreBridgeLauncher, DriverHooks};
 use tectonic_bundles::Bundle;
@@ -172,6 +173,12 @@ fn run_bibtex_pass(
 struct XdvipdfmxIo {
     mem: MemoryIo,
     bundle: Box<dyn Bundle>,
+    // Fallback for fonts XeTeX's own layout stage resolved via the OS's native font lookup
+    // (Core Text/fontconfig) entirely outside Tectonic's bundle system -- xdvipdfmx needs the
+    // real bytes to embed them, and only ever requests an absolute path here, never a
+    // bundle-relative package name. Unrestricted (no root, absolute paths allowed): this is a
+    // local editor compiling the user's own trusted source against their own filesystem.
+    disk: FilesystemIo,
 }
 
 impl IoProvider for XdvipdfmxIo {
@@ -185,7 +192,11 @@ impl IoProvider for XdvipdfmxIo {
 
     fn input_open_name(&mut self, name: &str, status: &mut dyn StatusBackend) -> OpenResult<InputHandle> {
         match self.mem.input_open_name(name, status) {
-            OpenResult::NotAvailable => self.bundle.input_open_name(name, status),
+            OpenResult::NotAvailable => {}
+            other => return other,
+        }
+        match self.bundle.input_open_name(name, status) {
+            OpenResult::NotAvailable => self.disk.input_open_name(name, status),
             other => other,
         }
     }
@@ -206,7 +217,8 @@ fn convert_xdv_to_pdf(build_dir: &Path, bundle_factory: &BundleFactory) -> Resul
 
     let mut mem = MemoryIo::new(true);
     mem.create_entry("texput.xdv", xdv);
-    let mut driver = XdvipdfmxDriver(XdvipdfmxIo { mem, bundle });
+    let disk = FilesystemIo::new(Path::new("/"), false, true, HashSet::new());
+    let mut driver = XdvipdfmxDriver(XdvipdfmxIo { mem, bundle, disk });
 
     {
         let mut launcher = CoreBridgeLauncher::new(&mut driver, &mut status);
