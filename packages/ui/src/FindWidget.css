@@ -1,0 +1,117 @@
+.find-widget {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.find-widget__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.find-widget__disclosure,
+.find-widget__disclosure-spacer {
+  flex-shrink: 0;
+  width: 20px;
+  height: 28px;
+}
+
+.find-widget__disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--type-lo);
+  cursor: pointer;
+}
+
+.find-widget__disclosure:hover {
+  color: var(--type-mid);
+}
+
+.find-widget__input {
+  width: 220px;
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-900);
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+}
+
+.find-widget__input:focus {
+  outline: none;
+  border-color: var(--nonrepro);
+}
+
+.find-widget__count {
+  min-width: 64px;
+  color: var(--type-lo);
+  font-size: var(--t-xs);
+  text-align: right;
+}
+
+.find-widget__toggle,
+.find-widget__icon-button {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-lo);
+  cursor: pointer;
+}
+
+.find-widget__toggle:hover,
+.find-widget__icon-button:hover:not(:disabled) {
+  color: var(--type-mid);
+  background: var(--ink-700);
+}
+
+.find-widget__toggle--active {
+  color: var(--nonrepro);
+  background: var(--nonrepro-dim);
+}
+
+.find-widget__icon-button:disabled {
+  color: var(--ink-600);
+  cursor: default;
+}
+
+.find-widget__text-button {
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.find-widget__text-button:hover:not(:disabled) {
+  background: var(--ink-700);
+}
+
+.find-widget__text-button:disabled {
+  color: var(--type-lo);
+  cursor: default;
+}

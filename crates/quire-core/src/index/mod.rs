@@ -710,6 +710,42 @@ fn walk_project_files(
     }
 }
 
+/// Every `.tex`/`.bib` file under `project_dir`, absolute paths, same skip-list as `find_path_candidates` -- used by project-wide search/replace only.
+pub(crate) fn all_searchable_files(project_dir: &Path) -> Vec<PathBuf> {
+    let mut visited = HashSet::new();
+    let mut files = Vec::new();
+    walk_searchable_files(project_dir, &mut visited, &mut files);
+    files.sort();
+    files
+}
+
+fn walk_searchable_files(dir: &Path, visited: &mut HashSet<PathBuf>, files: &mut Vec<PathBuf>) {
+    let Ok(real_dir) = dir.canonicalize() else {
+        return;
+    };
+    if !visited.insert(real_dir) {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if project::SKIP_NAMES.contains(&name.to_string_lossy().as_ref()) {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            walk_searchable_files(&path, visited, files);
+            continue;
+        }
+        let Some(ext) = path.extension() else { continue };
+        if ext.eq_ignore_ascii_case("tex") || ext.eq_ignore_ascii_case("bib") {
+            files.push(path);
+        }
+    }
+}
+
 /// Byte offset -> `Position` (0-based line, 0-based UTF-16 units), CodeMirror/LSP convention.
 fn position_at(content: &str, byte_offset: usize) -> Position {
     let mut line = 0u32;

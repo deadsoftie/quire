@@ -54,6 +54,9 @@ function buildMenu() {
         { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => sendMenuCommand("editor.undo") },
         { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", click: () => sendMenuCommand("editor.redo") },
         { type: "separator" },
+        { label: "Find", accelerator: "CmdOrCtrl+F", click: () => sendMenuCommand("editor.find") },
+        { label: "Find and Replace", accelerator: "CmdOrCtrl+Alt+F", click: () => sendMenuCommand("editor.find-replace") },
+        { type: "separator" },
         // Cut/copy/paste/select-all DO work correctly via native roles -- CM6 integrates with browser clipboard events for these.
         { role: "cut" },
         { role: "copy" },
@@ -68,6 +71,7 @@ function buildMenu() {
       submenu: [
         // Parity with the command palette -- checkbox state is kept in sync by updateViewMenuChecks, since Electron menus don't reactively bind on their own.
         { id: "view.file-tree", label: "Show Explorer", type: "checkbox", accelerator: "CmdOrCtrl+1", click: () => sendMenuCommand("panel.file-tree") },
+        { id: "view.search", label: "Show Search", type: "checkbox", accelerator: "CmdOrCtrl+Shift+F", click: () => sendMenuCommand("panel.search") },
         { id: "view.outline", label: "Show Outline", type: "checkbox", accelerator: "CmdOrCtrl+2", click: () => sendMenuCommand("panel.outline") },
         { id: "view.problems", label: "Show Problems", type: "checkbox", accelerator: "CmdOrCtrl+3", click: () => sendMenuCommand("panel.problems") },
         { id: "view.packages", label: "Show Packages", type: "checkbox", click: () => sendMenuCommand("panel.packages") },
@@ -97,6 +101,7 @@ function buildMenu() {
 // Keys match exactly what App.tsx's reportViewState effect sends -- deliberate duplication, no shared TS import possible here.
 const VIEW_MENU_CHECK_IDS = {
   "file-tree": "view.file-tree",
+  search: "view.search",
   outline: "view.outline",
   problems: "view.problems",
   packages: "view.packages",
@@ -227,6 +232,8 @@ app.whenReady().then(() => {
   ipcMain.handle("core:removePackage", (_event, name) => client.removePackage(name));
   ipcMain.handle("core:readFile", (_event, uri) => client.readFile(uri));
   ipcMain.handle("core:writeFile", (_event, uri, text) => client.writeFile(uri, text));
+  ipcMain.handle("core:searchProject", (_event, r) => client.searchProject(r));
+  ipcMain.handle("core:replaceInProject", (_event, r) => client.replaceInProject(r));
 
   ipcMain.handle("desktop:chooseProjectFolder", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });

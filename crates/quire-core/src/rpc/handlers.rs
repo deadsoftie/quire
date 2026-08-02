@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, fs};
 
+use regex::Regex;
+
 use crate::project::{self, FileKind};
 use crate::rerun::compile_latex_in_dir;
 use crate::rpc::*;
@@ -499,6 +501,98 @@ pub fn read_file(req: &ReadFileRequest) -> Result<String, CompileError> {
 pub fn write_file(req: &WriteFileRequest) -> Result<(), CompileError> {
     fs::write(&req.uri, &req.text)?;
     Ok(())
+}
+
+const MAX_SEARCH_MATCHES: usize = 5000;
+
+/// Escapes/wraps a literal query into a regex when `regex` is false; a bad user-supplied regex surfaces as a normal RPC error.
+fn build_search_regex(query: &str, case_sensitive: bool, whole_word: bool, regex: bool) -> Result<Regex, CompileError> {
+    let core = if regex { query.to_string() } else { regex::escape(query) };
+    let bounded = if whole_word { format!(r"\b(?:{core})\b") } else { core };
+    let pattern = if case_sensitive { bounded } else { format!("(?i){bounded}") };
+    Regex::new(&pattern).map_err(|e| CompileError { message: format!("invalid search pattern: {e}"), log: None })
+}
+
+pub fn search_project(req: &SearchProjectRequest) -> Result<SearchProjectResponse, CompileError> {
+    if req.query.is_empty() {
+        return Ok(SearchProjectResponse { matches: Vec::new(), truncated: false });
+    }
+
+    let project_dir = PathBuf::from(&req.project_id);
+    let dirty: HashMap<PathBuf, &str> =
+        req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
+    let pattern = build_search_regex(&req.query, req.case_sensitive, req.whole_word, req.regex)?;
+
+    let mut matches = Vec::new();
+    let mut truncated = false;
+    'files: for path in crate::index::all_searchable_files(&project_dir) {
+        // Unreadable (e.g. binary/corrupt) files are skipped, not fatal to the whole search.
+        let content = match dirty.get(&path) {
+            Some(text) => text.to_string(),
+            None => match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            },
+        };
+        let uri = path.display().to_string();
+
+        for (line_idx, line) in content.lines().enumerate() {
+            for m in pattern.find_iter(line) {
+                if matches.len() >= MAX_SEARCH_MATCHES {
+                    truncated = true;
+                    break 'files;
+                }
+                matches.push(SearchMatch {
+                    uri: uri.clone(),
+                    line: line_idx as u32,
+                    column: line[..m.start()].encode_utf16().count() as u32,
+                    line_text: line.to_string(),
+                    match_length: line[m.start()..m.end()].encode_utf16().count() as u32,
+                });
+            }
+        }
+    }
+
+    Ok(SearchProjectResponse { matches, truncated })
+}
+
+pub fn replace_in_project(req: &ReplaceInProjectRequest) -> Result<ReplaceInProjectResponse, CompileError> {
+    if req.query.is_empty() {
+        return Ok(ReplaceInProjectResponse { files: Vec::new() });
+    }
+
+    let project_dir = PathBuf::from(&req.project_id);
+    let dirty: HashMap<PathBuf, &str> =
+        req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
+    let pattern = build_search_regex(&req.query, req.case_sensitive, req.whole_word, req.regex)?;
+
+    let mut files = Vec::new();
+    for path in crate::index::all_searchable_files(&project_dir) {
+        let content = match dirty.get(&path) {
+            Some(text) => text.to_string(),
+            None => match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            },
+        };
+
+        let replacements = pattern.find_iter(&content).count();
+        if replacements == 0 {
+            continue;
+        }
+
+        // NoExpand for the literal case: $1-style expansion applies to the replacement text regardless of pattern.
+        let new_text = if req.regex {
+            pattern.replace_all(&content, req.replacement.as_str()).into_owned()
+        } else {
+            pattern.replace_all(&content, regex::NoExpand(&req.replacement)).into_owned()
+        };
+
+        fs::write(&path, &new_text)?;
+        files.push(ReplacedFile { uri: path.display().to_string(), replacements: replacements as u32, new_text });
+    }
+
+    Ok(ReplaceInProjectResponse { files })
 }
 
 #[cfg(test)]

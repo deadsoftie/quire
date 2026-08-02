@@ -88,6 +88,8 @@ fn handle_request(req: Request) -> Value {
         "removePackage" => dispatch(req.id, req.params, |p| handlers::remove_package(&p)),
         "readFile" => dispatch(req.id, req.params, |p| handlers::read_file(&p)),
         "writeFile" => dispatch(req.id, req.params, |p| handlers::write_file(&p)),
+        "searchProject" => dispatch(req.id, req.params, |p| handlers::search_project(&p)),
+        "replaceInProject" => dispatch(req.id, req.params, |p| handlers::replace_in_project(&p)),
         other => json!({
             "jsonrpc": "2.0",
             "id": req.id,

@@ -4,6 +4,7 @@ import { autocompletion, snippet } from "@codemirror/autocomplete";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import { redo as cmRedo, undo as cmUndo } from "@codemirror/commands";
 import { linter, lintGutter, setDiagnostics as setLintDiagnostics } from "@codemirror/lint";
+import { search } from "@codemirror/search";
 import type { Diagnostic } from "@quire/client";
 import { useCommand } from "./commands/CommandContext";
 import { toEditorDiagnostics } from "./diagnostics";
@@ -18,6 +19,7 @@ import {
   wordWrapCompartment,
 } from "./editorModes";
 import { environmentSync } from "./environmentSync";
+import { neutralizeDefaultSearchKeymap } from "./findKeymap";
 import { formatLatex } from "./latex/formatter";
 import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
@@ -176,6 +178,8 @@ interface EditorProps {
   onCursorActivity?: (cursor: number, scrollTop: number, line: number, column: number) => void;
   // Already filtered to this file's own uri -- Editor doesn't know about other open tabs.
   diagnostics?: Diagnostic[];
+  /** ⌘F/⌥⌘F while the editor has focus -- see findKeymap.ts for why this can't just rely on the native menu accelerator. */
+  onFindShortcut?: (withReplace: boolean) => void;
 }
 
 export interface EditorHandle {
@@ -183,6 +187,8 @@ export interface EditorHandle {
   replaceContent(newText: string): void;
   /** Moves the cursor to a 0-based line/column (clamped to the document), scrolls it into view, and focuses the editor. */
   revealPosition(line: number, column: number): void;
+  /** Escape hatch for FindWidget to drive @codemirror/search's own functions directly against the live view. */
+  getView(): EditorView | null;
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
@@ -199,6 +205,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     onChange,
     onCursorActivity,
     diagnostics,
+    onFindShortcut,
   },
   ref,
 ) {
@@ -208,6 +215,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   onChangeRef.current = onChange;
   const onCursorActivityRef = useRef(onCursorActivity);
   onCursorActivityRef.current = onCursorActivity;
+  const onFindShortcutRef = useRef(onFindShortcut);
+  onFindShortcutRef.current = onFindShortcut;
 
   // Shared by the manual "Format Document" command and the format-on-save imperative handle -- one dispatch helper, two entry points.
   function applyFormatted(newText?: string) {
@@ -229,7 +238,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     view.focus();
   }
 
-  useImperativeHandle(ref, () => ({ replaceContent: applyFormatted, revealPosition }), []);
+  useImperativeHandle(ref, () => ({ replaceContent: applyFormatted, revealPosition, getView: () => viewRef.current }), []);
 
   // No keybinding: basicSetup's historyKeymap already binds ⌘Z/⇧⌘Z; these exist so the native Edit menu and palette have something to dispatch into.
   useCommand({
@@ -270,6 +279,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         latex(),
         mathHighlightExtension(),
         environmentSync(),
+        // basicSetup only splices searchKeymap's bindings into its own keymap, not the search() extension
+        // itself -- this installs the state field FindWidget drives, without ever mounting CM6's own panel.
+        search(),
+        neutralizeDefaultSearchKeymap((withReplace) => onFindShortcutRef.current?.(withReplace)),
         linter(null),
         lintGutter(),
         autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] }),

@@ -419,3 +419,67 @@ pub struct WriteFileRequest {
     pub uri: DocUri,
     pub text: String,
 }
+
+// ---------- Search ----------
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct SearchProjectRequest {
+    pub project_id: ProjectId,
+    pub query: String,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    pub regex: bool,
+    pub dirty_buffers: Vec<DirtyBuffer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct SearchMatch {
+    pub uri: DocUri,
+    pub line: u32,
+    pub column: u32,
+    pub line_text: String,
+    pub match_length: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct SearchProjectResponse {
+    pub matches: Vec<SearchMatch>,
+    /// True when the match count hit the internal cap -- the list isn't exhaustive.
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct ReplaceInProjectRequest {
+    pub project_id: ProjectId,
+    pub query: String,
+    pub replacement: String,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    pub regex: bool,
+    pub dirty_buffers: Vec<DirtyBuffer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct ReplacedFile {
+    pub uri: DocUri,
+    pub replacements: u32,
+    /// Full new file content, so the client can refresh an open tab's buffer without a second readFile round trip.
+    pub new_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct ReplaceInProjectResponse {
+    pub files: Vec<ReplacedFile>,
+}

@@ -15,6 +15,10 @@ import type {
   OpenProjectResponse,
   OutlineNode,
   PrefetchPackagesResponse,
+  ReplaceInProjectRequest,
+  ReplaceInProjectResponse,
+  SearchProjectRequest,
+  SearchProjectResponse,
 } from "./contract";
 import { ProjectWatcher } from "./projectWatcher";
 import { runOnce, type SidecarCall } from "./sidecarProcess";
@@ -122,6 +126,14 @@ export class StdioTransport implements CoreApi {
 
   async writeFile(uri: DocUri, text: string): Promise<void> {
     await runOnce("writeFile", { uri, text }).promise;
+  }
+
+  async searchProject(r: SearchProjectRequest): Promise<SearchProjectResponse> {
+    return (await runOnce("searchProject", r).promise) as SearchProjectResponse;
+  }
+
+  async replaceInProject(r: ReplaceInProjectRequest): Promise<ReplaceInProjectResponse> {
+    return (await runOnce("replaceInProject", r).promise) as ReplaceInProjectResponse;
   }
 
   onEvent(handler: (e: CoreEvent) => void): () => void {

@@ -142,7 +142,27 @@ export type ReadFileRequest = { uri: string, };
 
 export type RemovePackageRequest = { name: string, };
 
+export type ReplaceInProjectRequest = { projectId: string, query: string, replacement: string, caseSensitive: boolean, wholeWord: boolean, regex: boolean, dirtyBuffers: Array<DirtyBuffer>, };
+
+export type ReplaceInProjectResponse = { files: Array<ReplacedFile>, };
+
+export type ReplacedFile = { uri: string, replacements: number, 
+/**
+ * Full new file content, so the client can refresh an open tab's buffer without a second readFile round trip.
+ */
+newText: string, };
+
 export type RootConfidence = "explicit" | "inferred" | "ambiguous";
+
+export type SearchMatch = { uri: string, line: number, column: number, lineText: string, matchLength: number, };
+
+export type SearchProjectRequest = { projectId: string, query: string, caseSensitive: boolean, wholeWord: boolean, regex: boolean, dirtyBuffers: Array<DirtyBuffer>, };
+
+export type SearchProjectResponse = { matches: Array<SearchMatch>, 
+/**
+ * True when the match count hit the internal cap -- the list isn't exhaustive.
+ */
+truncated: boolean, };
 
 export type SetRootRequest = { projectId: string, uri: string, };
 

@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CompileReason, CompileResponse, CoreEvent, DetectSystemTexResponse, Diagnostic, FileNode } from "@quire/client";
+import type {
+  CompileReason,
+  CompileResponse,
+  CoreEvent,
+  DetectSystemTexResponse,
+  Diagnostic,
+  FileNode,
+  ReplacedFile,
+  SearchMatch,
+} from "@quire/client";
 import { Plus } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
+import { FindWidget } from "./FindWidget";
+import type { FindWidgetHandle } from "./FindWidget";
 import { formatLatex } from "./latex/formatter";
 import { useMenuBridge } from "./menuBridge";
 import { buildFileTree } from "./panels/fileTree";
@@ -13,6 +24,7 @@ import { FileTreePanel } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
 import { formatBytes, PackagesPanel } from "./panels/PackagesPanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
+import { SearchPanel } from "./panels/SearchPanel";
 import type { PanelKind } from "./panels/types";
 import { ExportDialog } from "./ExportDialog";
 import { MissingPackagesCard } from "./MissingPackagesCard";
@@ -76,6 +88,7 @@ interface OpenTab {
 
 const PANEL_TITLES: Record<PanelKind, string> = {
   "file-tree": "Explorer",
+  search: "Search",
   outline: "Outline",
   problems: "Problems",
   packages: "Packages",
@@ -151,6 +164,7 @@ function AppShell() {
   // tabsRef is authoritative and updated outside React state; `tabs` state only exists to repaint the tab bar.
   const tabsRef = useRef<OpenTab[]>([]);
   const editorRef = useRef<EditorHandle>(null);
+  const findWidgetRef = useRef<FindWidgetHandle>(null);
   // Set only when a diagnostic click targets a file that isn't the active tab; the reveal is deferred to the effect below.
   const pendingRevealRef = useRef<{ uri: string; line: number; column: number } | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
@@ -340,19 +354,25 @@ function AppShell() {
     [runCompile],
   );
 
-  const revealDiagnostic = useCallback(
-    (diagnostic: Diagnostic) => {
-      if (!diagnostic.uri) return;
-      const { line, column } = diagnostic.range?.start ?? { line: 0, column: 0 };
-      if (diagnostic.uri === activeUri) {
+  const revealAt = useCallback(
+    (uri: string | null | undefined, line: number, column: number) => {
+      if (!uri) return;
+      if (uri === activeUri) {
         editorRef.current?.revealPosition(line, column);
         return;
       }
-      pendingRevealRef.current = { uri: diagnostic.uri, line, column };
-      openTab(diagnostic.uri);
+      pendingRevealRef.current = { uri, line, column };
+      openTab(uri);
     },
     [activeUri, openTab],
   );
+
+  const revealDiagnostic = useCallback(
+    (diagnostic: Diagnostic) => revealAt(diagnostic.uri, diagnostic.range?.start.line ?? 0, diagnostic.range?.start.column ?? 0),
+    [revealAt],
+  );
+
+  const revealSearchMatch = useCallback((match: SearchMatch) => revealAt(match.uri, match.line, match.column), [revealAt]);
 
   // Consumed on the very next activeUri change; a reveal whose openTab failed is simply dropped, never misapplied.
   useEffect(() => {
@@ -412,6 +432,24 @@ function AppShell() {
       closeTab(uri);
     },
     [saveTab, closeTab],
+  );
+
+  // replace_in_project already wrote each file to disk; this only reconciles open tabs so they read as clean.
+  const applyReplaceResults = useCallback(
+    (files: ReplacedFile[]) => {
+      if (files.length === 0) return;
+      const byUri = new Map(files.map((f) => [f.uri, f]));
+      const next = tabsRef.current.map((t) => {
+        const replaced = byUri.get(t.uri);
+        if (!replaced) return t;
+        if (t.uri === activeUri) editorRef.current?.replaceContent(replaced.newText);
+        return { ...t, text: replaced.newText, savedText: replaced.newText };
+      });
+      tabsRef.current = next;
+      setTabs(next);
+      runCompile("edit");
+    },
+    [activeUri, runCompile],
   );
 
   // Shared batch-confirmation for "Close Folder" and "Close All Files"; returns false on Cancel.
@@ -659,6 +697,7 @@ function AppShell() {
     if (!initializedRef.current) return;
     window.quireDesktop.reportViewState({
       "file-tree": sidebarSection === "file-tree",
+      search: sidebarSection === "search",
       outline: sidebarSection === "outline",
       problems: sidebarSection === "problems",
       packages: sidebarSection === "packages",
@@ -813,6 +852,21 @@ function AppShell() {
   });
 
   useCommand({
+    id: "editor.find",
+    title: "Find",
+    shortcut: "⌘F",
+    // No keybinding: see project.open's comment above.
+    run: () => findWidgetRef.current?.open(false),
+  });
+  useCommand({
+    id: "editor.find-replace",
+    title: "Find and Replace",
+    shortcut: "⌥⌘F",
+    // No keybinding: see project.open's comment above.
+    run: () => findWidgetRef.current?.open(true),
+  });
+
+  useCommand({
     id: "layout.reset-split",
     title: "Reset Editor/Preview Split",
     run: () => setSplitFraction(0.5),
@@ -870,6 +924,12 @@ function AppShell() {
     run: () => toggleSidebarSection("file-tree"),
   });
   useCommand({
+    id: "panel.search",
+    title: "Show Search",
+    shortcut: "⌘⇧F",
+    run: () => toggleSidebarSection("search"),
+  });
+  useCommand({
     id: "panel.outline",
     title: "Show Outline",
     shortcut: "⌘2",
@@ -895,6 +955,15 @@ function AppShell() {
             tree={buildFileTree(project?.files ?? [], project?.projectId ?? "")}
             activeUri={activeUri}
             onSelectFile={openTab}
+          />
+        );
+      case "search":
+        return (
+          <SearchPanel
+            projectId={project?.projectId ?? ""}
+            dirtyBuffers={tabsRef.current.map((t) => ({ uri: t.uri, text: t.text }))}
+            onSelectMatch={revealSearchMatch}
+            onReplaceAll={applyReplaceResults}
           />
         );
       case "outline":
@@ -1009,10 +1078,12 @@ function AppShell() {
                     onChange={scheduleCompile}
                     onCursorActivity={handleCursorActivity}
                     diagnostics={editorDiagnostics}
+                    onFindShortcut={(withReplace) => findWidgetRef.current?.open(withReplace)}
                   />
                 ) : (
                   <p className="app__pane-empty">No file open. Select one from Explorer, or ⌘N for a new file.</p>
                 )}
+                <FindWidget ref={findWidgetRef} editorRef={editorRef} activeUri={activeTab?.uri ?? null} />
               </div>
               <Seam
                 state={seamState}

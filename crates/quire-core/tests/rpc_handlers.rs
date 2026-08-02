@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use quire_core::rpc::handlers::{compile, open_project, prefetch_packages};
+use quire_core::rpc::handlers::{compile, open_project, prefetch_packages, replace_in_project, search_project};
 use quire_core::rpc::{
     CompileEngine, CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest,
-    PrefetchPackagesRequest, RootConfidence,
+    PrefetchPackagesRequest, ReplaceInProjectRequest, RootConfidence, SearchProjectRequest,
 };
 
 fn copy_dir(src: &Path, dst: &Path) {
@@ -26,6 +26,36 @@ fn fresh_project_copy(fixture: &str, name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&dst);
     copy_dir(&src, &dst);
     dst
+}
+
+fn fresh_empty_project(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("quire-core-rpc-handlers-test-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn search_request(project_id: &str, query: &str) -> SearchProjectRequest {
+    SearchProjectRequest {
+        project_id: project_id.to_string(),
+        query: query.to_string(),
+        case_sensitive: false,
+        whole_word: false,
+        regex: false,
+        dirty_buffers: Vec::new(),
+    }
+}
+
+fn replace_request(project_id: &str, query: &str, replacement: &str) -> ReplaceInProjectRequest {
+    ReplaceInProjectRequest {
+        project_id: project_id.to_string(),
+        query: query.to_string(),
+        replacement: replacement.to_string(),
+        case_sensitive: false,
+        whole_word: false,
+        regex: false,
+        dirty_buffers: Vec::new(),
+    }
 }
 
 #[test]
@@ -307,6 +337,146 @@ fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
         !resp.changed_pages.is_empty(),
         "editing a subfile that's actually included should register as a content change"
     );
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn search_project_finds_matches_across_multiple_files_and_reports_correct_positions() {
+    let project_dir = fresh_project_copy("compile_multi_file", "search-multi-file");
+    let project_id = project_dir.display().to_string();
+
+    let resp = search_project(&search_request(&project_id, "content")).expect("search should succeed");
+
+    assert_eq!(resp.matches.len(), 2, "{:?}", resp.matches);
+    assert!(!resp.truncated);
+
+    let intro = resp.matches.iter().find(|m| m.uri.ends_with("intro.tex")).expect("intro.tex should match");
+    assert_eq!(intro.line, 0);
+    assert_eq!(intro.column, 6, "\"Intro \" is 6 UTF-16 units before \"content\"");
+    assert_eq!(intro.match_length, 7);
+    assert_eq!(intro.line_text, "Intro content.");
+
+    let middle = resp.matches.iter().find(|m| m.uri.ends_with("middle.tex")).expect("middle.tex should match");
+    assert_eq!(middle.column, 7, "\"Middle \" is 7 UTF-16 units before \"content\"");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn search_project_prefers_dirty_buffer_text_over_disk() {
+    let project_dir = fresh_empty_project("search-dirty");
+    fs::write(project_dir.join("main.tex"), "original disk content\n").unwrap();
+    let project_id = project_dir.display().to_string();
+    let main_uri = project_dir.join("main.tex").display().to_string();
+
+    let req = SearchProjectRequest {
+        dirty_buffers: vec![DirtyBuffer { uri: main_uri, text: "unsaved-only-term appears here\n".to_string() }],
+        ..search_request(&project_id, "unsaved-only-term")
+    };
+    let resp = search_project(&req).expect("search should succeed");
+
+    assert_eq!(resp.matches.len(), 1, "{:?}", resp.matches);
+
+    let on_disk = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    assert!(!on_disk.contains("unsaved-only-term"), "search must not itself write the dirty buffer to disk");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn search_project_whole_word_option_excludes_partial_matches() {
+    let project_dir = fresh_empty_project("search-whole-word");
+    fs::write(project_dir.join("main.tex"), "Cat cats category\n").unwrap();
+    let project_id = project_dir.display().to_string();
+
+    let without = search_project(&search_request(&project_id, "cat")).unwrap();
+    assert_eq!(without.matches.len(), 3, "case-insensitive substring match should hit Cat, cats, category: {:?}", without.matches);
+
+    let with = SearchProjectRequest { whole_word: true, ..search_request(&project_id, "cat") };
+    let resp = search_project(&with).unwrap();
+    assert_eq!(resp.matches.len(), 1, "whole_word must reject cats/category as partial matches: {:?}", resp.matches);
+    assert_eq!(resp.matches[0].column, 0);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn search_project_case_sensitive_option_excludes_different_case() {
+    let project_dir = fresh_empty_project("search-case-sensitive");
+    fs::write(project_dir.join("main.tex"), "Cat\ncat\n").unwrap();
+    let project_id = project_dir.display().to_string();
+
+    let insensitive = search_project(&search_request(&project_id, "Cat")).unwrap();
+    assert_eq!(insensitive.matches.len(), 2, "{:?}", insensitive.matches);
+
+    let sensitive = SearchProjectRequest { case_sensitive: true, ..search_request(&project_id, "Cat") };
+    let resp = search_project(&sensitive).unwrap();
+    assert_eq!(resp.matches.len(), 1, "{:?}", resp.matches);
+    assert_eq!(resp.matches[0].line, 0);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn search_project_rejects_invalid_regex_with_a_compile_error() {
+    let project_dir = fresh_empty_project("search-bad-regex");
+    fs::write(project_dir.join("main.tex"), "anything\n").unwrap();
+    let project_id = project_dir.display().to_string();
+
+    let req = SearchProjectRequest { regex: true, ..search_request(&project_id, "(unclosed") };
+    let err = search_project(&req).expect_err("an invalid regex must be a normal RPC error, not a panic");
+    assert!(err.message.contains("invalid search pattern"), "{}", err.message);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn replace_in_project_rewrites_matching_files_on_disk_and_returns_new_text() {
+    let project_dir = fresh_empty_project("replace-basic");
+    fs::write(project_dir.join("main.tex"), "Hello world\nHello there\n").unwrap();
+    let project_id = project_dir.display().to_string();
+
+    let resp = replace_in_project(&replace_request(&project_id, "Hello", "Goodbye")).expect("replace should succeed");
+
+    assert_eq!(resp.files.len(), 1, "{:?}", resp.files);
+    let file = &resp.files[0];
+    assert_eq!(file.replacements, 2);
+    assert_eq!(file.new_text, "Goodbye world\nGoodbye there\n");
+
+    let on_disk = fs::read_to_string(project_dir.join("main.tex")).unwrap();
+    assert_eq!(on_disk, file.new_text);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn replace_in_project_literal_dollar_sign_is_inserted_verbatim_not_expanded() {
+    let project_dir = fresh_empty_project("replace-literal-dollar");
+    fs::write(project_dir.join("main.tex"), "price: 10\n").unwrap();
+    let project_id = project_dir.display().to_string();
+
+    // Non-regex mode: `$5` in the replacement must be inserted literally, not treated as a capture-group reference.
+    let resp = replace_in_project(&replace_request(&project_id, "price", "$5 total")).expect("replace should succeed");
+
+    assert_eq!(resp.files.len(), 1, "{:?}", resp.files);
+    assert_eq!(resp.files[0].new_text, "$5 total: 10\n");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn replace_in_project_skips_files_with_zero_matches() {
+    let project_dir = fresh_project_copy("compile_multi_file", "replace-skip-zero");
+    let project_id = project_dir.display().to_string();
+
+    // "Intro content" (not just "Intro") -- main.tex's own \input{chapters/intro} also literally
+    // contains "intro", which a case-insensitive query for the bare word would otherwise also match.
+    let resp =
+        replace_in_project(&replace_request(&project_id, "Intro content", "Chapter content")).expect("replace should succeed");
+
+    assert_eq!(resp.files.len(), 1, "only intro.tex contains \"Intro content\": {:?}", resp.files);
+    assert!(resp.files[0].uri.ends_with("intro.tex"));
 
     fs::remove_dir_all(&project_dir).ok();
 }

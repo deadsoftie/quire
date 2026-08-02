@@ -5,6 +5,7 @@ import type { SessionState } from "./session";
 // Keys matter exactly to apps/desktop/src/main.js's VIEW_MENU_CHECK_IDS -- deliberate duplication across the Electron boundary.
 interface ViewMenuState {
   "file-tree": boolean;
+  search: boolean;
   outline: boolean;
   problems: boolean;
   packages: boolean;

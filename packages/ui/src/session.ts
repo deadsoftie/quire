@@ -1,6 +1,6 @@
 import type { PanelKind } from "./panels/types";
 
-const PANEL_KINDS: PanelKind[] = ["file-tree", "outline", "problems", "packages"];
+const PANEL_KINDS: PanelKind[] = ["file-tree", "search", "outline", "problems", "packages"];
 
 export interface SessionState {
   /** `null` means no project is open (the empty/Welcome state) -- there's nothing to reopen. */

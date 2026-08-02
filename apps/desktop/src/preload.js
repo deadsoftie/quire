@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("quire", {
   removePackage: invoke("core:removePackage"),
   readFile: invoke("core:readFile"),
   writeFile: invoke("core:writeFile"),
+  searchProject: invoke("core:searchProject"),
+  replaceInProject: invoke("core:replaceInProject"),
   // Returns an unsubscribe function.
   onEvent: (handler) => {
     const listener = (_event, coreEvent) => handler(coreEvent);
