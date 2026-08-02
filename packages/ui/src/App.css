@@ -5,6 +5,15 @@
   height: 100%;
 }
 
+/* Draggable macOS traffic-light strip; height/color must stay in sync with main.js's trafficLightPosition and backgroundColor. */
+.app__titlebar {
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--ink-900);
+  border-bottom: var(--seam) solid var(--ink-600);
+  -webkit-app-region: drag;
+}
+
 .app__body {
   display: flex;
   flex: 1;

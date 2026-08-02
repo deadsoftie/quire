@@ -911,12 +911,25 @@ function AppShell() {
 
   return (
     <div className="app">
+      <div className="app__titlebar" />
       <CommandPalette />
       {settingsOpen && (
         <SettingsDialog
           systemTexStatus={systemTexStatus}
           useSystemTex={useSystemTex}
           onToggleSystemTex={setUseSystemTex}
+          focusMode={focusMode}
+          onToggleFocusMode={setFocusMode}
+          typewriterMode={typewriterMode}
+          onToggleTypewriterMode={setTypewriterMode}
+          proseMode={proseMode}
+          onToggleProseMode={setProseMode}
+          wordWrap={wordWrap}
+          onToggleWordWrap={setWordWrap}
+          lightTheme={theme === "light"}
+          onToggleLightTheme={(value) => setTheme(value ? "light" : "dark")}
+          pdfInverted={pdfInverted}
+          onTogglePdfInverted={setPdfInverted}
           onClose={() => setSettingsOpen(false)}
         />
       )}

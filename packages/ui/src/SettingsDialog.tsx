@@ -7,10 +7,39 @@ interface SettingsDialogProps {
   systemTexStatus: DetectSystemTexResponse | null;
   useSystemTex: boolean;
   onToggleSystemTex: (value: boolean) => void;
+  focusMode: boolean;
+  onToggleFocusMode: (value: boolean) => void;
+  typewriterMode: boolean;
+  onToggleTypewriterMode: (value: boolean) => void;
+  proseMode: boolean;
+  onToggleProseMode: (value: boolean) => void;
+  wordWrap: boolean;
+  onToggleWordWrap: (value: boolean) => void;
+  lightTheme: boolean;
+  onToggleLightTheme: (value: boolean) => void;
+  pdfInverted: boolean;
+  onTogglePdfInverted: (value: boolean) => void;
   onClose: () => void;
 }
 
-export function SettingsDialog({ systemTexStatus, useSystemTex, onToggleSystemTex, onClose }: SettingsDialogProps) {
+export function SettingsDialog({
+  systemTexStatus,
+  useSystemTex,
+  onToggleSystemTex,
+  focusMode,
+  onToggleFocusMode,
+  typewriterMode,
+  onToggleTypewriterMode,
+  proseMode,
+  onToggleProseMode,
+  wordWrap,
+  onToggleWordWrap,
+  lightTheme,
+  onToggleLightTheme,
+  pdfInverted,
+  onTogglePdfInverted,
+  onClose,
+}: SettingsDialogProps) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -52,6 +81,40 @@ export function SettingsDialog({ systemTexStatus, useSystemTex, onToggleSystemTe
                 ? `Detected: ${systemTexStatus.engine === "xelatex" ? "XeLaTeX" : "pdfLaTeX"} (${systemTexStatus.version})`
                 : "No TeX Live or MiKTeX installation was found on your system."}
           </p>
+
+          <span className="settings-dialog__section-title">View</span>
+          <label className="settings-dialog__row">
+            <input type="checkbox" checked={focusMode} onChange={(event) => onToggleFocusMode(event.target.checked)} />
+            <span>Focus Mode</span>
+          </label>
+          <label className="settings-dialog__row">
+            <input
+              type="checkbox"
+              checked={typewriterMode}
+              onChange={(event) => onToggleTypewriterMode(event.target.checked)}
+            />
+            <span>Typewriter Scrolling</span>
+          </label>
+          <label className="settings-dialog__row">
+            <input type="checkbox" checked={proseMode} onChange={(event) => onToggleProseMode(event.target.checked)} />
+            <span>Serif Prose Mode</span>
+          </label>
+          <label className="settings-dialog__row">
+            <input type="checkbox" checked={wordWrap} onChange={(event) => onToggleWordWrap(event.target.checked)} />
+            <span>Word Wrap</span>
+          </label>
+          <label className="settings-dialog__row">
+            <input type="checkbox" checked={lightTheme} onChange={(event) => onToggleLightTheme(event.target.checked)} />
+            <span>Light Theme</span>
+          </label>
+          <label className="settings-dialog__row">
+            <input
+              type="checkbox"
+              checked={pdfInverted}
+              onChange={(event) => onTogglePdfInverted(event.target.checked)}
+            />
+            <span>Invert PDF Colors</span>
+          </label>
         </div>
       </div>
     </div>

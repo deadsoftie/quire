@@ -67,3 +67,13 @@
   color: var(--type-lo);
   font-size: var(--t-xs);
 }
+
+.settings-dialog__section-title {
+  display: block;
+  margin-top: var(--s-2);
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--type-mid);
+}
