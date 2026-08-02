@@ -6,6 +6,7 @@ import type {
   DetectSystemTexResponse,
   Diagnostic,
   FileNode,
+  OutlineNode,
   ReplacedFile,
   SearchMatch,
 } from "@quire/client";
@@ -373,6 +374,11 @@ function AppShell() {
   );
 
   const revealSearchMatch = useCallback((match: SearchMatch) => revealAt(match.uri, match.line, match.column), [revealAt]);
+
+  const revealOutlineNode = useCallback(
+    (node: OutlineNode) => revealAt(activeUri, node.position.line, node.position.column),
+    [revealAt, activeUri],
+  );
 
   // Consumed on the very next activeUri change; a reveal whose openTab failed is simply dropped, never misapplied.
   useEffect(() => {
@@ -967,7 +973,14 @@ function AppShell() {
           />
         );
       case "outline":
-        return <OutlinePanel projectId={project?.projectId ?? ""} uri={activeUri ?? ""} refreshToken={compileVersion} />;
+        return (
+          <OutlinePanel
+            projectId={project?.projectId ?? ""}
+            uri={activeUri ?? ""}
+            refreshToken={compileVersion}
+            onSelectNode={revealOutlineNode}
+          />
+        );
       case "problems":
         return <ProblemsPanel diagnostics={diagnostics} onSelect={revealDiagnostic} />;
       case "packages":
