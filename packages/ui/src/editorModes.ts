@@ -10,12 +10,20 @@ export const proseCompartment = new Compartment();
 export const typewriterCompartment = new Compartment();
 export const focusCompartment = new Compartment();
 export const wordWrapCompartment = new Compartment();
+export const appearanceCompartment = new Compartment();
 
 export function proseModeExtension(): Extension {
   return EditorView.theme({
     ".cm-content": { fontFamily: "var(--prose-font)", fontSize: "var(--prose-size)" },
     ".cm-line": { lineHeight: "var(--prose-line-height)" },
   });
+}
+
+// CodeMirror's own `{ dark }` flag scopes some of its built-in styling (e.g. the autocomplete
+// tooltip's default background) via internal `&dark`/`&light` selectors -- it has to track the
+// active theme's actual appearance, not be hardcoded, or a light theme inherits dark defaults.
+export function appearanceExtension(appearance: "dark" | "light"): Extension {
+  return EditorView.theme({}, { dark: appearance === "dark" });
 }
 
 // ViewPlugin, not a plain updateListener, so destroy() can cancel an in-flight rAF before it dispatches to a dead view.

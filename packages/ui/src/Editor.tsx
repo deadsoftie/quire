@@ -9,6 +9,8 @@ import type { Diagnostic } from "@quire/client";
 import { useCommand } from "./commands/CommandContext";
 import { toEditorDiagnostics } from "./diagnostics";
 import {
+  appearanceCompartment,
+  appearanceExtension,
   focusCompartment,
   focusModeExtension,
   mathHighlightExtension,
@@ -39,7 +41,9 @@ function underline(): string {
   return `url('data:image/svg+xml,${encodeURIComponent(svg)}')`;
 }
 
-// `{ dark: true }` is more than a flag: without it the autocomplete popup's `&dark` scope never gets added, and it gets no background.
+// No `{ dark }` flag here -- CodeMirror's darkTheme facet is `true` if *any* installed theme()
+// extension declares it, with no way for a later `false` to override it. The actual flag lives
+// solely in the appearanceCompartment below, reconfigured per the active theme's appearance.
 const baseEditorTheme = EditorView.theme(
   {
     "&": {
@@ -123,7 +127,6 @@ const baseEditorTheme = EditorView.theme(
     ".cm-lint-marker-warning": { backgroundColor: "var(--proof-amber)" },
     ".cm-lint-marker-info": { backgroundColor: "var(--type-lo)" },
   },
-  { dark: true },
 );
 
 function makeCompletionSource(projectId: string, uri: string) {
@@ -167,6 +170,7 @@ interface EditorProps {
   initialDoc: string;
   projectId: string;
   uri: string;
+  appearance: "dark" | "light";
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;
@@ -197,6 +201,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     initialDoc,
     projectId,
     uri,
+    appearance,
     focusMode,
     typewriterMode,
     proseMode,
@@ -287,6 +292,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         linter(null),
         lintGutter(),
         autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] }),
+        appearanceCompartment.of(appearanceExtension(appearance)),
         proseCompartment.of(proseMode ? proseModeExtension() : []),
         typewriterCompartment.of(typewriterMode ? typewriterScrollingExtension() : []),
         focusCompartment.of(focusMode ? focusModeExtension() : []),
@@ -354,6 +360,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     // Props only seed the view on mount; the caller remounts (via `key`) to change them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: appearanceCompartment.reconfigure(appearanceExtension(appearance)) });
+  }, [appearance]);
 
   useEffect(() => {
     viewRef.current?.dispatch({ effects: proseCompartment.reconfigure(proseMode ? proseModeExtension() : []) });

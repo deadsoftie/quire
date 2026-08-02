@@ -1,0 +1,184 @@
+.theme-editor-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+}
+
+.theme-editor-dialog {
+  width: min(440px, 90vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.theme-editor-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: var(--seam) solid var(--ink-600);
+  flex-shrink: 0;
+}
+
+.theme-editor-dialog__title {
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--type-hi);
+}
+
+.theme-editor-dialog__close {
+  border: none;
+  background: transparent;
+  color: var(--type-mid);
+  font-size: var(--t-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.theme-editor-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  overflow-y: auto;
+}
+
+.theme-editor-dialog__section-title {
+  display: block;
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--type-mid);
+}
+
+.theme-editor-dialog__name-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.theme-editor-dialog__name-input {
+  padding: var(--s-1) var(--s-2);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-900);
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+}
+
+.theme-editor-dialog__appearance-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.theme-editor-dialog__appearance-options {
+  display: flex;
+  gap: var(--s-3);
+}
+
+.theme-editor-dialog__appearance-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.theme-editor-dialog__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.theme-editor-dialog__color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.theme-editor-dialog__color-label {
+  flex: 1;
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+}
+
+.theme-editor-dialog__color-swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+}
+
+.theme-editor-dialog__color-hex {
+  width: 76px;
+  padding: var(--s-1) var(--s-2);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-900);
+  color: var(--type-hi);
+  font-family: var(--editor-font);
+  font-size: var(--t-xs);
+}
+
+.theme-editor-dialog__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-top: var(--seam) solid var(--ink-600);
+  flex-shrink: 0;
+}
+
+.theme-editor-dialog__footer-group {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.theme-editor-dialog__error {
+  margin: 0;
+  color: var(--proof-red);
+  font-size: var(--t-xs);
+}
+
+.theme-editor-dialog__cancel {
+  padding: var(--s-1) var(--s-3);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.theme-editor-dialog__save {
+  padding: var(--s-1) var(--s-3);
+  border: none;
+  border-radius: var(--radius);
+  background: var(--nonrepro);
+  color: var(--ink-900);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-editor-dialog__save:disabled {
+  cursor: default;
+  opacity: 0.7;
+}

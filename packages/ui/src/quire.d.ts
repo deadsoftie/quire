@@ -1,6 +1,7 @@
 // Typed against @quire/client's CoreApi directly, since the sandboxed renderer can't import StdioTransport itself (it spawns Node child processes).
 import type { CoreApi } from "@quire/client";
 import type { SessionState } from "./session";
+import type { ThemeDefinition } from "./theme";
 
 // Keys matter exactly to apps/desktop/src/main.js's VIEW_MENU_CHECK_IDS -- deliberate duplication across the Electron boundary.
 interface ViewMenuState {
@@ -51,6 +52,13 @@ declare global {
       /** `null` if there's no session file yet (or it's unreadable). */
       loadSession: () => Promise<SessionState | null>;
       saveSession: (session: SessionState) => Promise<void>;
+      /** Raw/unvalidated -- always run through normalizeCustomThemes before use. `[]` if there's no themes file yet (or it's unreadable). */
+      loadThemes: () => Promise<unknown[]>;
+      saveThemes: (themes: ThemeDefinition[]) => Promise<void>;
+      /** Native save dialog for a single theme's JSON; `null` if cancelled. */
+      exportTheme: (defaultFileName: string, content: string) => Promise<string | null>;
+      /** Native open dialog for a single theme's JSON; raw file text (unvalidated -- run through normalizeCustomThemes), or `null` if cancelled/unreadable. */
+      importTheme: () => Promise<string | null>;
       /** Native menu items dispatch by command id through this channel. Returns an unsubscribe function. */
       onMenuCommand: (handler: (id: string) => void) => () => void;
     };

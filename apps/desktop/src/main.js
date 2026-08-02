@@ -209,6 +209,7 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
 app.whenReady().then(() => {
   client = new StdioTransport();
   const sessionFile = path.join(app.getPath("userData"), "session.json");
+  const themesFile = path.join(app.getPath("userData"), "themes.json");
 
   // On macOS the app can outlive the window past window-all-closed; isDestroyed() guards a late event.
   client.onEvent((event) => {
@@ -305,6 +306,47 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:saveSession", (_event, session) => {
     fs.writeFileSync(sessionFile, JSON.stringify(session));
+  });
+
+  // Renderer validates/normalizes each entry (see normalizeCustomThemes in theme.ts) -- this
+  // layer just needs to not crash on a missing or corrupt file, same as loadSession above.
+  ipcMain.handle("desktop:loadThemes", () => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(themesFile, "utf8"));
+      return Array.isArray(parsed?.themes) ? parsed.themes : [];
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle("desktop:saveThemes", (_event, themes) => {
+    fs.writeFileSync(themesFile, JSON.stringify({ version: 1, themes }));
+  });
+
+  // Single-theme JSON, not the whole themes.json shape -- lets a user share/receive one theme at
+  // a time. `content` is written verbatim (renderer already serialized it); returns the raw text
+  // on import, unvalidated -- renderer runs it through normalizeCustomThemes before use.
+  ipcMain.handle("desktop:exportTheme", async (_event, defaultFileName, content) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: path.join(app.getPath("documents"), `${defaultFileName}.json`),
+      filters: [{ name: "Quire Theme", extensions: ["json"] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    fs.writeFileSync(result.filePath, content);
+    return result.filePath;
+  });
+
+  ipcMain.handle("desktop:importTheme", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      filters: [{ name: "Quire Theme", extensions: ["json"] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    try {
+      return fs.readFileSync(result.filePaths[0], "utf8");
+    } catch {
+      return null;
+    }
   });
 
   Menu.setApplicationMenu(buildMenu());

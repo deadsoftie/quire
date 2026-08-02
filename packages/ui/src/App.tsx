@@ -16,6 +16,9 @@ import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
+import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, applyTheme, normalizeCustomThemes, resolveTheme } from "./theme";
+import type { ThemeDefinition } from "./theme";
+import { ThemeEditorDialog } from "./ThemeEditorDialog";
 import { FindWidget } from "./FindWidget";
 import type { FindWidgetHandle } from "./FindWidget";
 import { formatLatex } from "./latex/formatter";
@@ -106,7 +109,7 @@ const DEFAULT_SESSION: SessionState = {
   typewriterMode: false,
   proseMode: false,
   wordWrap: false,
-  theme: "dark",
+  themeId: DEFAULT_DARK_THEME_ID,
   pdfInverted: false,
   useSystemTex: false,
   cursor: null,
@@ -148,9 +151,11 @@ function AppShell() {
   const [proseMode, setProseMode] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
   // Seeded from localStorage synchronously so this matches first paint instead of flashing on session load.
-  const [theme, setTheme] = useState<"dark" | "light">(() =>
-    localStorage.getItem("quire-theme") === "light" ? "light" : "dark",
-  );
+  const [themeId, setThemeId] = useState<string>(() => localStorage.getItem("quire-theme-id") ?? DEFAULT_DARK_THEME_ID);
+  const [customThemes, setCustomThemes] = useState<ThemeDefinition[]>([]);
+  const resolvedTheme = resolveTheme(themeId, customThemes);
+  // Non-null while the theme editor dialog is open; `base` seeds the draft, `editingId` is set only when editing an existing custom theme in place.
+  const [themeEditor, setThemeEditor] = useState<{ base: ThemeDefinition; editingId: string | null } | null>(null);
   const [pdfInverted, setPdfInverted] = useState(false);
   const [useSystemTex, setUseSystemTex] = useState(false);
   const [systemTexStatus, setSystemTexStatus] = useState<DetectSystemTexResponse | null>(null);
@@ -380,6 +385,50 @@ function AppShell() {
     [revealAt, activeUri],
   );
 
+  const openNewThemeEditor = useCallback(() => {
+    setThemeEditor({ base: resolvedTheme, editingId: null });
+  }, [resolvedTheme]);
+
+  // Editing a built-in theme duplicates it into a new custom one (editingId stays null); editing an
+  // existing custom theme edits it in place.
+  const openThemeEditorFor = useCallback((theme: ThemeDefinition) => {
+    setThemeEditor({ base: theme, editingId: theme.source === "custom" ? theme.id : null });
+  }, []);
+
+  // The dialog drives applyTheme directly for live preview as the user edits; cancelling has to
+  // explicitly restore whatever theme was actually active, since nothing else will.
+  const cancelThemeEditor = useCallback(() => {
+    setThemeEditor(null);
+    applyTheme(resolveTheme(themeId, customThemes));
+  }, [themeId, customThemes]);
+
+  const saveCustomTheme = useCallback(
+    (theme: ThemeDefinition) => {
+      const next = customThemes.some((t) => t.id === theme.id)
+        ? customThemes.map((t) => (t.id === theme.id ? theme : t))
+        : [...customThemes, theme];
+      setCustomThemes(next);
+      window.quireDesktop.saveThemes(next);
+      // Activating what was just saved avoids a separate "now go select it" step.
+      setThemeId(theme.id);
+      setThemeEditor(null);
+    },
+    [customThemes],
+  );
+
+  const deleteCustomTheme = useCallback(
+    (id: string) => {
+      const deleted = customThemes.find((t) => t.id === id);
+      const next = customThemes.filter((t) => t.id !== id);
+      setCustomThemes(next);
+      window.quireDesktop.saveThemes(next);
+      // Falls back to the matching-appearance Quire default rather than always "dark" -- deleting
+      // an active light theme shouldn't silently flip you into a dark one.
+      if (themeId === id) setThemeId(deleted?.appearance === "light" ? DEFAULT_LIGHT_THEME_ID : DEFAULT_DARK_THEME_ID);
+    },
+    [customThemes, themeId],
+  );
+
   // Consumed on the very next activeUri change; a reveal whose openTab failed is simply dropped, never misapplied.
   useEffect(() => {
     const pending = pendingRevealRef.current;
@@ -589,8 +638,9 @@ function AppShell() {
     if (restoreStartedRef.current) return;
     restoreStartedRef.current = true;
     (async () => {
-      const loaded = await window.quireDesktop.loadSession();
+      const [loaded, loadedThemes] = await Promise.all([window.quireDesktop.loadSession(), window.quireDesktop.loadThemes()]);
       const session = loaded ? normalizeSession(loaded, DEFAULT_SESSION) : null;
+      setCustomThemes(normalizeCustomThemes(loadedThemes));
 
       if (session) {
         setSplitFraction(session.splitFraction);
@@ -598,7 +648,7 @@ function AppShell() {
         setTypewriterMode(session.typewriterMode);
         setProseMode(session.proseMode);
         setWordWrap(session.wordWrap);
-        setTheme(session.theme);
+        setThemeId(session.themeId);
         setPdfInverted(session.pdfInverted);
         setUseSystemTex(session.useSystemTex);
         setSidebarSection(session.sidebarSection);
@@ -658,9 +708,12 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("quire-theme", theme);
-  }, [theme]);
+    // Skipped while the theme editor is open -- it drives applyTheme directly for live preview,
+    // and this effect re-running (e.g. because a Save just changed customThemes) would stomp that.
+    if (themeEditor) return;
+    applyTheme(resolveTheme(themeId, customThemes));
+    localStorage.setItem("quire-theme-id", themeId);
+  }, [themeId, customThemes, themeEditor]);
 
   useEffect(() => {
     if (!initializedRef.current) return;
@@ -676,7 +729,7 @@ function AppShell() {
       typewriterMode,
       proseMode,
       wordWrap,
-      theme,
+      themeId,
       pdfInverted,
       useSystemTex,
     };
@@ -692,7 +745,7 @@ function AppShell() {
     typewriterMode,
     proseMode,
     wordWrap,
-    theme,
+    themeId,
     pdfInverted,
     useSystemTex,
     scheduleSaveSession,
@@ -711,10 +764,10 @@ function AppShell() {
       typewriterMode,
       proseMode,
       wordWrap,
-      lightTheme: theme === "light",
+      lightTheme: resolveTheme(themeId, customThemes).appearance === "light",
       pdfInverted,
     });
-  }, [sidebarSection, focusMode, typewriterMode, proseMode, wordWrap, theme, pdfInverted]);
+  }, [sidebarSection, focusMode, typewriterMode, proseMode, wordWrap, themeId, customThemes, pdfInverted]);
 
   useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
@@ -902,7 +955,9 @@ function AppShell() {
   useCommand({
     id: "app.toggle-theme",
     title: "Toggle Theme",
-    run: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    // Cycles appearance, not the specific palette -- landing on each mode's Quire default regardless of which custom/built-in theme was active.
+    run: () =>
+      setThemeId((id) => (resolveTheme(id, customThemes).appearance === "dark" ? DEFAULT_LIGHT_THEME_ID : DEFAULT_DARK_THEME_ID)),
   });
   useCommand({
     id: "pdf.toggle-inversion",
@@ -1008,11 +1063,25 @@ function AppShell() {
           onToggleProseMode={setProseMode}
           wordWrap={wordWrap}
           onToggleWordWrap={setWordWrap}
-          lightTheme={theme === "light"}
-          onToggleLightTheme={(value) => setTheme(value ? "light" : "dark")}
+          themeId={themeId}
+          onSelectTheme={setThemeId}
+          customThemes={customThemes}
+          onRequestNewTheme={openNewThemeEditor}
+          onRequestEditTheme={openThemeEditorFor}
+          onDeleteTheme={deleteCustomTheme}
+          themeEditorOpen={themeEditor !== null}
           pdfInverted={pdfInverted}
           onTogglePdfInverted={setPdfInverted}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {themeEditor && (
+        <ThemeEditorDialog
+          base={themeEditor.base}
+          editingId={themeEditor.editingId}
+          onSave={saveCustomTheme}
+          onCancel={cancelThemeEditor}
+          onPreview={applyTheme}
         />
       )}
       {newProjectOpen && (
@@ -1076,6 +1145,7 @@ function AppShell() {
                     initialDoc={activeTab.text}
                     projectId={project.projectId}
                     uri={activeTab.uri}
+                    appearance={resolvedTheme.appearance}
                     focusMode={focusMode}
                     typewriterMode={typewriterMode}
                     proseMode={proseMode}

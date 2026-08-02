@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld("quireDesktop", {
   pasteImage: invoke("desktop:pasteImage"),
   loadSession: invoke("desktop:loadSession"),
   saveSession: invoke("desktop:saveSession"),
+  loadThemes: invoke("desktop:loadThemes"),
+  saveThemes: invoke("desktop:saveThemes"),
+  exportTheme: invoke("desktop:exportTheme"),
+  importTheme: invoke("desktop:importTheme"),
   // Returns an unsubscribe function.
   onMenuCommand: (handler) => {
     const listener = (_event, id) => handler(id);
