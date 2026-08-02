@@ -1031,13 +1031,7 @@ function AppShell() {
         {sidebarSection && (
           <Sidebar
             title={PANEL_TITLES[sidebarSection]}
-            caption={
-              sidebarSection === "file-tree"
-                ? "Files reachable from the root document."
-                : sidebarSection === "packages"
-                  ? `${formatBytes(packagesCacheBytes)} cached`
-                  : undefined
-            }
+            caption={sidebarSection === "packages" ? `${formatBytes(packagesCacheBytes)} cached` : undefined}
             action={
               sidebarSection === "file-tree" &&
               project && (
