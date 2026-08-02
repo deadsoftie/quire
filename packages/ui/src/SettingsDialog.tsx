@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { DetectSystemTexResponse } from "@quire/client";
+import { Toggle } from "./Toggle";
 import "./SettingsDialog.css";
 
 interface SettingsDialogProps {
@@ -66,12 +67,7 @@ export function SettingsDialog({
         </div>
         <div className="settings-dialog__body">
           <label className="settings-dialog__row">
-            <input
-              type="checkbox"
-              checked={useSystemTex}
-              disabled={!available}
-              onChange={(event) => onToggleSystemTex(event.target.checked)}
-            />
+            <Toggle checked={useSystemTex} disabled={!available} onChange={onToggleSystemTex} />
             <span>Use System TeX for compiling</span>
           </label>
           <p className="settings-dialog__note">
@@ -84,35 +80,27 @@ export function SettingsDialog({
 
           <span className="settings-dialog__section-title">View</span>
           <label className="settings-dialog__row">
-            <input type="checkbox" checked={focusMode} onChange={(event) => onToggleFocusMode(event.target.checked)} />
+            <Toggle checked={focusMode} onChange={onToggleFocusMode} />
             <span>Focus Mode</span>
           </label>
           <label className="settings-dialog__row">
-            <input
-              type="checkbox"
-              checked={typewriterMode}
-              onChange={(event) => onToggleTypewriterMode(event.target.checked)}
-            />
+            <Toggle checked={typewriterMode} onChange={onToggleTypewriterMode} />
             <span>Typewriter Scrolling</span>
           </label>
           <label className="settings-dialog__row">
-            <input type="checkbox" checked={proseMode} onChange={(event) => onToggleProseMode(event.target.checked)} />
+            <Toggle checked={proseMode} onChange={onToggleProseMode} />
             <span>Serif Prose Mode</span>
           </label>
           <label className="settings-dialog__row">
-            <input type="checkbox" checked={wordWrap} onChange={(event) => onToggleWordWrap(event.target.checked)} />
+            <Toggle checked={wordWrap} onChange={onToggleWordWrap} />
             <span>Word Wrap</span>
           </label>
           <label className="settings-dialog__row">
-            <input type="checkbox" checked={lightTheme} onChange={(event) => onToggleLightTheme(event.target.checked)} />
+            <Toggle checked={lightTheme} onChange={onToggleLightTheme} />
             <span>Light Theme</span>
           </label>
           <label className="settings-dialog__row">
-            <input
-              type="checkbox"
-              checked={pdfInverted}
-              onChange={(event) => onTogglePdfInverted(event.target.checked)}
-            />
+            <Toggle checked={pdfInverted} onChange={onTogglePdfInverted} />
             <span>Invert PDF Colors</span>
           </label>
         </div>

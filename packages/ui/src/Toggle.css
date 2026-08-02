@@ -1,0 +1,58 @@
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.toggle__input:disabled {
+  cursor: default;
+}
+
+.toggle__track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--ink-600);
+  transition: background-color 120ms ease;
+}
+
+.toggle__track::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--type-hi);
+  transition: transform 120ms ease;
+}
+
+.toggle__input:checked ~ .toggle__track {
+  background: var(--nonrepro);
+}
+
+.toggle__input:checked ~ .toggle__track::before {
+  transform: translateX(14px);
+  background: var(--ink-900);
+}
+
+.toggle__input:disabled ~ .toggle__track {
+  opacity: 0.5;
+}
+
+.toggle__input:focus-visible ~ .toggle__track {
+  outline: 2px solid var(--nonrepro);
+  outline-offset: 2px;
+}
