@@ -247,12 +247,24 @@ fn generate_compile_id() -> String {
 /// Reads from disk -- `OutlineRequest` carries no dirty-buffer text, so this reflects last-saved content only.
 pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     let project_dir = Path::new(&req.project_id);
-    let Some(root) = project::detect_root(project_dir).root else {
+    let Some(root) = resolve_root_for_uri(project_dir, &req.uri) else {
         return Vec::new();
     };
     let graph = project::build_file_graph(&root);
     let index = crate::index::ProjectIndex::build(&graph);
     index.outline_for(Path::new(&req.uri))
+}
+
+/// Root detection is project-wide, so a workspace holding several independent standalone
+/// documents (no `\input`/`\include` chain between them) comes back `Ambiguous` for all of
+/// them. When that happens, fall back to treating the requested file as its own root if it's
+/// one of the candidates, so an unambiguous document isn't starved by unrelated siblings.
+fn resolve_root_for_uri(project_dir: &Path, uri: &str) -> Option<PathBuf> {
+    let detection = project::detect_root(project_dir);
+    detection.root.or_else(|| {
+        let uri_path = Path::new(uri);
+        detection.candidates.into_iter().find(|c| c == uri_path)
+    })
 }
 
 /// Checked before touching disk: no reason to rebuild the index for a keystroke none of these triggers recognize.
@@ -267,7 +279,7 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     }
 
     let project_dir = Path::new(&req.project_id);
-    let Some(root) = project::detect_root(project_dir).root else {
+    let Some(root) = resolve_root_for_uri(project_dir, &req.uri) else {
         return Vec::new();
     };
     let graph = project::build_file_graph(&root);

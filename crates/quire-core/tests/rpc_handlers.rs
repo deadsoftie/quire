@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use quire_core::rpc::handlers::{compile, open_project, prefetch_packages, replace_in_project, search_project};
+use quire_core::rpc::handlers::{compile, open_project, outline, prefetch_packages, replace_in_project, search_project};
 use quire_core::rpc::{
     CompileEngine, CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest,
-    PrefetchPackagesRequest, ReplaceInProjectRequest, RootConfidence, SearchProjectRequest,
+    OutlineRequest, PrefetchPackagesRequest, ReplaceInProjectRequest, RootConfidence, SearchProjectRequest,
 };
 
 fn copy_dir(src: &Path, dst: &Path) {
@@ -268,6 +268,35 @@ fn compile_falls_back_to_the_first_candidate_when_root_is_ambiguous() {
     .expect("compile should fall back to a best-guess root instead of erroring");
 
     assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+/// A workspace holding several independent standalone documents (no `\input`/`\include` chain
+/// between them) makes root detection ambiguous for the whole project, not just the files that
+/// are actually ambiguous with each other. Outline must still work for a document requested by
+/// its own URI instead of going empty for every file in the workspace.
+#[test]
+fn outline_falls_back_to_the_requested_file_when_root_is_ambiguous() {
+    let project_dir = fresh_empty_project("outline-ambiguous");
+    fs::write(
+        project_dir.join("fileA.tex"),
+        "\\documentclass{article}\n\\begin{document}\n\\section*{Alpha}\n\\end{document}\n",
+    )
+    .unwrap();
+    fs::write(
+        project_dir.join("fileB.tex"),
+        "\\documentclass{article}\n\\begin{document}\n\\section*{Beta}\n\\end{document}\n",
+    )
+    .unwrap();
+
+    let project_id = project_dir.display().to_string();
+    let file_a_uri = project_dir.join("fileA.tex").display().to_string();
+
+    let nodes = outline(&OutlineRequest { project_id, uri: file_a_uri });
+
+    assert_eq!(nodes.len(), 1, "expected fileA's own section to be indexed despite the ambiguous project root");
+    assert_eq!(nodes[0].label, "Alpha");
 
     fs::remove_dir_all(&project_dir).ok();
 }

@@ -66,9 +66,10 @@ const baseEditorTheme = EditorView.theme(
     ".cm-activeLineGutter": {
       backgroundColor: "var(--ink-800)",
     },
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-      backgroundColor: "var(--nonrepro-dim)",
-    },
+    ".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground":
+      {
+        backgroundColor: "var(--nonrepro-dim)",
+      },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--nonrepro)",
     },
