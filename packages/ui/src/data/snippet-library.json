@@ -1,0 +1,383 @@
+[
+  {
+    "id": "title-block",
+    "category": "structure",
+    "label": "Title, author, date block",
+    "description": "Title/author/date immediately followed by maketitle",
+    "tags": ["title", "author", "date", "maketitle", "frontmatter"],
+    "template": "\\title{${1:Title}}\n\\author{${2:Author}}\n\\date{${3:\\today}}\n\\maketitle"
+  },
+  {
+    "id": "abstract",
+    "category": "structure",
+    "label": "Abstract",
+    "description": "Abstract environment",
+    "tags": ["abstract", "summary", "frontmatter"],
+    "template": "\\begin{abstract}\n${1:abstract text}\n\\end{abstract}"
+  },
+  {
+    "id": "multi-author",
+    "category": "structure",
+    "label": "Multiple authors with affiliations",
+    "description": "Two authors, each with an affiliation and email",
+    "tags": ["author", "affiliation", "email", "multiple authors", "frontmatter"],
+    "template": "\\author{\n  ${1:First Author}\\\\\n  \\textit{${2:Affiliation}}\\\\\n  ${3:email@example.com}\n  \\and\n  ${4:Second Author}\\\\\n  \\textit{${5:Affiliation}}\\\\\n  ${6:email@example.com}\n}"
+  },
+  {
+    "id": "keywords",
+    "category": "structure",
+    "label": "Keywords line",
+    "description": "Bolded keywords line, common in journal templates",
+    "tags": ["keywords", "index terms", "frontmatter"],
+    "template": "\\textbf{Keywords:} ${1:keyword one, keyword two, keyword three}"
+  },
+  {
+    "id": "toc",
+    "category": "structure",
+    "label": "Table of contents",
+    "description": "Table of contents, followed by a page break",
+    "tags": ["toc", "contents", "outline"],
+    "template": "\\tableofcontents\n\\newpage"
+  },
+  {
+    "id": "appendix",
+    "category": "structure",
+    "label": "Appendix section",
+    "description": "Marks the start of the appendix and one titled section",
+    "tags": ["appendix", "backmatter"],
+    "template": "\\appendix\n\\section{${1:Appendix Title}}\n${2:content}"
+  },
+  {
+    "id": "acknowledgments",
+    "category": "structure",
+    "label": "Acknowledgments section",
+    "description": "Unnumbered acknowledgments section",
+    "tags": ["acknowledgments", "thanks", "backmatter"],
+    "template": "\\section*{Acknowledgments}\n${1:acknowledgment text}"
+  },
+  {
+    "id": "section",
+    "category": "structure",
+    "label": "Section with label",
+    "description": "Sectioning command paired with a label for cross-referencing",
+    "tags": ["section", "heading", "label"],
+    "template": "\\section{${1:Section Title}}\\label{sec:${2:label}}\n${3:content}"
+  },
+  {
+    "id": "subsection",
+    "category": "structure",
+    "label": "Subsection with label",
+    "description": "Subsection heading paired with a label",
+    "tags": ["subsection", "heading", "label"],
+    "template": "\\subsection{${1:Subsection Title}}\\label{subsec:${2:label}}\n${3:content}"
+  },
+  {
+    "id": "subsubsection",
+    "category": "structure",
+    "label": "Subsubsection",
+    "description": "Third-level sectioning heading",
+    "tags": ["subsubsection", "heading"],
+    "template": "\\subsubsection{${1:Title}}\n${2:content}"
+  },
+  {
+    "id": "paragraph",
+    "category": "structure",
+    "label": "Run-in paragraph heading",
+    "description": "Bolded run-in heading that stays on the same line as its text",
+    "tags": ["paragraph", "heading"],
+    "template": "\\paragraph{${1:Heading}} ${2:text}"
+  },
+  {
+    "id": "align",
+    "category": "math",
+    "label": "Aligned equations",
+    "description": "Multiple equations aligned on their equals signs",
+    "tags": ["math", "align", "equations", "amsmath"],
+    "template": "\\begin{align}\n  ${1:a} &= ${2:b} \\\\\n  ${3:c} &= ${4:d}\n\\end{align}"
+  },
+  {
+    "id": "gather",
+    "category": "math",
+    "label": "Stacked equations",
+    "description": "Multiple centered equations with no alignment",
+    "tags": ["math", "gather", "equations", "amsmath"],
+    "template": "\\begin{gather}\n  ${1:equation one} \\\\\n  ${2:equation two}\n\\end{gather}"
+  },
+  {
+    "id": "cases",
+    "category": "math",
+    "label": "Piecewise function",
+    "description": "Cases environment for a piecewise-defined function",
+    "tags": ["math", "cases", "piecewise", "amsmath"],
+    "template": "\\[\n  ${1:f(x)} =\n  \\begin{cases}\n    ${2:a} & \\text{if } ${3:condition} \\\\\n    ${4:b} & \\text{otherwise}\n  \\end{cases}\n\\]"
+  },
+  {
+    "id": "matrix",
+    "category": "math",
+    "label": "Matrix (parenthesized)",
+    "description": "A 2x2 matrix wrapped in parentheses",
+    "tags": ["math", "matrix", "pmatrix", "amsmath"],
+    "template": "\\[\n  \\begin{pmatrix}\n    ${1:a} & ${2:b} \\\\\n    ${3:c} & ${4:d}\n  \\end{pmatrix}\n\\]"
+  },
+  {
+    "id": "theorem",
+    "category": "math",
+    "label": "Theorem",
+    "description": "Numbered theorem block with a label",
+    "tags": ["math", "theorem", "proof"],
+    "requiresPackage": "amsthm",
+    "template": "\\begin{theorem}\\label{thm:${1:label}}\n  ${2:statement}\n\\end{theorem}"
+  },
+  {
+    "id": "lemma-proof",
+    "category": "math",
+    "label": "Lemma with proof",
+    "description": "Lemma block immediately followed by its proof",
+    "tags": ["math", "lemma", "proof"],
+    "requiresPackage": "amsthm",
+    "template": "\\begin{lemma}\\label{lem:${1:label}}\n  ${2:statement}\n\\end{lemma}\n\\begin{proof}\n  ${3:proof}\n\\end{proof}"
+  },
+  {
+    "id": "definition",
+    "category": "math",
+    "label": "Definition",
+    "description": "Numbered definition block with a label",
+    "tags": ["math", "definition"],
+    "requiresPackage": "amsthm",
+    "template": "\\begin{definition}\\label{def:${1:label}}\n  ${2:statement}\n\\end{definition}"
+  },
+  {
+    "id": "algorithm",
+    "category": "math",
+    "label": "Algorithm pseudocode",
+    "description": "Captioned pseudocode block with input/output and a while loop",
+    "tags": ["algorithm", "pseudocode", "algorithm2e"],
+    "requiresPackage": "algorithm2e",
+    "template": "\\begin{algorithm}[htbp]\n  \\caption{${1:Algorithm name}}\n  \\KwIn{${2:input}}\n  \\KwOut{${3:output}}\n  ${4:step one}\\;\n  \\While{${5:condition}}{\n    ${6:step}\\;\n  }\n\\end{algorithm}"
+  },
+  {
+    "id": "figure",
+    "category": "figures-tables",
+    "label": "Figure",
+    "description": "Standard centered figure with caption and label",
+    "tags": ["figure", "image", "includegraphics", "caption"],
+    "template": "\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics[width=${1:0.8}\\linewidth]{${2:path}}\n  \\caption{${3:caption}}\n  \\label{fig:${4:label}}\n\\end{figure}"
+  },
+  {
+    "id": "subfigures",
+    "category": "figures-tables",
+    "label": "Side-by-side subfigures",
+    "description": "Two subfigures placed next to each other under one overall caption",
+    "tags": ["figure", "subfigure", "side by side"],
+    "requiresPackage": "subcaption",
+    "template": "\\begin{figure}[htbp]\n  \\centering\n  \\begin{subfigure}{${1:0.45}\\textwidth}\n    \\includegraphics[width=\\linewidth]{${2:path-a}}\n    \\caption{${3:caption a}}\n    \\label{fig:${4:label-a}}\n  \\end{subfigure}\n  \\hfill\n  \\begin{subfigure}{${1:0.45}\\textwidth}\n    \\includegraphics[width=\\linewidth]{${5:path-b}}\n    \\caption{${6:caption b}}\n    \\label{fig:${7:label-b}}\n  \\end{subfigure}\n  \\caption{${8:overall caption}}\n  \\label{fig:${9:label}}\n\\end{figure}"
+  },
+  {
+    "id": "wrapfigure",
+    "category": "figures-tables",
+    "label": "Text-wrapped figure",
+    "description": "Figure with body text wrapping around it",
+    "tags": ["figure", "wrapfigure", "inline image"],
+    "requiresPackage": "wrapfig",
+    "template": "\\begin{wrapfigure}{${1:r}}{${2:0.4}\\textwidth}\n  \\centering\n  \\includegraphics[width=\\linewidth]{${3:path}}\n  \\caption{${4:caption}}\n\\end{wrapfigure}"
+  },
+  {
+    "id": "table-booktabs",
+    "category": "figures-tables",
+    "label": "Table (booktabs)",
+    "description": "Professional three-rule table using booktabs",
+    "tags": ["table", "booktabs", "toprule", "midrule", "bottomrule"],
+    "requiresPackage": "booktabs",
+    "template": "\\begin{table}[htbp]\n  \\centering\n  \\caption{${1:caption}}\n  \\label{tab:${2:label}}\n  \\begin{tabular}{${3:lcc}}\n    \\toprule\n    ${4:Header 1} & ${5:Header 2} & ${6:Header 3} \\\\\n    \\midrule\n    ${7:a} & ${8:b} & ${9:c} \\\\\n    \\bottomrule\n  \\end{tabular}\n\\end{table}"
+  },
+  {
+    "id": "longtable",
+    "category": "figures-tables",
+    "label": "Table spanning pages",
+    "description": "Table that repeats its header across page breaks",
+    "tags": ["table", "longtable", "multi-page table"],
+    "requiresPackage": "longtable",
+    "template": "\\begin{longtable}{${1:lcc}}\n  \\caption{${2:caption}} \\label{tab:${3:label}} \\\\\n  \\toprule\n  ${4:Header 1} & ${5:Header 2} & ${6:Header 3} \\\\\n  \\midrule\n  \\endhead\n  ${7:a} & ${8:b} & ${9:c} \\\\\n  \\bottomrule\n\\end{longtable}"
+  },
+  {
+    "id": "table-multirow",
+    "category": "figures-tables",
+    "label": "Table with merged cells",
+    "description": "Table using a multirow cell spanning two rows",
+    "tags": ["table", "multirow", "merged cells"],
+    "requiresPackage": "multirow",
+    "template": "\\begin{table}[htbp]\n  \\centering\n  \\begin{tabular}{${1:lcc}}\n    \\toprule\n    \\multirow{2}{*}{${2:label}} & ${3:col a} & ${4:col b} \\\\\n     & ${5:a} & ${6:b} \\\\\n    \\bottomrule\n  \\end{tabular}\n\\end{table}"
+  },
+  {
+    "id": "tikz-basic",
+    "category": "figures-tables",
+    "label": "TikZ blank canvas",
+    "description": "Coordinate axes to start a TikZ drawing from",
+    "tags": ["tikz", "diagram", "drawing", "axes"],
+    "requiresPackage": "tikz",
+    "template": "\\begin{tikzpicture}\n  \\draw[->] (0,0) -- (${1:3},0) node[right] {$${2:x}$};\n  \\draw[->] (0,0) -- (0,${3:3}) node[above] {$${4:y}$};\n\\end{tikzpicture}"
+  },
+  {
+    "id": "pgfplot",
+    "category": "figures-tables",
+    "label": "Function plot",
+    "description": "A simple pgfplots axis plotting one function",
+    "tags": ["tikz", "pgfplots", "plot", "chart", "graph"],
+    "requiresPackage": "pgfplots",
+    "template": "\\begin{tikzpicture}\n  \\begin{axis}[xlabel={${1:x}}, ylabel={${2:y}}]\n    \\addplot[domain=${3:-5}:${4:5}]{${5:x^2}};\n  \\end{axis}\n\\end{tikzpicture}"
+  },
+  {
+    "id": "itemize",
+    "category": "lists",
+    "label": "Bulleted list",
+    "description": "Unordered list environment",
+    "tags": ["list", "itemize", "bullets"],
+    "template": "\\begin{itemize}\n  \\item ${1:item}\n\\end{itemize}"
+  },
+  {
+    "id": "enumerate",
+    "category": "lists",
+    "label": "Numbered list",
+    "description": "Ordered list environment",
+    "tags": ["list", "enumerate", "numbered"],
+    "template": "\\begin{enumerate}\n  \\item ${1:item}\n\\end{enumerate}"
+  },
+  {
+    "id": "description",
+    "category": "lists",
+    "label": "Term/definition list",
+    "description": "Description list environment for term-definition pairs",
+    "tags": ["list", "description", "glossary"],
+    "template": "\\begin{description}\n  \\item[${1:term}] ${2:definition}\n\\end{description}"
+  },
+  {
+    "id": "cite",
+    "category": "references",
+    "label": "Citation",
+    "description": "Cite a bibliography entry by key",
+    "tags": ["cite", "citation", "reference"],
+    "template": "\\cite{${1:key}}"
+  },
+  {
+    "id": "bibliography-block",
+    "category": "references",
+    "label": "Bibliography (classic BibTeX)",
+    "description": "Bibliography style and source file declaration",
+    "tags": ["bibliography", "bibtex", "references"],
+    "template": "\\bibliographystyle{${1:plain}}\n\\bibliography{${2:refs}}"
+  },
+  {
+    "id": "cref",
+    "category": "references",
+    "label": "Smart cross-reference",
+    "description": "Cross-reference that names its own kind (Section, Figure, ...)",
+    "tags": ["ref", "cref", "cross-reference", "cleveref"],
+    "requiresPackage": "cleveref",
+    "template": "\\cref{${1:label}}"
+  },
+  {
+    "id": "hyperlink",
+    "category": "references",
+    "label": "Clickable URL",
+    "description": "A hyperlink with separate display text",
+    "tags": ["url", "link", "href", "hyperref"],
+    "requiresPackage": "hyperref",
+    "template": "\\href{${1:https://example.com}}{${2:link text}}"
+  },
+  {
+    "id": "listings-code",
+    "category": "code",
+    "label": "Syntax-highlighted code block",
+    "description": "Captioned code listing with language-aware highlighting",
+    "tags": ["code", "listings", "syntax highlighting"],
+    "requiresPackage": "listings",
+    "template": "\\begin{lstlisting}[language=${1:Python}, caption={${2:caption}}]\n${3:code}\n\\end{lstlisting}"
+  },
+  {
+    "id": "verbatim",
+    "category": "code",
+    "label": "Verbatim block",
+    "description": "Literal text block with no escaping or formatting",
+    "tags": ["code", "verbatim", "literal text"],
+    "template": "\\begin{verbatim}\n${1:text}\n\\end{verbatim}"
+  },
+  {
+    "id": "inline-code",
+    "category": "code",
+    "label": "Inline monospace text",
+    "description": "Short inline monospace text run",
+    "tags": ["code", "texttt", "monospace", "inline"],
+    "template": "\\texttt{${1:code}}"
+  },
+  {
+    "id": "multicol",
+    "category": "layout",
+    "label": "Multi-column layout",
+    "description": "Flows content across multiple columns on the page",
+    "tags": ["columns", "multicol", "layout"],
+    "requiresPackage": "multicol",
+    "template": "\\begin{multicols}{${1:2}}\n  ${2:content}\n\\end{multicols}"
+  },
+  {
+    "id": "landscape",
+    "category": "layout",
+    "label": "Landscape page",
+    "description": "Rotates a single page to landscape orientation",
+    "tags": ["landscape", "rotate", "page orientation"],
+    "requiresPackage": "pdflscape",
+    "template": "\\begin{landscape}\n  ${1:content}\n\\end{landscape}"
+  },
+  {
+    "id": "colorbox",
+    "category": "layout",
+    "label": "Colored highlight box",
+    "description": "Text on a colored background",
+    "tags": ["color", "colorbox", "highlight", "xcolor"],
+    "requiresPackage": "xcolor",
+    "template": "\\colorbox{${1:yellow}}{${2:text}}"
+  },
+  {
+    "id": "footnote",
+    "category": "layout",
+    "label": "Footnote",
+    "description": "Numbered footnote at the point of insertion",
+    "tags": ["footnote", "note"],
+    "template": "\\footnote{${1:note text}}"
+  },
+  {
+    "id": "custom-margins",
+    "category": "layout",
+    "label": "Page-local margin override",
+    "description": "Temporarily changes margins, then restores the document's originals",
+    "tags": ["margins", "geometry", "page layout"],
+    "requiresPackage": "geometry",
+    "template": "\\newgeometry{margin=${1:2cm}}\n${2:content}\n\\restoregeometry"
+  },
+  {
+    "id": "beamer-frame",
+    "category": "beamer",
+    "label": "Slide (frame)",
+    "description": "Basic titled slide",
+    "tags": ["beamer", "slide", "frame", "presentation"],
+    "requiresPackage": "beamer",
+    "template": "\\begin{frame}{${1:Title}}\n  ${2:content}\n\\end{frame}"
+  },
+  {
+    "id": "beamer-columns",
+    "category": "beamer",
+    "label": "Two-column slide",
+    "description": "Slide split into two side-by-side columns",
+    "tags": ["beamer", "slide", "columns", "presentation"],
+    "requiresPackage": "beamer",
+    "template": "\\begin{frame}{${1:Title}}\n  \\begin{columns}\n    \\begin{column}{0.5\\textwidth}\n      ${2:left content}\n    \\end{column}\n    \\begin{column}{0.5\\textwidth}\n      ${3:right content}\n    \\end{column}\n  \\end{columns}\n\\end{frame}"
+  },
+  {
+    "id": "beamer-title",
+    "category": "beamer",
+    "label": "Title slide",
+    "description": "Presentation title page with author and institute",
+    "tags": ["beamer", "title", "presentation", "frontmatter"],
+    "requiresPackage": "beamer",
+    "template": "\\title{${1:Presentation Title}}\n\\author{${2:Author}}\n\\institute{${3:Institution}}\n\\date{\\today}\n\\begin{frame}\n  \\titlepage\n\\end{frame}"
+  }
+]

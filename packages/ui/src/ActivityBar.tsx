@@ -1,4 +1,4 @@
-import { AlertTriangle, Folder, ListTree, Package, Search } from "lucide-react";
+import { AlertTriangle, Blocks, Folder, ListTree, Package, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PanelKind } from "./panels/types";
 import "./ActivityBar.css";
@@ -15,6 +15,7 @@ const ITEMS: { kind: PanelKind; label: string; Icon: LucideIcon }[] = [
   { kind: "outline", label: "Outline", Icon: ListTree },
   { kind: "problems", label: "Problems", Icon: AlertTriangle },
   { kind: "packages", label: "Packages", Icon: Package },
+  { kind: "snippets", label: "Snippets", Icon: Blocks },
 ];
 
 export function ActivityBar({ active, onSelect, problemCount }: ActivityBarProps) {

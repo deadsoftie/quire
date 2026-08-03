@@ -1,7 +1,7 @@
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID } from "@quire/design";
 import type { PanelKind } from "./panels/types";
 
-const PANEL_KINDS: PanelKind[] = ["file-tree", "search", "outline", "problems", "packages"];
+const PANEL_KINDS: PanelKind[] = ["file-tree", "search", "outline", "problems", "packages", "snippets"];
 
 export interface SessionState {
   /** `null` means no project is open (the empty/Welcome state) -- there's nothing to reopen. */

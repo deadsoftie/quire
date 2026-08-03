@@ -1,0 +1,125 @@
+.snippets-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  height: 100%;
+}
+
+.snippets-panel__search {
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+  padding: var(--s-2);
+  outline: none;
+}
+
+.snippets-panel__search:focus-visible {
+  border-color: var(--nonrepro);
+}
+
+.snippets-panel__groups {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.snippets-panel__category {
+  margin: 0 0 var(--s-1);
+  color: var(--type-mid);
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.snippets-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.snippets-panel__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  cursor: grab;
+}
+
+.snippets-panel__item:hover,
+.snippets-panel__item:focus-within {
+  border-color: var(--type-lo);
+}
+
+.snippets-panel__item:active {
+  cursor: grabbing;
+}
+
+.snippets-panel__item-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.snippets-panel__label {
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.snippets-panel__insert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--nonrepro);
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+  cursor: pointer;
+  padding: 0 var(--s-2);
+  flex-shrink: 0;
+}
+
+.snippets-panel__insert:hover {
+  text-decoration: underline;
+}
+
+.snippets-panel__insert:focus-visible {
+  outline: 2px solid var(--nonrepro);
+  outline-offset: 1px;
+}
+
+.snippets-panel__description {
+  margin: 0;
+  color: var(--type-mid);
+  font-family: var(--ui-font);
+  font-size: var(--t-xs);
+}
+
+.snippets-panel__requires {
+  color: var(--type-lo);
+}
+
+.snippets-panel__preview {
+  margin: 0;
+  color: var(--type-lo);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}

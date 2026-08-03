@@ -179,6 +179,11 @@ struct XdvipdfmxIo {
     // bundle-relative package name. Unrestricted (no root, absolute paths allowed): this is a
     // local editor compiling the user's own trusted source against their own filesystem.
     disk: FilesystemIo,
+    // build_dir-rooted, for local project graphics (a pasted screenshot, any \includegraphics
+    // pointing at a project-relative file) -- `disk` above is absolute-only by construction
+    // (its own doc comment: font paths only), so it could never resolve a relative name like
+    // "figures/foo.png" against build_dir; it silently fell through to the OS root instead.
+    project: FilesystemIo,
 }
 
 impl IoProvider for XdvipdfmxIo {
@@ -196,6 +201,10 @@ impl IoProvider for XdvipdfmxIo {
             other => return other,
         }
         match self.bundle.input_open_name(name, status) {
+            OpenResult::NotAvailable => {}
+            other => return other,
+        }
+        match self.project.input_open_name(name, status) {
             OpenResult::NotAvailable => self.disk.input_open_name(name, status),
             other => other,
         }
@@ -218,7 +227,8 @@ fn convert_xdv_to_pdf(build_dir: &Path, bundle_factory: &BundleFactory) -> Resul
     let mut mem = MemoryIo::new(true);
     mem.create_entry("texput.xdv", xdv);
     let disk = FilesystemIo::new(Path::new("/"), false, true, HashSet::new());
-    let mut driver = XdvipdfmxDriver(XdvipdfmxIo { mem, bundle, disk });
+    let project = FilesystemIo::new(build_dir, false, false, HashSet::new());
+    let mut driver = XdvipdfmxDriver(XdvipdfmxIo { mem, bundle, project, disk });
 
     {
         let mut launcher = CoreBridgeLauncher::new(&mut driver, &mut status);

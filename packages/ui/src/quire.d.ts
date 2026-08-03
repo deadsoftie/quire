@@ -10,6 +10,7 @@ interface ViewMenuState {
   outline: boolean;
   problems: boolean;
   packages: boolean;
+  snippets: boolean;
   focusMode: boolean;
   typewriterMode: boolean;
   proseMode: boolean;

@@ -25,11 +25,19 @@ import { neutralizeDefaultSearchKeymap } from "./findKeymap";
 import { formatLatex } from "./latex/formatter";
 import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
+import { SNIPPET_DRAG_MIME, snippetById } from "./snippetLibrary";
 import { renderSymbolPreview } from "./symbolPreview";
 
 // Chromium normalizes most clipboard images to `image/png` regardless of source; only explicit JPEG keeps its own extension.
 export function extensionForMimeType(mimeType: string): string {
   return mimeType === "image/jpeg" || mimeType === "image/jpg" ? "jpg" : "png";
+}
+
+// Shared by the SnippetsPanel drop handler and its click/keyboard insertSnippet() path -- one insertion
+// mechanism, not two. Routes through CM6's own snippet() apply function (line 161's `apply` field uses
+// the same one) so ${1:tabstop} fields get real Tab-cycling, not a flat text insert.
+function insertSnippetTemplate(view: EditorView, template: string, from: number, to: number) {
+  snippet(template)(view, null, from, to);
 }
 
 // @codemirror/lint's own underline bakes a fixed color into the SVG, so recoloring needs our own copy, not a CSS override.
@@ -192,6 +200,8 @@ export interface EditorHandle {
   replaceContent(newText: string): void;
   /** Moves the cursor to a 0-based line/column (clamped to the document), scrolls it into view, and focuses the editor. */
   revealPosition(line: number, column: number): void;
+  /** SnippetsPanel's click/keyboard insert path -- inserts the named catalog entry at the current selection. */
+  insertSnippet(id: string): void;
   /** Escape hatch for FindWidget to drive @codemirror/search's own functions directly against the live view. */
   getView(): EditorView | null;
 }
@@ -244,7 +254,24 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     view.focus();
   }
 
-  useImperativeHandle(ref, () => ({ replaceContent: applyFormatted, revealPosition, getView: () => viewRef.current }), []);
+  // The click/keyboard path for SnippetsPanel -- inserts at the current selection and focuses the
+  // editor, sharing insertSnippetTemplate with the drop handler below rather than growing a second
+  // insertion mechanism. Silently does nothing for an unknown id (e.g. a stale drag payload).
+  function insertSnippet(id: string) {
+    const view = viewRef.current;
+    if (!view) return;
+    const entry = snippetById(id);
+    if (!entry) return;
+    const { from, to } = view.state.selection.main;
+    insertSnippetTemplate(view, entry.template, from, to);
+    view.focus();
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({ replaceContent: applyFormatted, revealPosition, insertSnippet, getView: () => viewRef.current }),
+    [],
+  );
 
   // No keybinding: basicSetup's historyKeymap already binds ⌘Z/⇧⌘Z; these exist so the native Edit menu and palette have something to dispatch into.
   useCommand({
@@ -336,6 +363,23 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                 // Best-effort: swallow a failed write -- nothing inserted rather than a broken image reference.
               });
 
+            return true;
+          },
+          // Without this, the browser never allows a drop to fire at all.
+          dragover: (event) => {
+            if (event.dataTransfer?.types.includes(SNIPPET_DRAG_MIME)) event.preventDefault();
+          },
+          // Only intercepts a SnippetsPanel drag; any other drop (e.g. a file from the OS) falls through untouched.
+          drop: (event, editorView) => {
+            const id = event.dataTransfer?.getData(SNIPPET_DRAG_MIME);
+            if (!id) return false;
+            const entry = snippetById(id);
+            if (!entry) return true;
+
+            event.preventDefault();
+            const pos = editorView.posAtCoords({ x: event.clientX, y: event.clientY }) ?? editorView.state.selection.main.head;
+            insertSnippetTemplate(editorView, entry.template, pos, pos);
+            editorView.focus();
             return true;
           },
         }),

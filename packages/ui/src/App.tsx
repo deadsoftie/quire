@@ -29,6 +29,7 @@ import { OutlinePanel } from "./panels/OutlinePanel";
 import { formatBytes, PackagesPanel } from "./panels/PackagesPanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
 import { SearchPanel } from "./panels/SearchPanel";
+import { SnippetsPanel } from "./panels/SnippetsPanel";
 import type { PanelKind } from "./panels/types";
 import { ExportDialog } from "./ExportDialog";
 import { MissingPackagesCard } from "./MissingPackagesCard";
@@ -96,6 +97,7 @@ const PANEL_TITLES: Record<PanelKind, string> = {
   outline: "Outline",
   problems: "Problems",
   packages: "Packages",
+  snippets: "Snippets",
 };
 
 const DEFAULT_SESSION: SessionState = {
@@ -760,6 +762,7 @@ function AppShell() {
       outline: sidebarSection === "outline",
       problems: sidebarSection === "problems",
       packages: sidebarSection === "packages",
+      snippets: sidebarSection === "snippets",
       focusMode,
       typewriterMode,
       proseMode,
@@ -1007,6 +1010,11 @@ function AppShell() {
     title: "Show Packages",
     run: () => toggleSidebarSection("packages"),
   });
+  useCommand({
+    id: "panel.snippets",
+    title: "Show Snippets",
+    run: () => toggleSidebarSection("snippets"),
+  });
 
   function renderPanelBody(kind: PanelKind) {
     switch (kind) {
@@ -1040,6 +1048,8 @@ function AppShell() {
         return <ProblemsPanel diagnostics={diagnostics} onSelect={revealDiagnostic} />;
       case "packages":
         return <PackagesPanel onChanged={() => setPackagesRefreshToken((t) => t + 1)} />;
+      case "snippets":
+        return <SnippetsPanel onInsert={(id) => editorRef.current?.insertSnippet(id)} />;
     }
   }
 
