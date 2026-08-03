@@ -1,8 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { DragEvent as ReactDragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, File, FileText, Folder, FolderOpen, Image as ImageIcon } from "lucide-react";
 import type { ExplorerNode } from "@quire/client";
 import { ContextMenu, type ContextMenuItem } from "../ContextMenu";
+import { FILE_DRAG_MIME } from "../fileDrag";
 import { extensionOf, flattenVisible, isOpenableFile, parentUriOf, type FlatExplorerRow } from "./explorerTree";
 import "./FileTreePanel.css";
 
@@ -134,6 +135,14 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
   const [focusedUri, setFocusedUri] = useState<string | null>(null);
   const [menuTarget, setMenuTarget] = useState<MenuTarget | null>(null);
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
+  // The uri currently under a drag (a real directory's uri, or `rootUri` for the background) --
+  // drives the drop-target highlight. `null` means no drag is over a valid target right now.
+  const [dragOverUri, setDragOverUri] = useState<string | null>(null);
+  // The uri being dragged, tracked from dragstart -- `dataTransfer.getData` is only readable on
+  // drop, not during dragover, so this is the only way to reject "into itself/its own descendant"
+  // (a folder can't become its own child) before the drop, rather than letting the backend fail
+  // it with a raw OS-level rename error.
+  const [draggingUri, setDraggingUri] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   const rows = useMemo(() => flattenVisible(tree, collapsed), [tree, collapsed]);
@@ -259,6 +268,57 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     }
   }
 
+  function handleDragStart(event: ReactDragEvent, uri: string) {
+    event.dataTransfer.setData(FILE_DRAG_MIME, uri);
+    // "copyMove": the row itself doesn't know its drop target yet -- dropping on a directory
+    // here moves the entry, dropping in the editor (Editor.tsx's own dragover) inserts a
+    // reference instead. Each drop target picks its own dropEffect below/in Editor.tsx.
+    event.dataTransfer.effectAllowed = "copyMove";
+    setDraggingUri(uri);
+  }
+
+  function isInvalidDropTarget(targetUri: string): boolean {
+    return targetUri === draggingUri || (draggingUri !== null && targetUri.startsWith(draggingUri + "/"));
+  }
+
+  // A file row always stops propagation (so the background handler below never mistakes
+  // "hovering a row" for "hovering empty space") but never calls preventDefault for itself --
+  // only a directory is a valid drop target, so a file correctly shows a no-drop cursor.
+  function handleRowDragOver(event: ReactDragEvent, row: FlatExplorerRow) {
+    if (!event.dataTransfer.types.includes(FILE_DRAG_MIME)) return;
+    event.stopPropagation();
+    if (row.node.kind !== "directory" || isInvalidDropTarget(row.node.uri)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverUri(row.node.uri);
+  }
+
+  async function handleRowDrop(event: ReactDragEvent, row: FlatExplorerRow) {
+    if (!event.dataTransfer.types.includes(FILE_DRAG_MIME)) return;
+    event.stopPropagation();
+    if (row.node.kind !== "directory" || isInvalidDropTarget(row.node.uri)) return;
+    event.preventDefault();
+    setDragOverUri(null);
+    const draggedUri = event.dataTransfer.getData(FILE_DRAG_MIME);
+    if (draggedUri && draggedUri !== row.node.uri) await onMove(draggedUri, row.node.uri);
+  }
+
+  // Only ever reached for empty space -- every row already stops propagation above.
+  function handleBackgroundDragOver(event: ReactDragEvent) {
+    if (!event.dataTransfer.types.includes(FILE_DRAG_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverUri(rootUri);
+  }
+
+  async function handleBackgroundDrop(event: ReactDragEvent) {
+    if (!event.dataTransfer.types.includes(FILE_DRAG_MIME)) return;
+    event.preventDefault();
+    setDragOverUri(null);
+    const draggedUri = event.dataTransfer.getData(FILE_DRAG_MIME);
+    if (draggedUri) await onMove(draggedUri, rootUri);
+  }
+
   function openMenu(event: ReactMouseEvent, node: ExplorerNode | null) {
     event.preventDefault();
     event.stopPropagation();
@@ -317,7 +377,12 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     // Right-click here only ever fires when a row's own handler hasn't already stopped
     // propagation -- i.e. the click landed on empty space below/around the rows -- meaning "create
     // at the project root," the same default the old native "New File" dialog always used.
-    <div className="file-tree__container" onContextMenu={(event) => openMenu(event, null)}>
+    <div
+      className={"file-tree__container" + (dragOverUri === rootUri ? " file-tree__container--drag-over" : "")}
+      onContextMenu={(event) => openMenu(event, null)}
+      onDragOver={handleBackgroundDragOver}
+      onDrop={handleBackgroundDrop}
+    >
       {tree.length === 0 && !pendingCreate ? (
         <p className="panel-empty">This folder is empty.</p>
       ) : (
@@ -353,7 +418,8 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
                     "file-tree__row" +
                     (row.node.kind === "directory" || isOpenableFile(row.node.name) ? " file-tree__row--selectable" : "") +
                     (row.node.uri === activeUri ? " file-tree__row--active" : "") +
-                    (row.node.kind === "file" && !isOpenableFile(row.node.name) ? " file-tree__row--inert" : "")
+                    (row.node.kind === "file" && !isOpenableFile(row.node.name) ? " file-tree__row--inert" : "") +
+                    (row.node.uri === dragOverUri ? " file-tree__row--drag-over" : "")
                   }
                   style={{ paddingLeft: `calc(var(--s-2) + ${row.depth} * var(--s-4))` }}
                   role="treeitem"
@@ -361,6 +427,14 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
                   aria-expanded={row.node.kind === "directory" ? !collapsed.has(row.node.uri) : undefined}
                   aria-selected={row.node.uri === activeUri}
                   tabIndex={row.node.uri === focusedUri ? 0 : -1}
+                  draggable
+                  onDragStart={(event) => handleDragStart(event, row.node.uri)}
+                  onDragOver={(event) => handleRowDragOver(event, row)}
+                  onDrop={(event) => handleRowDrop(event, row)}
+                  onDragEnd={() => {
+                    setDragOverUri(null);
+                    setDraggingUri(null);
+                  }}
                   onClick={() => handleRowClick(row)}
                   onKeyDown={(event) => handleRowKeyDown(event, row, index)}
                   onContextMenu={(event) => openMenu(event, row.node)}

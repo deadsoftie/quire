@@ -944,10 +944,14 @@ function AppShell() {
       } else if (event.kind === "files-changed") {
         if (projectRef.current && event.projectId === projectRef.current.projectId) {
           runCompile("edit");
+          // External change (git checkout, a script writing output, ...) -- the Explorer has no
+          // other way to notice a file appearing/disappearing/moving outside the app's own
+          // create/rename/move/copy/trash paths, which already refresh it themselves.
+          refreshExplorerTree();
         }
       }
     });
-  }, [runCompile]);
+  }, [runCompile, refreshExplorerTree]);
 
   useCommand({
     id: "project.open",

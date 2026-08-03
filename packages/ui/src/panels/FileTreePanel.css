@@ -2,6 +2,12 @@
   min-height: 100%;
 }
 
+/* Dropping onto empty space moves to the project root -- same accent this app already uses everywhere else for "something is happening." */
+.file-tree__container--drag-over {
+  outline: var(--seam) dashed var(--nonrepro);
+  outline-offset: -1px;
+}
+
 .file-tree {
   list-style: none;
   margin: 0;
@@ -41,6 +47,12 @@
 
 .file-tree__row--inert {
   color: var(--type-lo);
+}
+
+.file-tree__row--drag-over {
+  background: var(--nonrepro-dim);
+  outline: var(--seam) dashed var(--nonrepro);
+  outline-offset: -1px;
 }
 
 .file-tree__icon {

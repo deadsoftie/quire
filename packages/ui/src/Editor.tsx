@@ -21,6 +21,7 @@ import {
   wordWrapCompartment,
 } from "./editorModes";
 import { environmentSync } from "./environmentSync";
+import { FILE_DRAG_MIME, insertionForDraggedFile, toProjectRelativePath } from "./fileDrag";
 import { neutralizeDefaultSearchKeymap } from "./findKeymap";
 import { formatLatex } from "./latex/formatter";
 import { latex } from "./latex/language";
@@ -372,10 +373,27 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           },
           // Without this, the browser never allows a drop to fire at all.
           dragover: (event) => {
-            if (event.dataTransfer?.types.includes(SNIPPET_DRAG_MIME)) event.preventDefault();
+            const types = event.dataTransfer?.types;
+            if (types?.includes(SNIPPET_DRAG_MIME) || types?.includes(FILE_DRAG_MIME)) {
+              event.preventDefault();
+              // Native drag cursor feedback: this is always an insert-a-reference, never a
+              // filesystem move, even when the payload is a file dragged from the Explorer.
+              if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+            }
           },
-          // Only intercepts a SnippetsPanel drag; any other drop (e.g. a file from the OS) falls through untouched.
+          // Checks the Explorer's own MIME first, then SnippetsPanel's; any other drop (e.g. a file from the OS) falls through untouched.
           drop: (event, editorView) => {
+            const fileUri = event.dataTransfer?.getData(FILE_DRAG_MIME);
+            if (fileUri) {
+              event.preventDefault();
+              const relativePath = toProjectRelativePath(fileUri, projectId);
+              const insertText = insertionForDraggedFile(relativePath, editorView.state.doc.toString());
+              const pos = editorView.posAtCoords({ x: event.clientX, y: event.clientY }) ?? editorView.state.selection.main.head;
+              editorView.dispatch({ changes: { from: pos, to: pos, insert: insertText } });
+              editorView.focus();
+              return true;
+            }
+
             const id = event.dataTransfer?.getData(SNIPPET_DRAG_MIME);
             if (!id) return false;
             const entry = snippetById(id);
