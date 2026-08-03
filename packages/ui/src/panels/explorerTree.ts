@@ -50,3 +50,8 @@ export function extensionOf(name: string): string {
 export function isOpenableFile(name: string): boolean {
   return !NON_TEXT_EXTENSIONS.has(extensionOf(name));
 }
+
+/** `ExplorerNode` carries no parent reference -- derived from its own uri/name instead of a tree walk. */
+export function parentUriOf(node: ExplorerNode): string {
+  return node.uri.slice(0, node.uri.length - node.name.length - 1);
+}

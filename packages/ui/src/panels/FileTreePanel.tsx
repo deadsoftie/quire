@@ -1,8 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { BookOpen, File, FileText, Folder, FolderOpen, Image as ImageIcon } from "lucide-react";
 import type { ExplorerNode } from "@quire/client";
-import { extensionOf, flattenVisible, isOpenableFile, type FlatExplorerRow } from "./explorerTree";
+import { ContextMenu, type ContextMenuItem } from "../ContextMenu";
+import { extensionOf, flattenVisible, isOpenableFile, parentUriOf, type FlatExplorerRow } from "./explorerTree";
 import "./FileTreePanel.css";
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "eps", "bmp", "webp"]);
@@ -16,7 +17,10 @@ interface FileTreePanelProps {
   onCreateFile: (parentUri: string, name: string) => Promise<void>;
   onCreateDirectory: (parentUri: string, name: string) => Promise<void>;
   onRename: (uri: string, newName: string) => Promise<void>;
+  onMove: (uri: string, newParentUri: string) => Promise<void>;
+  onCopy: (uri: string, destParentUri: string) => Promise<void>;
   onTrash: (uri: string) => Promise<void>;
+  onReveal: (uri: string) => Promise<void>;
 }
 
 export interface FileTreePanelHandle {
@@ -26,6 +30,18 @@ export interface FileTreePanelHandle {
 interface PendingCreate {
   parentUri: string;
   kind: "file" | "directory";
+}
+
+/** `node: null` means the background was right-clicked (the project root, not a specific entry). */
+interface MenuTarget {
+  x: number;
+  y: number;
+  node: ExplorerNode | null;
+}
+
+interface Clipboard {
+  uri: string;
+  mode: "cut" | "copy";
 }
 
 function iconFor(node: ExplorerNode, expanded: boolean) {
@@ -109,13 +125,15 @@ function EditableNameRow({
 }
 
 export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>(function FileTreePanel(
-  { tree, rootUri, activeUri, onSelectFile, onCreateFile, onCreateDirectory, onRename, onTrash },
+  { tree, rootUri, activeUri, onSelectFile, onCreateFile, onCreateDirectory, onRename, onMove, onCopy, onTrash, onReveal },
   ref,
 ) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [renamingUri, setRenamingUri] = useState<string | null>(null);
   const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null);
   const [focusedUri, setFocusedUri] = useState<string | null>(null);
+  const [menuTarget, setMenuTarget] = useState<MenuTarget | null>(null);
+  const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   const rows = useMemo(() => flattenVisible(tree, collapsed), [tree, collapsed]);
@@ -229,69 +247,149 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     else await onCreateDirectory(pending.parentUri, name);
   }
 
-  if (tree.length === 0 && !pendingCreate) {
-    return <p className="panel-empty">This folder is empty.</p>;
+  // A "Cut" clears itself after one paste (the original moved away, so it couldn't be pasted
+  // again anyway); a "Copy" stays live so the same source can be pasted into several folders.
+  async function paste(destParentUri: string) {
+    if (!clipboard) return;
+    if (clipboard.mode === "cut") {
+      setClipboard(null);
+      await onMove(clipboard.uri, destParentUri);
+    } else {
+      await onCopy(clipboard.uri, destParentUri);
+    }
+  }
+
+  function openMenu(event: ReactMouseEvent, node: ExplorerNode | null) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (node) setFocusedUri(node.uri);
+    setMenuTarget({ x: event.clientX, y: event.clientY, node });
+  }
+
+  // Right-clicking a file targets its containing directory for New File/New Folder/Paste --
+  // those always create a sibling, never a child of a file.
+  function menuItemsFor(node: ExplorerNode | null): ContextMenuItem[] {
+    const createParentUri = node === null ? rootUri : node.kind === "directory" ? node.uri : parentUriOf(node);
+
+    const items: ContextMenuItem[] = [
+      { id: "new-file", label: "New File", onSelect: () => setPendingCreate({ parentUri: createParentUri, kind: "file" }) },
+      {
+        id: "new-folder",
+        label: "New Folder",
+        onSelect: () => setPendingCreate({ parentUri: createParentUri, kind: "directory" }),
+      },
+    ];
+
+    if (node) {
+      items.push(
+        { id: "rename", label: "Rename", separatorBefore: true, onSelect: () => setRenamingUri(node.uri) },
+        { id: "cut", label: "Cut", onSelect: () => setClipboard({ uri: node.uri, mode: "cut" }) },
+        { id: "copy", label: "Copy", onSelect: () => setClipboard({ uri: node.uri, mode: "copy" }) },
+      );
+    }
+
+    items.push({
+      id: "paste",
+      label: "Paste",
+      separatorBefore: node === null,
+      disabled: !clipboard,
+      onSelect: () => paste(createParentUri),
+    });
+
+    items.push({
+      id: "delete",
+      label: "Delete",
+      separatorBefore: true,
+      destructive: node !== null,
+      disabled: node === null,
+      onSelect: () => node && onTrash(node.uri),
+    });
+    items.push({
+      id: "reveal",
+      label: "Reveal in File Manager",
+      onSelect: () => onReveal(node ? node.uri : rootUri),
+    });
+
+    return items;
   }
 
   return (
-    <ul className="file-tree" role="tree" aria-label="Explorer">
-      {pendingCreate && pendingCreate.parentUri === rootUri && (
-        <li>
-          <EditableNameRow
-            depth={0}
-            kind={pendingCreate.kind}
-            initialValue=""
-            onCommit={commitCreate}
-            onCancel={() => setPendingCreate(null)}
-          />
-        </li>
+    // Right-click here only ever fires when a row's own handler hasn't already stopped
+    // propagation -- i.e. the click landed on empty space below/around the rows -- meaning "create
+    // at the project root," the same default the old native "New File" dialog always used.
+    <div className="file-tree__container" onContextMenu={(event) => openMenu(event, null)}>
+      {tree.length === 0 && !pendingCreate ? (
+        <p className="panel-empty">This folder is empty.</p>
+      ) : (
+        <ul className="file-tree" role="tree" aria-label="Explorer">
+          {pendingCreate && pendingCreate.parentUri === rootUri && (
+            <li>
+              <EditableNameRow
+                depth={0}
+                kind={pendingCreate.kind}
+                initialValue=""
+                onCommit={commitCreate}
+                onCancel={() => setPendingCreate(null)}
+              />
+            </li>
+          )}
+          {rows.map((row, index) => (
+            <li key={row.node.uri}>
+              {renamingUri === row.node.uri ? (
+                <EditableNameRow
+                  depth={row.depth}
+                  kind={row.node.kind}
+                  initialValue={row.node.name}
+                  onCommit={(name) => commitRename(row.node.uri, name)}
+                  onCancel={() => setRenamingUri(null)}
+                />
+              ) : (
+                <div
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(row.node.uri, el);
+                    else rowRefs.current.delete(row.node.uri);
+                  }}
+                  className={
+                    "file-tree__row" +
+                    (row.node.kind === "directory" || isOpenableFile(row.node.name) ? " file-tree__row--selectable" : "") +
+                    (row.node.uri === activeUri ? " file-tree__row--active" : "") +
+                    (row.node.kind === "file" && !isOpenableFile(row.node.name) ? " file-tree__row--inert" : "")
+                  }
+                  style={{ paddingLeft: `calc(var(--s-2) + ${row.depth} * var(--s-4))` }}
+                  role="treeitem"
+                  aria-level={row.depth + 1}
+                  aria-expanded={row.node.kind === "directory" ? !collapsed.has(row.node.uri) : undefined}
+                  aria-selected={row.node.uri === activeUri}
+                  tabIndex={row.node.uri === focusedUri ? 0 : -1}
+                  onClick={() => handleRowClick(row)}
+                  onKeyDown={(event) => handleRowKeyDown(event, row, index)}
+                  onContextMenu={(event) => openMenu(event, row.node)}
+                >
+                  <span className="file-tree__icon">{iconFor(row.node, !collapsed.has(row.node.uri))}</span>
+                  <span className="file-tree__name">{row.node.name}</span>
+                </div>
+              )}
+              {pendingCreate && pendingCreate.parentUri === row.node.uri && (
+                <EditableNameRow
+                  depth={row.depth + 1}
+                  kind={pendingCreate.kind}
+                  initialValue=""
+                  onCommit={commitCreate}
+                  onCancel={() => setPendingCreate(null)}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
       )}
-      {rows.map((row, index) => (
-        <li key={row.node.uri}>
-          {renamingUri === row.node.uri ? (
-            <EditableNameRow
-              depth={row.depth}
-              kind={row.node.kind}
-              initialValue={row.node.name}
-              onCommit={(name) => commitRename(row.node.uri, name)}
-              onCancel={() => setRenamingUri(null)}
-            />
-          ) : (
-            <div
-              ref={(el) => {
-                if (el) rowRefs.current.set(row.node.uri, el);
-                else rowRefs.current.delete(row.node.uri);
-              }}
-              className={
-                "file-tree__row" +
-                (row.node.kind === "directory" || isOpenableFile(row.node.name) ? " file-tree__row--selectable" : "") +
-                (row.node.uri === activeUri ? " file-tree__row--active" : "") +
-                (row.node.kind === "file" && !isOpenableFile(row.node.name) ? " file-tree__row--inert" : "")
-              }
-              style={{ paddingLeft: `calc(var(--s-2) + ${row.depth} * var(--s-4))` }}
-              role="treeitem"
-              aria-level={row.depth + 1}
-              aria-expanded={row.node.kind === "directory" ? !collapsed.has(row.node.uri) : undefined}
-              aria-selected={row.node.uri === activeUri}
-              tabIndex={row.node.uri === focusedUri ? 0 : -1}
-              onClick={() => handleRowClick(row)}
-              onKeyDown={(event) => handleRowKeyDown(event, row, index)}
-            >
-              <span className="file-tree__icon">{iconFor(row.node, !collapsed.has(row.node.uri))}</span>
-              <span className="file-tree__name">{row.node.name}</span>
-            </div>
-          )}
-          {pendingCreate && pendingCreate.parentUri === row.node.uri && (
-            <EditableNameRow
-              depth={row.depth + 1}
-              kind={pendingCreate.kind}
-              initialValue=""
-              onCommit={commitCreate}
-              onCancel={() => setPendingCreate(null)}
-            />
-          )}
-        </li>
-      ))}
-    </ul>
+      {menuTarget && (
+        <ContextMenu
+          x={menuTarget.x}
+          y={menuTarget.y}
+          items={menuItemsFor(menuTarget.node)}
+          onClose={() => setMenuTarget(null)}
+        />
+      )}
+    </div>
   );
 });

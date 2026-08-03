@@ -43,6 +43,7 @@ import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
 import { basename } from "./paths";
 import { normalizeSession, type SessionState } from "./session";
+import { rewriteTabUris } from "./tabUriRewrite";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
@@ -625,6 +626,7 @@ function AppShell() {
 
   // Rewrites any open tab's uri in place (itself, or nested under a renamed directory) rather than
   // closing and reopening -- that would silently discard unsaved edits and cursor/scroll position.
+  // Shared with moveExplorerEntry below: a move is the same kind of uri change as a rename.
   const renameExplorerEntry = useCallback(
     async (uri: string, newName: string) => {
       const proj = projectRef.current;
@@ -636,20 +638,7 @@ function AppShell() {
         setError(String((err as Error)?.message ?? err));
         return;
       }
-      const newUri = renamed.uri;
-      const rewriteUri = (candidate: string) => {
-        if (candidate === uri) return newUri;
-        if (candidate.startsWith(uri + "/")) return newUri + candidate.slice(uri.length);
-        return null;
-      };
-
-      let nextActiveUri: string | null = null;
-      const nextTabs = tabsRef.current.map((t) => {
-        const rewritten = rewriteUri(t.uri);
-        if (rewritten === null) return t;
-        if (t.uri === activeUri) nextActiveUri = rewritten;
-        return { ...t, uri: rewritten };
-      });
+      const { tabs: nextTabs, nextActiveUri } = rewriteTabUris(tabsRef.current, uri, renamed.uri, activeUri);
       tabsRef.current = nextTabs;
       setTabs(nextTabs);
       if (nextActiveUri) setActiveUri(nextActiveUri);
@@ -657,6 +646,49 @@ function AppShell() {
     },
     [activeUri, refreshExplorerTree],
   );
+
+  const moveExplorerEntry = useCallback(
+    async (uri: string, newParentUri: string) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      let moved;
+      try {
+        moved = await window.quire.moveEntry(proj.projectId, uri, newParentUri);
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+        return;
+      }
+      const { tabs: nextTabs, nextActiveUri } = rewriteTabUris(tabsRef.current, uri, moved.uri, activeUri);
+      tabsRef.current = nextTabs;
+      setTabs(nextTabs);
+      if (nextActiveUri) setActiveUri(nextActiveUri);
+      await refreshExplorerTree();
+    },
+    [activeUri, refreshExplorerTree],
+  );
+
+  // Unlike rename/move, the source is untouched -- no open-tab uri ever needs rewriting here.
+  const copyExplorerEntry = useCallback(
+    async (uri: string, destParentUri: string) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      try {
+        await window.quire.copyEntry(proj.projectId, uri, destParentUri);
+        await refreshExplorerTree();
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+    [refreshExplorerTree],
+  );
+
+  const revealExplorerEntry = useCallback(async (uri: string) => {
+    try {
+      await window.quireDesktop.revealInFileManager(uri);
+    } catch (err) {
+      setError(String((err as Error)?.message ?? err));
+    }
+  }, []);
 
   // OS-trash delete (recoverable), entirely outside CoreApi -- no quire-core involvement at all.
   // Reuses confirmAndSaveDirtyTabs's own one-dialog-for-N-files shape rather than one confirm per tab.
@@ -1152,7 +1184,10 @@ function AppShell() {
             onCreateFile={createExplorerFile}
             onCreateDirectory={createExplorerDirectory}
             onRename={renameExplorerEntry}
+            onMove={moveExplorerEntry}
+            onCopy={copyExplorerEntry}
             onTrash={trashExplorerEntry}
+            onReveal={revealExplorerEntry}
           />
         );
       case "search":

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExplorerNode } from "@quire/client";
-import { extensionOf, flattenVisible, isOpenableFile } from "./explorerTree";
+import { extensionOf, flattenVisible, isOpenableFile, parentUriOf } from "./explorerTree";
 
 function file(uri: string, name: string): ExplorerNode {
   return { uri, name, kind: "file", children: null };
@@ -61,5 +61,12 @@ describe("isOpenableFile", () => {
     expect(isOpenableFile("figure.png")).toBe(false);
     expect(isOpenableFile("paper.pdf")).toBe(false);
     expect(isOpenableFile("archive.zip")).toBe(false);
+  });
+});
+
+describe("parentUriOf", () => {
+  it("strips the trailing /name to recover the containing directory", () => {
+    expect(parentUriOf(file("/p/chapters/intro.tex", "intro.tex"))).toBe("/p/chapters");
+    expect(parentUriOf(dir("/p/chapters", "chapters", []))).toBe("/p");
   });
 });
