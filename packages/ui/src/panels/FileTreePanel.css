@@ -72,6 +72,33 @@
   padding-bottom: 0;
 }
 
+/* Hover/focus-reveal, like a native file manager's inline actions -- hidden until the row is
+   actually being looked at, except when it's already the active target, which stays visible. */
+.file-tree__target-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-lo);
+  opacity: 0;
+}
+
+.file-tree__row:hover .file-tree__target-toggle,
+.file-tree__row:focus-within .file-tree__target-toggle,
+.file-tree__target-toggle--active {
+  opacity: 1;
+}
+
+.file-tree__target-toggle:hover,
+.file-tree__target-toggle--active {
+  color: var(--nonrepro);
+}
+
 .file-tree__name-input {
   flex: 1;
   min-width: 0;

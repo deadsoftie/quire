@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { BookOpen, File, FileText, Folder, FolderOpen, Image as ImageIcon } from "lucide-react";
+import { BookOpen, File, FileText, Folder, FolderOpen, Image as ImageIcon, Target } from "lucide-react";
 import type { ExplorerNode } from "@quire/client";
 import { ContextMenu, type ContextMenuItem } from "../ContextMenu";
 import { FILE_DRAG_MIME } from "../fileDrag";
@@ -14,6 +14,8 @@ interface FileTreePanelProps {
   /** The project's root directory -- the sidebar header's New File/New Folder buttons always create here. */
   rootUri: string;
   activeUri: string | null;
+  /** The currently "targeted" .tex file (compiles into the preview instead of the automatically detected root), or `null` for automatic. */
+  targetRoot: string | null;
   onSelectFile: (uri: string) => void;
   onCreateFile: (parentUri: string, name: string) => Promise<void>;
   onCreateDirectory: (parentUri: string, name: string) => Promise<void>;
@@ -23,6 +25,13 @@ interface FileTreePanelProps {
   onCopy: (uri: string, destParentUri: string) => Promise<void>;
   onTrash: (uri: string) => Promise<void>;
   onReveal: (uri: string) => Promise<void>;
+  /** `null` clears the target, returning to automatic root detection. */
+  onRetarget: (uri: string | null) => Promise<void>;
+}
+
+/** Only a real .tex *file* can be targeted -- mirrors iconFor's own early-return-on-directory guard, made explicit here since this isn't routed through that function. */
+function isTargetableTexFile(node: ExplorerNode): boolean {
+  return node.kind === "file" && extensionOf(node.name) === "tex";
 }
 
 export interface FileTreePanelHandle {
@@ -132,7 +141,21 @@ function EditableNameRow({
 }
 
 export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>(function FileTreePanel(
-  { tree, rootUri, activeUri, onSelectFile, onCreateFile, onCreateDirectory, onRename, onMove, onCopy, onTrash, onReveal },
+  {
+    tree,
+    rootUri,
+    activeUri,
+    targetRoot,
+    onSelectFile,
+    onCreateFile,
+    onCreateDirectory,
+    onRename,
+    onMove,
+    onCopy,
+    onTrash,
+    onReveal,
+    onRetarget,
+  },
   ref,
 ) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -347,6 +370,14 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     if (draggedUri) await onMove(draggedUri, rootUri);
   }
 
+  // stopPropagation so this never also fires the row's own onClick (which opens the file) --
+  // targeting and opening are independent actions. Toggle semantics: clicking the current target
+  // clears it back to automatic; clicking any other .tex row replaces it.
+  function handleTargetToggle(event: ReactMouseEvent, node: ExplorerNode) {
+    event.stopPropagation();
+    onRetarget(node.uri === targetRoot ? null : node.uri);
+  }
+
   function openMenu(event: ReactMouseEvent, node: ExplorerNode | null) {
     event.preventDefault();
     event.stopPropagation();
@@ -375,6 +406,19 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
         onSelect: () => setPendingCreate({ parentUri: createParentUri, kind: "directory" }),
       },
     ];
+
+    // Grouped with "acts on this file's identity" (right after creation, its own separator)
+    // rather than with the structural cut/copy/move group below -- targeting isn't a filesystem
+    // mutation the way those are.
+    if (node && isTargetableTexFile(node)) {
+      const isTarget = node.uri === targetRoot;
+      items.push({
+        id: "target",
+        label: isTarget ? "Clear Root Target" : "Set as Root Target",
+        separatorBefore: true,
+        onSelect: () => onRetarget(isTarget ? null : node.uri),
+      });
+    }
 
     if (node) {
       items.push(
@@ -482,6 +526,24 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
                 >
                   <span className="file-tree__icon">{iconFor(row.node, !collapsed.has(row.node.uri))}</span>
                   <span className="file-tree__name">{row.node.name}</span>
+                  {isTargetableTexFile(row.node) && (
+                    <button
+                      type="button"
+                      className={
+                        "file-tree__target-toggle" +
+                        (row.node.uri === targetRoot ? " file-tree__target-toggle--active" : "")
+                      }
+                      aria-label={
+                        row.node.uri === targetRoot
+                          ? `Clear root target (currently ${row.node.name})`
+                          : `Set ${row.node.name} as root target`
+                      }
+                      aria-pressed={row.node.uri === targetRoot}
+                      onClick={(event) => handleTargetToggle(event, row.node)}
+                    >
+                      <Target size={13} />
+                    </button>
+                  )}
                 </div>
               )}
               {pendingCreate && pendingCreate.parentUri === row.node.uri && (

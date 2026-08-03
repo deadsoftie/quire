@@ -1257,6 +1257,7 @@ function AppShell() {
             tree={explorerTree}
             rootUri={project?.projectId ?? ""}
             activeUri={activeUri}
+            targetRoot={targetRoot}
             onSelectFile={openTab}
             onCreateFile={createExplorerFile}
             onCreateDirectory={createExplorerDirectory}
@@ -1265,6 +1266,7 @@ function AppShell() {
             onCopy={copyExplorerEntry}
             onTrash={trashExplorerEntry}
             onReveal={revealExplorerEntry}
+            onRetarget={retargetRoot}
           />
         );
       case "search":
