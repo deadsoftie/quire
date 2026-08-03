@@ -5,12 +5,13 @@ import type {
   CoreEvent,
   DetectSystemTexResponse,
   Diagnostic,
+  ExplorerNode,
   FileNode,
   OutlineNode,
   ReplacedFile,
   SearchMatch,
 } from "@quire/client";
-import { Plus } from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
 import { CommandProvider, useCommand } from "./commands/CommandContext";
@@ -23,8 +24,8 @@ import { FindWidget } from "./FindWidget";
 import type { FindWidgetHandle } from "./FindWidget";
 import { formatLatex } from "./latex/formatter";
 import { useMenuBridge } from "./menuBridge";
-import { buildFileTree } from "./panels/fileTree";
 import { FileTreePanel } from "./panels/FileTreePanel";
+import type { FileTreePanelHandle } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
 import { formatBytes, PackagesPanel } from "./panels/PackagesPanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
@@ -131,6 +132,7 @@ function AppShell() {
   useMenuBridge();
 
   const [project, setProject] = useState<Project | null>(null);
+  const [explorerTree, setExplorerTree] = useState<ExplorerNode[]>([]);
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeUri, setActiveUri] = useState<string | null>(null);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
@@ -173,6 +175,7 @@ function AppShell() {
   const tabsRef = useRef<OpenTab[]>([]);
   const editorRef = useRef<EditorHandle>(null);
   const findWidgetRef = useRef<FindWidgetHandle>(null);
+  const fileTreeRef = useRef<FileTreePanelHandle>(null);
   // Set only when a diagnostic click targets a file that isn't the active tab; the reveal is deferred to the effect below.
   const pendingRevealRef = useRef<{ uri: string; line: number; column: number } | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
@@ -560,13 +563,133 @@ function AppShell() {
     await openProjectAtPath(path);
   }, [openProjectAtPath]);
 
-  // Shared by the file.new command and the Explorer sidebar's own "+ New File" header button.
+  // Shared by the file.new command and the Save As command's native-dialog flow -- the Explorer
+  // sidebar's own New File/New Folder buttons use the tree's inline creation instead (see
+  // fileTreeRef below), but ⌘N keeps this native picker since it has no tree-focus context to
+  // create into.
   const createNewFile = useCallback(async () => {
     if (!project) return;
     const path = await window.quireDesktop.createFile(project.projectId);
     if (!path) return;
     await openTab(path);
   }, [project, openTab]);
+
+  // Whole-directory listing for the Explorer, distinct from `project.files` (the LaTeX-graph
+  // subset compile/export use) -- re-fetched wholesale rather than patched incrementally, since a
+  // fresh walk is cheap and this sidesteps ever having to reconcile a partial client-side edit.
+  const refreshExplorerTree = useCallback(async () => {
+    const proj = projectRef.current;
+    if (!proj) {
+      setExplorerTree([]);
+      return;
+    }
+    try {
+      setExplorerTree(await window.quire.listProjectTree(proj.projectId));
+    } catch {
+      // Transient failure -- leave whatever tree was already showing rather than blanking the Explorer.
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshExplorerTree();
+  }, [project, refreshExplorerTree]);
+
+  const createExplorerFile = useCallback(
+    async (parentUri: string, name: string) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      try {
+        const created = await window.quire.createFile(proj.projectId, parentUri, name);
+        await refreshExplorerTree();
+        await openTab(created.uri);
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+    [refreshExplorerTree, openTab],
+  );
+
+  const createExplorerDirectory = useCallback(
+    async (parentUri: string, name: string) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      try {
+        await window.quire.createDirectory(proj.projectId, parentUri, name);
+        await refreshExplorerTree();
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+      }
+    },
+    [refreshExplorerTree],
+  );
+
+  // Rewrites any open tab's uri in place (itself, or nested under a renamed directory) rather than
+  // closing and reopening -- that would silently discard unsaved edits and cursor/scroll position.
+  const renameExplorerEntry = useCallback(
+    async (uri: string, newName: string) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      let renamed;
+      try {
+        renamed = await window.quire.renameEntry(proj.projectId, uri, newName);
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+        return;
+      }
+      const newUri = renamed.uri;
+      const rewriteUri = (candidate: string) => {
+        if (candidate === uri) return newUri;
+        if (candidate.startsWith(uri + "/")) return newUri + candidate.slice(uri.length);
+        return null;
+      };
+
+      let nextActiveUri: string | null = null;
+      const nextTabs = tabsRef.current.map((t) => {
+        const rewritten = rewriteUri(t.uri);
+        if (rewritten === null) return t;
+        if (t.uri === activeUri) nextActiveUri = rewritten;
+        return { ...t, uri: rewritten };
+      });
+      tabsRef.current = nextTabs;
+      setTabs(nextTabs);
+      if (nextActiveUri) setActiveUri(nextActiveUri);
+      await refreshExplorerTree();
+    },
+    [activeUri, refreshExplorerTree],
+  );
+
+  // OS-trash delete (recoverable), entirely outside CoreApi -- no quire-core involvement at all.
+  // Reuses confirmAndSaveDirtyTabs's own one-dialog-for-N-files shape rather than one confirm per tab.
+  const trashExplorerEntry = useCallback(
+    async (uri: string) => {
+      const affected = tabsRef.current.filter((t) => t.uri === uri || t.uri.startsWith(uri + "/"));
+      const dirty = affected.filter((t) => t.text !== t.savedText);
+      if (dirty.length > 0) {
+        const choice = await window.quireDesktop.confirmDiscard(
+          dirty.length === 1 ? `Save changes to ${basename(dirty[0].uri)}?` : `Save changes to ${dirty.length} files?`,
+        );
+        if (choice === "cancel") return;
+        if (choice === "save") {
+          for (const t of dirty) await saveTab(t.uri);
+        }
+      }
+      try {
+        await window.quireDesktop.trashEntry(uri);
+      } catch (err) {
+        setError(String((err as Error)?.message ?? err));
+        return;
+      }
+      const affectedUris = new Set(affected.map((t) => t.uri));
+      const remaining = tabsRef.current.filter((t) => !affectedUris.has(t.uri));
+      tabsRef.current = remaining;
+      setTabs(remaining);
+      if (activeUri && affectedUris.has(activeUri)) {
+        setActiveUri(remaining.length > 0 ? remaining[remaining.length - 1].uri : null);
+      }
+      await refreshExplorerTree();
+    },
+    [activeUri, saveTab, refreshExplorerTree],
+  );
 
   // "manual": a real, user-triggered recompile outside the debounce flow, forced so the exported PDF matches the current editor state.
   const handleExport = useCallback(
@@ -1021,9 +1144,15 @@ function AppShell() {
       case "file-tree":
         return (
           <FileTreePanel
-            tree={buildFileTree(project?.files ?? [], project?.projectId ?? "")}
+            ref={fileTreeRef}
+            tree={explorerTree}
+            rootUri={project?.projectId ?? ""}
             activeUri={activeUri}
             onSelectFile={openTab}
+            onCreateFile={createExplorerFile}
+            onCreateDirectory={createExplorerDirectory}
+            onRename={renameExplorerEntry}
+            onTrash={trashExplorerEntry}
           />
         );
       case "search":
@@ -1114,15 +1243,26 @@ function AppShell() {
             action={
               sidebarSection === "file-tree" &&
               project && (
-                <button
-                  type="button"
-                  className="panel-shell__action"
-                  onClick={createNewFile}
-                  aria-label="New File"
-                  title="New File"
-                >
-                  <Plus size={14} strokeWidth={1.8} aria-hidden="true" />
-                </button>
+                <div className="panel-shell__actions">
+                  <button
+                    type="button"
+                    className="panel-shell__action"
+                    onClick={() => fileTreeRef.current?.startCreatingAtRoot("file")}
+                    aria-label="New File"
+                    title="New File"
+                  >
+                    <Plus size={14} strokeWidth={1.8} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="panel-shell__action"
+                    onClick={() => fileTreeRef.current?.startCreatingAtRoot("directory")}
+                    aria-label="New Folder"
+                    title="New Folder"
+                  >
+                    <FolderPlus size={14} strokeWidth={1.8} aria-hidden="true" />
+                  </button>
+                </div>
               )
             }
             width={sidebarWidth}

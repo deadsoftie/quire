@@ -33,6 +33,12 @@ export function extensionForMimeType(mimeType: string): string {
   return mimeType === "image/jpeg" || mimeType === "image/jpg" ? "jpg" : "png";
 }
 
+// Gates LaTeX-specific extensions (grammar, math highlighting, environment sync, completion) --
+// a .bib/.md/extensionless file opened from the Explorer gets plain text editing and nothing more.
+export function isTexFile(uri: string): boolean {
+  return /\.tex$/i.test(uri);
+}
+
 // Shared by the SnippetsPanel drop handler and its click/keyboard insertSnippet() path -- one insertion
 // mechanism, not two. Routes through CM6's own snippet() apply function (line 161's `apply` field uses
 // the same one) so ${1:tabstop} fields get real Tab-cycling, not a flat text insert.
@@ -302,6 +308,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     if (!hostRef.current) return;
 
     const cursor = Math.max(0, Math.min(restoreCursor ?? 0, initialDoc.length));
+    const tex = isTexFile(uri);
 
     const view = new EditorView({
       doc: initialDoc,
@@ -309,16 +316,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       extensions: [
         basicSetup,
         baseEditorTheme,
-        latex(),
-        mathHighlightExtension(),
-        environmentSync(),
+        ...(tex ? [latex(), mathHighlightExtension(), environmentSync()] : []),
         // basicSetup only splices searchKeymap's bindings into its own keymap, not the search() extension
         // itself -- this installs the state field FindWidget drives, without ever mounting CM6's own panel.
         search(),
         neutralizeDefaultSearchKeymap((withReplace) => onFindShortcutRef.current?.(withReplace)),
         linter(null),
         lintGutter(),
-        autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] }),
+        ...(tex ? [autocompletion({ override: [makeCompletionSource(projectId, uri), snippetCompletionSource] })] : []),
         appearanceCompartment.of(appearanceExtension(appearance)),
         proseCompartment.of(proseMode ? proseModeExtension() : []),
         typewriterCompartment.of(typewriterMode ? typewriterScrollingExtension() : []),

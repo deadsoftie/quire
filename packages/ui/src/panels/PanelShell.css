@@ -27,6 +27,13 @@
   color: var(--type-mid);
 }
 
+.panel-shell__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex-shrink: 0;
+}
+
 .panel-shell__action {
   flex-shrink: 0;
   width: 18px;

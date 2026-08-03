@@ -39,8 +39,32 @@
   color: var(--type-lo);
 }
 
-.file-tree__disclosure {
-  display: inline-block;
-  width: 1em;
+.file-tree__icon {
+  display: inline-flex;
+  align-items: center;
   color: var(--type-lo);
+  flex-shrink: 0;
+}
+
+.file-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree__row--editing {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.file-tree__name-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--ink-900);
+  border: var(--seam) solid var(--nonrepro);
+  border-radius: var(--radius);
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+  padding: 1px 4px;
 }
