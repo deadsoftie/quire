@@ -8,9 +8,15 @@ interface ExportDialogProps {
   busy: boolean;
   /** Set if the forced recompile failed; shown in place of the usual footer note. */
   error: string | null;
+  /** The real current root (whichever file the last compile actually used) -- `null` before any compile has run yet. */
+  rootUri: string | null;
+  /** Every `.tex` file in the project, for the root picker. */
+  texFiles: { uri: string; label: string }[];
+  /** `null` clears an explicit target, returning to automatic root detection. */
+  onSelectRoot: (uri: string | null) => void;
 }
 
-export function ExportDialog({ onExport, onClose, busy, error }: ExportDialogProps) {
+export function ExportDialog({ onExport, onClose, busy, error, rootUri, texFiles, onSelectRoot }: ExportDialogProps) {
   const [includeSource, setIncludeSource] = useState(false);
 
   useEffect(() => {
@@ -36,6 +42,25 @@ export function ExportDialog({ onExport, onClose, busy, error }: ExportDialogPro
           </button>
         </div>
         <div className="export-dialog__body">
+          <label className="export-dialog__field">
+            <span className="export-dialog__field-label">Root document</span>
+            <select
+              className="export-dialog__select"
+              // Falls back to the "Automatic" option if rootUri doesn't match any known .tex file --
+              // can't happen in practice once retargeting's own fallback-on-stale-target logic is in
+              // place, but a <select> with no matching option would otherwise silently select nothing.
+              value={texFiles.some((f) => f.uri === rootUri) ? (rootUri ?? "") : ""}
+              disabled={busy}
+              onChange={(event) => onSelectRoot(event.target.value || null)}
+            >
+              <option value="">Automatic (detected)</option>
+              {texFiles.map((f) => (
+                <option key={f.uri} value={f.uri}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="export-dialog__row">
             <input
               type="checkbox"

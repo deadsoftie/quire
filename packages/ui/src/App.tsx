@@ -29,10 +29,12 @@ import type { FileTreePanelHandle } from "./panels/FileTreePanel";
 import { OutlinePanel } from "./panels/OutlinePanel";
 import { formatBytes, PackagesPanel } from "./panels/PackagesPanel";
 import { ProblemsPanel } from "./panels/ProblemsPanel";
+import { collectTexFiles } from "./panels/explorerTree";
 import { SearchPanel } from "./panels/SearchPanel";
 import { SnippetsPanel } from "./panels/SnippetsPanel";
 import type { PanelKind } from "./panels/types";
 import { ExportDialog } from "./ExportDialog";
+import { toProjectRelativePath } from "./fileDrag";
 import { MissingPackagesCard } from "./MissingPackagesCard";
 import type { PackageInstallState } from "./MissingPackagesCard";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -1346,6 +1348,12 @@ function AppShell() {
           onClose={() => setExportOpen(false)}
           busy={exportBusy}
           error={exportError}
+          rootUri={currentRoot}
+          texFiles={collectTexFiles(explorerTree).map((f) => ({
+            uri: f.uri,
+            label: toProjectRelativePath(f.uri, project?.projectId ?? ""),
+          }))}
+          onSelectRoot={retargetRoot}
         />
       )}
       <div className="app__body">

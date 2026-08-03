@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExplorerNode } from "@quire/client";
-import { extensionOf, flattenVisible, isOpenableFile, parentUriOf } from "./explorerTree";
+import { collectTexFiles, extensionOf, flattenVisible, isOpenableFile, parentUriOf } from "./explorerTree";
 
 function file(uri: string, name: string): ExplorerNode {
   return { uri, name, kind: "file", children: null };
@@ -68,5 +68,32 @@ describe("parentUriOf", () => {
   it("strips the trailing /name to recover the containing directory", () => {
     expect(parentUriOf(file("/p/chapters/intro.tex", "intro.tex"))).toBe("/p/chapters");
     expect(parentUriOf(dir("/p/chapters", "chapters", []))).toBe("/p");
+  });
+});
+
+describe("collectTexFiles", () => {
+  it("returns only .tex files, skipping other file types at the same level", () => {
+    const tree = [file("/p/main.tex", "main.tex"), file("/p/refs.bib", "refs.bib"), file("/p/notes.md", "notes.md")];
+    expect(collectTexFiles(tree).map((f) => f.uri)).toEqual(["/p/main.tex"]);
+  });
+
+  it("includes .tex files nested arbitrarily deep in directories", () => {
+    const tree = [
+      file("/p/main.tex", "main.tex"),
+      dir("/p/chapters", "chapters", [
+        file("/p/chapters/intro.tex", "intro.tex"),
+        dir("/p/chapters/sub", "sub", [file("/p/chapters/sub/deep.tex", "deep.tex")]),
+      ]),
+    ];
+    expect(collectTexFiles(tree).map((f) => f.uri)).toEqual([
+      "/p/main.tex",
+      "/p/chapters/intro.tex",
+      "/p/chapters/sub/deep.tex",
+    ]);
+  });
+
+  it("returns an empty array for an empty tree or one with no .tex files", () => {
+    expect(collectTexFiles([])).toEqual([]);
+    expect(collectTexFiles([file("/p/refs.bib", "refs.bib")])).toEqual([]);
   });
 });

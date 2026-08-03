@@ -55,3 +55,16 @@ export function isOpenableFile(name: string): boolean {
 export function parentUriOf(node: ExplorerNode): string {
   return node.uri.slice(0, node.uri.length - node.name.length - 1);
 }
+
+/** Every `.tex` file anywhere in the tree, recursively -- populates the Export dialog's root picker. */
+export function collectTexFiles(nodes: ExplorerNode[]): ExplorerNode[] {
+  const result: ExplorerNode[] = [];
+  for (const node of nodes) {
+    if (node.kind === "file" && extensionOf(node.name) === "tex") {
+      result.push(node);
+    } else if (node.kind === "directory" && node.children) {
+      result.push(...collectTexFiles(node.children));
+    }
+  }
+  return result;
+}

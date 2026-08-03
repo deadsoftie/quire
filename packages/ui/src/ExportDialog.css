@@ -62,6 +62,33 @@
   cursor: pointer;
 }
 
+.export-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.export-dialog__field-label {
+  color: var(--type-mid);
+  font-size: var(--t-xs);
+}
+
+.export-dialog__select {
+  width: 100%;
+  background: var(--ink-900);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  color: var(--type-hi);
+  font-family: var(--ui-font);
+  font-size: var(--t-sm);
+  padding: var(--s-1) var(--s-2);
+}
+
+.export-dialog__select:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .export-dialog__note {
   margin: 0;
   color: var(--type-lo);
