@@ -643,8 +643,13 @@ function AppShell() {
       setTabs(nextTabs);
       if (nextActiveUri) setActiveUri(nextActiveUri);
       await refreshExplorerTree();
+      // The renamed path could be the root document or something another file \input{}s -- the
+      // preview would otherwise keep showing a now-stale compile until the next edit or the
+      // watcher's own debounced files-changed catches up. Every other explicit on-disk mutation in
+      // this file (save, open, project-wide replace) already recompiles immediately for the same reason.
+      runCompile("edit");
     },
-    [activeUri, refreshExplorerTree],
+    [activeUri, refreshExplorerTree, runCompile],
   );
 
   const moveExplorerEntry = useCallback(
@@ -663,8 +668,9 @@ function AppShell() {
       setTabs(nextTabs);
       if (nextActiveUri) setActiveUri(nextActiveUri);
       await refreshExplorerTree();
+      runCompile("edit"); // see renameExplorerEntry -- a move changes paths the same way a rename does
     },
-    [activeUri, refreshExplorerTree],
+    [activeUri, refreshExplorerTree, runCompile],
   );
 
   // Unlike rename/move, the source is untouched -- no open-tab uri ever needs rewriting here.
@@ -719,8 +725,9 @@ function AppShell() {
         setActiveUri(remaining.length > 0 ? remaining[remaining.length - 1].uri : null);
       }
       await refreshExplorerTree();
+      runCompile("edit"); // see renameExplorerEntry -- trashing the root or an \input{}-ed file needs a fresh compile too
     },
-    [activeUri, saveTab, refreshExplorerTree],
+    [activeUri, saveTab, refreshExplorerTree, runCompile],
   );
 
   // "manual": a real, user-triggered recompile outside the debounce flow, forced so the exported PDF matches the current editor state.
