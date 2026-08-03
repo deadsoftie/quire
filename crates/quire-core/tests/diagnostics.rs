@@ -40,6 +40,7 @@ fn diagnostics_for(name: &str, body: &str) -> Vec<Diagnostic> {
         dirty_buffers: vec![DirtyBuffer { uri: main_uri, text: wrap(body) }],
         reason: CompileReason::Manual,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("compile should not error at the RPC level");
 
@@ -83,6 +84,7 @@ fn missing_package_is_translated_and_names_the_package() {
         dirty_buffers: vec![DirtyBuffer { uri: main_uri, text: source.to_string() }],
         reason: CompileReason::Manual,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .unwrap();
     fs::remove_dir_all(&project_dir).ok();

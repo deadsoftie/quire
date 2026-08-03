@@ -1,10 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use quire_core::rpc::handlers::{compile, open_project, outline, prefetch_packages, replace_in_project, search_project};
+use quire_core::rpc::handlers::{
+    compile, open_project, outline, prefetch_packages, replace_in_project, search_project, set_root,
+};
 use quire_core::rpc::{
     CompileEngine, CompileReason, CompileRequest, CompileStatus, DirtyBuffer, FileNodeKind, OpenProjectRequest,
     OutlineRequest, PrefetchPackagesRequest, ReplaceInProjectRequest, RootConfidence, SearchProjectRequest,
+    SetRootRequest,
 };
 
 fn copy_dir(src: &Path, dst: &Path) {
@@ -160,6 +163,7 @@ fn compile_reports_packages_missing_with_the_real_package_name() {
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("compile should not error at the RPC level even though the document itself fails");
 
@@ -184,6 +188,7 @@ fn compile_mirrors_the_whole_graph_and_produces_a_real_pdf() {
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("compile should succeed");
 
@@ -211,6 +216,7 @@ fn compile_resolves_a_real_bibliography_citation() {
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("compile should succeed");
 
@@ -242,6 +248,7 @@ fn compile_with_system_engine_produces_a_real_pdf_when_a_system_install_exists()
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
         engine: CompileEngine::System,
+        target_root: None,
     })
     .expect("compile should succeed");
 
@@ -264,12 +271,122 @@ fn compile_falls_back_to_the_first_candidate_when_root_is_ambiguous() {
         dirty_buffers: Vec::new(),
         reason: CompileReason::Manual,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("compile should fall back to a best-guess root instead of erroring");
 
     assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+    // fileA.tex/fileB.tex sort alphabetically first -- CompileResponse.root now makes this a real,
+    // checkable assertion instead of just "compiled something."
+    assert!(resp.root.ends_with("fileA.tex"), "{}", resp.root);
 
     fs::remove_dir_all(&project_dir).ok();
+}
+
+/// A `targetRoot` is a full override, not a tie-breaker blended into detection -- targeting
+/// fileB.tex here must win over the alphabetical-first fallback the untargeted test above proves.
+#[test]
+fn compile_honors_a_valid_target_root_over_automatic_detection() {
+    let project_dir = fresh_project_copy("root_detection/ambiguous", "compile-target-valid");
+    let file_b = project_dir.join("fileB.tex").display().to_string();
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
+        target_root: Some(file_b),
+    })
+    .expect("compile should succeed against the targeted root");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+    assert!(resp.root.ends_with("fileB.tex"), "{}", resp.root);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+/// A stale/invalid target (deleted, or pointing outside the project) never fails the whole
+/// compile -- it's silently ignored and detection runs exactly as if no target had been set.
+#[test]
+fn compile_falls_back_to_detection_when_target_root_does_not_exist() {
+    let project_dir = fresh_project_copy("compile_multi_file", "compile-target-missing");
+    let missing = project_dir.join("does-not-exist.tex").display().to_string();
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
+        target_root: Some(missing),
+    })
+    .expect("a missing target must fall back to detection, not error");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+    assert!(resp.root.ends_with("main.tex"), "{}", resp.root);
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn compile_falls_back_to_detection_when_target_root_is_outside_the_project() {
+    let project_dir = fresh_project_copy("compile_multi_file", "compile-target-outside");
+    let outside = fresh_project_copy("root_detection/ambiguous", "compile-target-outside-victim");
+    let escape_target = outside.join("fileA.tex").display().to_string();
+
+    let resp = compile(&CompileRequest {
+        project_id: project_dir.display().to_string(),
+        dirty_buffers: Vec::new(),
+        reason: CompileReason::Manual,
+        engine: CompileEngine::Tectonic,
+        target_root: Some(escape_target),
+    })
+    .expect("an out-of-project target must fall back to detection, not error");
+
+    assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
+    assert!(resp.root.ends_with("main.tex"), "{}", resp.root);
+
+    fs::remove_dir_all(&project_dir).ok();
+    fs::remove_dir_all(&outside).ok();
+}
+
+#[test]
+fn set_root_accepts_a_real_tex_file_inside_the_project() {
+    let project_dir = fresh_project_copy("compile_multi_file", "set-root-valid");
+    let uri = project_dir.join("chapters").join("intro.tex").display().to_string();
+
+    set_root(&SetRootRequest { project_id: project_dir.display().to_string(), uri }).expect("a real in-project .tex file must be accepted");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn set_root_rejects_a_non_tex_extension() {
+    let project_dir = fresh_project_copy("compile_with_bibliography", "set-root-wrong-ext");
+    // This fixture is used elsewhere specifically because it has a real .bib file alongside the .tex.
+    let bib = fs::read_dir(&project_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|e| e == "bib"))
+        .expect("fixture should contain a .bib file");
+
+    let result = set_root(&SetRootRequest { project_id: project_dir.display().to_string(), uri: bib.display().to_string() });
+    assert!(result.is_err(), "a non-.tex file must be rejected as a target root");
+
+    fs::remove_dir_all(&project_dir).ok();
+}
+
+#[test]
+fn set_root_rejects_a_path_outside_the_project() {
+    let project_dir = fresh_project_copy("compile_multi_file", "set-root-outside");
+    let outside = fresh_project_copy("root_detection/ambiguous", "set-root-outside-victim");
+    let escape_target = outside.join("fileA.tex").display().to_string();
+
+    let result = set_root(&SetRootRequest { project_id: project_dir.display().to_string(), uri: escape_target });
+    assert!(result.is_err(), "a path outside the project directory must be rejected");
+
+    fs::remove_dir_all(&project_dir).ok();
+    fs::remove_dir_all(&outside).ok();
 }
 
 /// A workspace holding several independent standalone documents (no `\input`/`\include` chain
@@ -318,6 +435,7 @@ fn compile_recognizes_root_from_a_dirty_buffer_on_an_unsaved_new_file() {
         }],
         reason: CompileReason::Edit,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("compile should succeed even though main.tex is still empty on disk");
 
@@ -336,6 +454,7 @@ fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
         dirty_buffers: Vec::new(),
         reason: CompileReason::Open,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("first compile should succeed");
 
@@ -348,6 +467,7 @@ fn dirty_buffer_on_a_non_root_subfile_is_honored_and_changes_are_detected() {
         }],
         reason: CompileReason::Edit,
         engine: CompileEngine::Tectonic,
+        target_root: None,
     })
     .expect("second compile with a dirty non-root buffer should succeed");
 

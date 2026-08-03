@@ -15,7 +15,12 @@ export type CompilePhase = "typeset" | "bib" | "rerun";
 
 export type CompileReason = "edit" | "manual" | "open" | "save";
 
-export type CompileRequest = { projectId: string, dirtyBuffers: Array<DirtyBuffer>, reason: CompileReason, engine: CompileEngine, };
+export type CompileRequest = { projectId: string, dirtyBuffers: Array<DirtyBuffer>, reason: CompileReason, engine: CompileEngine, 
+/**
+ * Client-chosen root override ("targeting"). `quire-core` holds no state, so this travels
+ * with every call like `engine` does; `None`/absent falls through to normal detection.
+ */
+targetRoot?: string | null, };
 
 export type CompileResponse = { compileId: string, status: CompileStatus, 
 /**
@@ -29,7 +34,13 @@ missingPackages: Array<string>,
 /**
  * The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
  */
-bundleVersion: string, };
+bundleVersion: string, 
+/**
+ * Whichever file this compile actually used as root -- the request's `targetRoot` when it
+ * resolved, otherwise whatever automatic detection picked. Always populated; root resolution
+ * happens before any response (including `EngineMissing`) is constructed.
+ */
+root: string, };
 
 export type CompileStatus = "ok" | "errors" | "cancelled" | "engine-missing" | "packages-missing";
 

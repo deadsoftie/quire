@@ -53,13 +53,18 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     })
 }
 
-/// No server-side state to update -- just validates `uri` so the caller can trust what it's about to remember.
+/// No server-side state to update -- just validates `uri` so the caller can trust what it's about
+/// to remember (as a compile-time `targetRoot`, in practice -- see `compile`'s own re-validation
+/// of that field, which never trusts this call happened first).
 pub fn set_root(req: &SetRootRequest) -> Result<(), CompileError> {
-    if !Path::new(&req.uri).is_file() {
-        return Err(CompileError {
-            message: format!("{} is not a file", req.uri),
-            log: None,
-        });
+    let project_dir = Path::new(&req.project_id);
+    let target = Path::new(&req.uri);
+    ensure_within_project(project_dir, target)?;
+    if !target.extension().is_some_and(|e| e.eq_ignore_ascii_case("tex")) {
+        return Err(CompileError { message: format!("{} is not a .tex file", req.uri), log: None });
+    }
+    if !target.is_file() {
+        return Err(CompileError { message: format!("{} is not a file", req.uri), log: None });
     }
     Ok(())
 }
@@ -78,17 +83,27 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let dirty: HashMap<PathBuf, &str> =
         req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
 
-    // Detection must see unsaved buffers, or a just-created empty file can't be the root until saved.
-    let detection = project::detect_root_with_dirty(&project_dir, &dirty);
+    // Client-chosen root override ("targeting"): a full override, not a hint blended into
+    // detection, and independently re-validated here rather than trusted from an earlier
+    // setRoot() call (core holds no state; the file could have moved/vanished since). An
+    // override that no longer resolves silently falls through to normal detection below rather
+    // than failing the whole compile over a stale client-side value.
+    let target = req.target_root.as_deref().map(PathBuf::from).filter(|candidate| {
+        candidate.is_file() && ensure_within_project(&project_dir, candidate).is_ok()
+    });
 
-    // Mirrors open_project's own fallback: a best guess beats refusing to compile at all.
-    let root = detection
-        .root
-        .or_else(|| detection.candidates.first().cloned())
-        .ok_or_else(|| CompileError {
-            message: "no .tex file found in this project".to_string(),
-            log: None,
-        })?;
+    let root = match target {
+        Some(root) => root,
+        None => {
+            // Detection must see unsaved buffers, or a just-created empty file can't be the root until saved.
+            let detection = project::detect_root_with_dirty(&project_dir, &dirty);
+            // Mirrors open_project's own fallback: a best guess beats refusing to compile at all.
+            detection.root.or_else(|| detection.candidates.first().cloned()).ok_or_else(|| CompileError {
+                message: "no .tex file found in this project".to_string(),
+                log: None,
+            })?
+        }
+    };
 
     let graph = project::build_file_graph(&root);
     let mut root_source = None;
@@ -155,6 +170,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
                         }],
                         missing_packages: Vec::new(),
                         bundle_version,
+                        root: root_uri.clone(),
                     });
                 }
             }
@@ -172,6 +188,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             diagnostics: crate::diagnostics::translate_log(&output.log, &root_uri, &project_dir),
             missing_packages: Vec::new(),
             bundle_version,
+            root: root_uri.clone(),
         },
         Err(e) => {
             let missing_packages = e.log.as_deref().map(crate::diagnostics::missing_packages).unwrap_or_default();
@@ -206,6 +223,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
                 diagnostics,
                 missing_packages,
                 bundle_version,
+                root: root_uri,
             }
         }
     };

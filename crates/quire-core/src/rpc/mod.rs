@@ -135,6 +135,10 @@ pub struct CompileRequest {
     pub dirty_buffers: Vec<DirtyBuffer>,
     pub reason: CompileReason,
     pub engine: CompileEngine,
+    /// Client-chosen root override ("targeting"). `quire-core` holds no state, so this travels
+    /// with every call like `engine` does; `None`/absent falls through to normal detection.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub target_root: Option<DocUri>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -166,6 +170,10 @@ pub struct CompileResponse {
     pub missing_packages: Vec<String>,
     /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
     pub bundle_version: String,
+    /// Whichever file this compile actually used as root -- the request's `targetRoot` when it
+    /// resolved, otherwise whatever automatic detection picked. Always populated; root resolution
+    /// happens before any response (including `EngineMissing`) is constructed.
+    pub root: DocUri,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
