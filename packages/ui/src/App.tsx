@@ -134,6 +134,12 @@ function AppShell() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [explorerTree, setExplorerTree] = useState<ExplorerNode[]>([]);
+  // targetRoot is the user's sticky "target this file" choice (Explorer icon/context menu, Export
+  // dialog); currentRoot is whichever file the last compile actually used -- the target when it
+  // resolved, otherwise whatever automatic detection picked. Two different things: targetRoot can
+  // point at something stale (deleted/moved) that compile() silently ignored.
+  const [targetRoot, setTargetRoot] = useState<string | null>(null);
+  const [currentRoot, setCurrentRoot] = useState<string | null>(null);
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activeUri, setActiveUri] = useState<string | null>(null);
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
@@ -212,8 +218,12 @@ function AppShell() {
   );
 
   // Swallows SIDECAR_CALL_CANCELLED (a superseded compile's rejection, not a real error); returns the response for callers that need it.
+  // targetRootOverride lets a caller supply the root for this one call directly instead of reading
+  // the targetRoot state -- retargetRoot needs this: setTargetRoot() doesn't take effect in this
+  // same closure until the next render, so a plain runCompile() called right after it would still
+  // send the *previous* target for this one "recompile immediately" call.
   const runCompile = useCallback(
-    async (reason: CompileReason): Promise<CompileResponse | null> => {
+    async (reason: CompileReason, targetRootOverride?: string | null): Promise<CompileResponse | null> => {
       const proj = projectRef.current;
       if (!proj) return null;
       const dirtyBuffers = tabsRef.current.map((t) => ({ uri: t.uri, text: t.text }));
@@ -223,8 +233,12 @@ function AppShell() {
           dirtyBuffers,
           reason,
           engine: useSystemTex ? "system" : "tectonic",
+          targetRoot: targetRootOverride !== undefined ? targetRootOverride : targetRoot,
         });
         setDiagnostics(result.diagnostics);
+        // Populated on every status, including failures -- the real current root regardless of
+        // whether this particular compile succeeded.
+        setCurrentRoot(result.root);
         if (result.status === "ok" && result.pdfPath) {
           const bytes = await window.quireDesktop.readPdfFile(result.pdfPath);
           setPdfData(bytes);
@@ -251,7 +265,30 @@ function AppShell() {
         return null;
       }
     },
-    [useSystemTex],
+    [useSystemTex, targetRoot],
+  );
+
+  // Entry point for "targeting": the Explorer's target icon/context menu (RT.4) and the Export
+  // dialog's root picker (RT.5) both call this rather than setting targetRoot directly, so a
+  // stale/invalid choice is rejected with a clear, specific error before it ever reaches compile()
+  // -- setRoot's own containment + .tex-extension checks (RT.1) are what actually reject it.
+  // uri === null clears the target, returning to automatic detection.
+  const retargetRoot = useCallback(
+    async (uri: string | null) => {
+      const proj = projectRef.current;
+      if (!proj) return;
+      if (uri !== null) {
+        try {
+          await window.quire.setRoot(proj.projectId, uri);
+        } catch (err) {
+          setError(String((err as Error)?.message ?? err));
+          return;
+        }
+      }
+      setTargetRoot(uri);
+      runCompile("manual", uri);
+    },
+    [runCompile],
   );
 
   // Best-effort: a prefetch failure just means the first compile falls back to fetching on demand, never blocking the open.
@@ -550,6 +587,8 @@ function AppShell() {
         setBundleVersionNotice(opened.bundleVersionNotice);
         const tab: OpenTab = { uri: opened.root, text: initialText, savedText: initialText, cursor: 0, scrollTop: null };
         applyProject(next, [tab], opened.root);
+        setCurrentRoot(opened.root);
+        setTargetRoot(null);
         prefetchThenCompile(next.projectId);
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
@@ -781,6 +820,8 @@ function AppShell() {
     setDiagnostics([]);
     setMissingPackages(null);
     setBundleVersionNotice(null);
+    setTargetRoot(null);
+    setCurrentRoot(null);
   }, []);
 
   const createProjectFromSelection = useCallback(
@@ -858,6 +899,9 @@ function AppShell() {
           setTabs(loadedTabs);
           const activeStillOpen = loadedTabs.some((t) => t.uri === session.activeUri);
           setActiveUri(activeStillOpen ? session.activeUri : loadedTabs[0].uri);
+          setCurrentRoot(opened.root);
+          // Restoring a persisted target is RT.3's job (SessionState has no targetRoot field yet).
+          setTargetRoot(null);
           prefetchThenCompile(next.projectId);
           initializedRef.current = true;
           return;
