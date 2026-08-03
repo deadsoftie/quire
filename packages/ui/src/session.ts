@@ -10,6 +10,8 @@ export interface SessionState {
   openTabs: string[];
   /** Which of `openTabs` was active; not trusted blindly on restore since the file may be missing or moved. */
   activeUri: string | null;
+  /** The user's "target this file" choice, if any; not pre-validated on restore -- a stale target (deleted/moved) is silently ignored by compile()'s own fallback instead. */
+  targetRoot: string | null;
   sidebarSection: PanelKind | null;
   sidebarWidth: number;
   splitFraction: number;
@@ -56,6 +58,7 @@ export function normalizeSession(raw: unknown, fallback: SessionState): SessionS
     projectPath: typeof r.projectPath === "string" ? r.projectPath : fallback.projectPath,
     openTabs,
     activeUri: typeof r.activeUri === "string" ? r.activeUri : fallback.activeUri,
+    targetRoot: typeof r.targetRoot === "string" ? r.targetRoot : fallback.targetRoot,
     sidebarSection,
     sidebarWidth: typeof r.sidebarWidth === "number" ? r.sidebarWidth : fallback.sidebarWidth,
     splitFraction: typeof r.splitFraction === "number" ? r.splitFraction : fallback.splitFraction,

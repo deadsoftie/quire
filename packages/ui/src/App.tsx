@@ -43,7 +43,7 @@ import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
 import { basename } from "./paths";
 import { normalizeSession, type SessionState } from "./session";
-import { rewriteTabUris } from "./tabUriRewrite";
+import { rewriteSingleUri, rewriteTabUris } from "./tabUriRewrite";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
@@ -106,6 +106,7 @@ const DEFAULT_SESSION: SessionState = {
   projectPath: null,
   openTabs: [],
   activeUri: null,
+  targetRoot: null,
   sidebarSection: "file-tree",
   sidebarWidth: 240,
   splitFraction: 0.5,
@@ -292,14 +293,18 @@ function AppShell() {
   );
 
   // Best-effort: a prefetch failure just means the first compile falls back to fetching on demand, never blocking the open.
+  // targetRootOverride: same reasoning as runCompile's own -- both call sites below reset/restore
+  // targetRoot state in the same tick they call this, and that state won't be visible via the
+  // targetRoot closure until the next render, so the very first compile after opening a project
+  // needs the value passed explicitly rather than read back out of state.
   const prefetchThenCompile = useCallback(
-    async (projectId: string) => {
+    async (projectId: string, targetRootOverride: string | null) => {
       try {
         await window.quire.prefetchPackages(projectId);
       } catch {
         // See above.
       }
-      runCompile("open");
+      runCompile("open", targetRootOverride);
     },
     [runCompile],
   );
@@ -589,7 +594,7 @@ function AppShell() {
         applyProject(next, [tab], opened.root);
         setCurrentRoot(opened.root);
         setTargetRoot(null);
-        prefetchThenCompile(next.projectId);
+        prefetchThenCompile(next.projectId, null);
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
       }
@@ -681,6 +686,12 @@ function AppShell() {
       tabsRef.current = nextTabs;
       setTabs(nextTabs);
       if (nextActiveUri) setActiveUri(nextActiveUri);
+      // The target follows a rename exactly like an open tab already does above -- same rewrite,
+      // just applied to a single uri instead of a tab list.
+      if (targetRoot) {
+        const rewrittenTarget = rewriteSingleUri(targetRoot, uri, renamed.uri);
+        if (rewrittenTarget) setTargetRoot(rewrittenTarget);
+      }
       await refreshExplorerTree();
       // The renamed path could be the root document or something another file \input{}s -- the
       // preview would otherwise keep showing a now-stale compile until the next edit or the
@@ -689,7 +700,7 @@ function AppShell() {
       runCompile("edit");
       return renamed.uri;
     },
-    [activeUri, refreshExplorerTree, runCompile],
+    [activeUri, targetRoot, refreshExplorerTree, runCompile],
   );
 
   const moveExplorerEntry = useCallback(
@@ -707,10 +718,14 @@ function AppShell() {
       tabsRef.current = nextTabs;
       setTabs(nextTabs);
       if (nextActiveUri) setActiveUri(nextActiveUri);
+      if (targetRoot) {
+        const rewrittenTarget = rewriteSingleUri(targetRoot, uri, moved.uri);
+        if (rewrittenTarget) setTargetRoot(rewrittenTarget);
+      }
       await refreshExplorerTree();
       runCompile("edit"); // see renameExplorerEntry -- a move changes paths the same way a rename does
     },
-    [activeUri, refreshExplorerTree, runCompile],
+    [activeUri, targetRoot, refreshExplorerTree, runCompile],
   );
 
   // Unlike rename/move, the source is untouched -- no open-tab uri ever needs rewriting here.
@@ -764,10 +779,15 @@ function AppShell() {
       if (activeUri && affectedUris.has(activeUri)) {
         setActiveUri(remaining.length > 0 ? remaining[remaining.length - 1].uri : null);
       }
+      // The target itself, or its containing directory, just left -- fall back to automatic
+      // detection rather than keeping a target that no longer resolves to anything.
+      if (targetRoot && (targetRoot === uri || targetRoot.startsWith(uri + "/"))) {
+        setTargetRoot(null);
+      }
       await refreshExplorerTree();
       runCompile("edit"); // see renameExplorerEntry -- trashing the root or an \input{}-ed file needs a fresh compile too
     },
-    [activeUri, saveTab, refreshExplorerTree, runCompile],
+    [activeUri, targetRoot, saveTab, refreshExplorerTree, runCompile],
   );
 
   // "manual": a real, user-triggered recompile outside the debounce flow, forced so the exported PDF matches the current editor state.
@@ -900,9 +920,8 @@ function AppShell() {
           const activeStillOpen = loadedTabs.some((t) => t.uri === session.activeUri);
           setActiveUri(activeStillOpen ? session.activeUri : loadedTabs[0].uri);
           setCurrentRoot(opened.root);
-          // Restoring a persisted target is RT.3's job (SessionState has no targetRoot field yet).
-          setTargetRoot(null);
-          prefetchThenCompile(next.projectId);
+          setTargetRoot(session.targetRoot);
+          prefetchThenCompile(next.projectId, session.targetRoot);
           initializedRef.current = true;
           return;
         } catch {
@@ -931,6 +950,7 @@ function AppShell() {
       projectPath: project ? project.projectId : null,
       openTabs: project ? tabs.map((t) => t.uri) : [],
       activeUri: project ? activeUri : null,
+      targetRoot: project ? targetRoot : null,
       sidebarSection,
       sidebarWidth,
       splitFraction,
@@ -947,6 +967,7 @@ function AppShell() {
     project,
     tabs,
     activeUri,
+    targetRoot,
     sidebarSection,
     sidebarWidth,
     splitFraction,

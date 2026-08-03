@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rewriteTabUris } from "./tabUriRewrite";
+import { rewriteSingleUri, rewriteTabUris } from "./tabUriRewrite";
 
 describe("rewriteTabUris", () => {
   it("rewrites an exact match and reports it as the new active uri", () => {
@@ -31,5 +31,26 @@ describe("rewriteTabUris", () => {
     const tabs = [{ uri: "/p/old.tex" }, { uri: "/p/active.tex" }];
     const result = rewriteTabUris(tabs, "/p/old.tex", "/p/new.tex", "/p/active.tex");
     expect(result.nextActiveUri).toBeNull();
+  });
+});
+
+describe("rewriteSingleUri", () => {
+  it("rewrites an exact match", () => {
+    expect(rewriteSingleUri("/p/old.tex", "/p/old.tex", "/p/new.tex")).toBe("/p/new.tex");
+  });
+
+  it("rewrites a uri nested under a renamed/moved directory, preserving the rest of the path", () => {
+    expect(rewriteSingleUri("/p/chapters/intro.tex", "/p/chapters", "/p/parts")).toBe("/p/parts/intro.tex");
+    expect(rewriteSingleUri("/p/chapters/sub/deep.tex", "/p/chapters", "/p/parts")).toBe("/p/parts/sub/deep.tex");
+  });
+
+  it("returns null for an unrelated uri", () => {
+    expect(rewriteSingleUri("/p/other.tex", "/p/old.tex", "/p/new.tex")).toBeNull();
+  });
+
+  it("does not false-positive-match a sibling with a shared prefix", () => {
+    // Same "/" boundary check rewriteTabUris itself relies on -- exercised here directly since a
+    // root target is a single uri, not a tab list, and deserves its own proof independent of that.
+    expect(rewriteSingleUri("/p/chapters/intro.tex", "/p/chapter", "/p/renamed")).toBeNull();
   });
 });

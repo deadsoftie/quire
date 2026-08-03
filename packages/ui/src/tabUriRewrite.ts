@@ -10,6 +10,18 @@ export interface UriRewriteResult<T extends UriKeyed> {
 }
 
 /**
+ * Rewrites a single uri if it's `oldUri` itself, or nested under it as a directory (`oldUri/...`),
+ * to the corresponding path under `newUri`; `null` if `candidate` is unaffected. Shared by
+ * `rewriteTabUris` below (one call per open tab) and callers with just one uri to check, like a
+ * root target that isn't tab-shaped at all.
+ */
+export function rewriteSingleUri(candidate: string, oldUri: string, newUri: string): string | null {
+  if (candidate === oldUri) return newUri;
+  if (candidate.startsWith(oldUri + "/")) return newUri + candidate.slice(oldUri.length);
+  return null;
+}
+
+/**
  * Rewrites every open tab whose uri is `oldUri` itself, or nested under it as a directory
  * (`oldUri/...`), to the corresponding path under `newUri`. Used by rename and move so an open,
  * possibly-unsaved tab survives either operation in place rather than being closed and reopened
@@ -21,15 +33,9 @@ export function rewriteTabUris<T extends UriKeyed>(
   newUri: string,
   activeUri: string | null,
 ): UriRewriteResult<T> {
-  const rewrite = (candidate: string): string | null => {
-    if (candidate === oldUri) return newUri;
-    if (candidate.startsWith(oldUri + "/")) return newUri + candidate.slice(oldUri.length);
-    return null;
-  };
-
   let nextActiveUri: string | null = null;
   const next = tabs.map((tab) => {
-    const rewritten = rewrite(tab.uri);
+    const rewritten = rewriteSingleUri(tab.uri, oldUri, newUri);
     if (rewritten === null) return tab;
     if (tab.uri === activeUri) nextActiveUri = rewritten;
     return { ...tab, uri: rewritten };

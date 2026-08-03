@@ -6,6 +6,7 @@ const FALLBACK: SessionState = {
   projectPath: null,
   openTabs: [],
   activeUri: null,
+  targetRoot: null,
   sidebarSection: "file-tree",
   sidebarWidth: 240,
   splitFraction: 0.5,
@@ -44,5 +45,15 @@ describe("normalizeSession theme migration", () => {
   it("falls back on completely missing/malformed session data", () => {
     expect(normalizeSession(null, FALLBACK).themeId).toBe(FALLBACK.themeId);
     expect(normalizeSession({}, FALLBACK).themeId).toBe(FALLBACK.themeId);
+  });
+});
+
+describe("normalizeSession targetRoot", () => {
+  it("keeps a saved target uri", () => {
+    expect(normalizeSession({ targetRoot: "/p/chapters/intro.tex" }, FALLBACK).targetRoot).toBe("/p/chapters/intro.tex");
+  });
+
+  it("falls back to null when absent, same as activeUri's own handling -- not pre-validated here", () => {
+    expect(normalizeSession({}, FALLBACK).targetRoot).toBeNull();
   });
 });
