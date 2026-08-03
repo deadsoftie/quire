@@ -420,6 +420,94 @@ pub struct WriteFileRequest {
     pub text: String,
 }
 
+// ---------- Explorer ----------
+//
+// Deliberately separate from `FileNode` above: `FileNode` is (and must stay) the flat,
+// LaTeX-graph-reachable list `compile`/export already depend on, not a directory listing.
+// `ExplorerNode` is the opposite -- every file and folder on disk, nested, for the file
+// tree panel.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub enum ExplorerNodeKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct ExplorerNode {
+    pub uri: DocUri,
+    pub name: String,
+    pub kind: ExplorerNodeKind,
+    /// `Some` (possibly empty) for a directory, `None` for a file.
+    pub children: Option<Vec<ExplorerNode>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct ListProjectTreeRequest {
+    pub project_id: ProjectId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct CreateFileRequest {
+    pub project_id: ProjectId,
+    pub parent_uri: DocUri,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct CreateDirectoryRequest {
+    pub project_id: ProjectId,
+    pub parent_uri: DocUri,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct RenameEntryRequest {
+    pub project_id: ProjectId,
+    pub uri: DocUri,
+    pub new_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct MoveEntryRequest {
+    pub project_id: ProjectId,
+    pub uri: DocUri,
+    pub new_parent_uri: DocUri,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct CopyEntryRequest {
+    pub project_id: ProjectId,
+    pub uri: DocUri,
+    pub dest_parent_uri: DocUri,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub new_name: Option<String>,
+}
+
+/// Returned by create/rename/move/copy: the entry's resulting absolute path.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = CONTRACT_TS)]
+pub struct EntryResponse {
+    pub uri: DocUri,
+}
+
 // ---------- Search ----------
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

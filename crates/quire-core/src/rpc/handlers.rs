@@ -515,6 +515,143 @@ pub fn write_file(req: &WriteFileRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
+fn explorer_node_from(entry: project::ExplorerEntry) -> ExplorerNode {
+    ExplorerNode {
+        uri: entry.path.display().to_string(),
+        name: entry.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        kind: match entry.kind {
+            project::ExplorerKind::File => ExplorerNodeKind::File,
+            project::ExplorerKind::Directory => ExplorerNodeKind::Directory,
+        },
+        children: entry.children.map(|c| c.into_iter().map(explorer_node_from).collect()),
+    }
+}
+
+pub fn list_project_tree(req: &ListProjectTreeRequest) -> Vec<ExplorerNode> {
+    let project_dir = Path::new(&req.project_id);
+    project::build_explorer_tree(project_dir).into_iter().map(explorer_node_from).collect()
+}
+
+/// Rejects a typed name that could otherwise smuggle a path escape (`../x`, an embedded
+/// separator) past the containment check below, which only ever validates whole paths.
+fn sanitize_entry_name(name: &str) -> Result<&str, CompileError> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\\') {
+        return Err(CompileError { message: format!("\"{name}\" is not a valid file or folder name"), log: None });
+    }
+    Ok(name)
+}
+
+/// Same intent as `project::resolve_within` (used for parsed LaTeX references), applied to
+/// paths that arrive over RPC instead: canonicalize and require containment inside `project_dir`.
+fn ensure_within_project(project_dir: &Path, candidate: &Path) -> Result<(), CompileError> {
+    let base_real = project_dir
+        .canonicalize()
+        .map_err(|_| CompileError { message: "project directory not found".to_string(), log: None })?;
+    let real = candidate
+        .canonicalize()
+        .map_err(|_| CompileError { message: format!("{} not found", candidate.display()), log: None })?;
+    if real.starts_with(&base_real) {
+        Ok(())
+    } else {
+        Err(CompileError { message: format!("{} is outside the project directory", candidate.display()), log: None })
+    }
+}
+
+fn ensure_absent(target: &Path) -> Result<(), CompileError> {
+    if target.exists() {
+        Err(CompileError { message: format!("{} already exists", target.display()), log: None })
+    } else {
+        Ok(())
+    }
+}
+
+pub fn create_file(req: &CreateFileRequest) -> Result<EntryResponse, CompileError> {
+    let project_dir = Path::new(&req.project_id);
+    let parent = Path::new(&req.parent_uri);
+    ensure_within_project(project_dir, parent)?;
+    let target = parent.join(sanitize_entry_name(&req.name)?);
+    ensure_absent(&target)?;
+    fs::write(&target, b"")?;
+    Ok(EntryResponse { uri: target.display().to_string() })
+}
+
+pub fn create_directory(req: &CreateDirectoryRequest) -> Result<EntryResponse, CompileError> {
+    let project_dir = Path::new(&req.project_id);
+    let parent = Path::new(&req.parent_uri);
+    ensure_within_project(project_dir, parent)?;
+    let target = parent.join(sanitize_entry_name(&req.name)?);
+    ensure_absent(&target)?;
+    fs::create_dir(&target)?;
+    Ok(EntryResponse { uri: target.display().to_string() })
+}
+
+pub fn rename_entry(req: &RenameEntryRequest) -> Result<EntryResponse, CompileError> {
+    let project_dir = Path::new(&req.project_id);
+    let source = Path::new(&req.uri);
+    ensure_within_project(project_dir, source)?;
+    let parent = source
+        .parent()
+        .ok_or_else(|| CompileError { message: "cannot rename the project root".to_string(), log: None })?;
+    let target = parent.join(sanitize_entry_name(&req.new_name)?);
+    ensure_absent(&target)?;
+    fs::rename(source, &target)?;
+    Ok(EntryResponse { uri: target.display().to_string() })
+}
+
+pub fn move_entry(req: &MoveEntryRequest) -> Result<EntryResponse, CompileError> {
+    let project_dir = Path::new(&req.project_id);
+    let source = Path::new(&req.uri);
+    ensure_within_project(project_dir, source)?;
+    let new_parent = Path::new(&req.new_parent_uri);
+    ensure_within_project(project_dir, new_parent)?;
+    let name = source
+        .file_name()
+        .ok_or_else(|| CompileError { message: "cannot move the project root".to_string(), log: None })?;
+    let target = new_parent.join(name);
+    ensure_absent(&target)?;
+    fs::rename(source, &target)?;
+    Ok(EntryResponse { uri: target.display().to_string() })
+}
+
+pub fn copy_entry(req: &CopyEntryRequest) -> Result<EntryResponse, CompileError> {
+    let project_dir = Path::new(&req.project_id);
+    let source = Path::new(&req.uri);
+    ensure_within_project(project_dir, source)?;
+    let dest_parent = Path::new(&req.dest_parent_uri);
+    ensure_within_project(project_dir, dest_parent)?;
+    let name = match &req.new_name {
+        Some(n) => sanitize_entry_name(n)?.to_string(),
+        None => source
+            .file_name()
+            .ok_or_else(|| CompileError { message: "cannot copy the project root".to_string(), log: None })?
+            .to_string_lossy()
+            .into_owned(),
+    };
+    let target = dest_parent.join(&name);
+    ensure_absent(&target)?;
+    if source.is_dir() {
+        copy_dir_recursive(source, &target)?;
+    } else {
+        fs::copy(source, &target)?;
+    }
+    Ok(EntryResponse { uri: target.display().to_string() })
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), CompileError> {
+    fs::create_dir(target)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = target.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
 const MAX_SEARCH_MATCHES: usize = 5000;
 
 /// Escapes/wraps a literal query into a regex when `regex` is false; a bad user-supplied regex surfaces as a normal RPC error.
@@ -610,6 +747,129 @@ pub fn replace_in_project(req: &ReplaceInProjectRequest) -> Result<ReplaceInProj
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_project(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("quire-handlers-{label}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn create_file_writes_an_empty_file_under_the_parent() {
+        let dir = temp_project("create-file");
+        let resp = create_file(&CreateFileRequest {
+            project_id: dir.display().to_string(),
+            parent_uri: dir.display().to_string(),
+            name: "notes.md".to_string(),
+        })
+        .unwrap();
+        assert_eq!(resp.uri, dir.join("notes.md").display().to_string());
+        assert_eq!(fs::read_to_string(dir.join("notes.md")).unwrap(), "");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn create_file_rejects_a_name_that_already_exists() {
+        let dir = temp_project("create-file-exists");
+        fs::write(dir.join("notes.md"), "existing").unwrap();
+        let result = create_file(&CreateFileRequest {
+            project_id: dir.display().to_string(),
+            parent_uri: dir.display().to_string(),
+            name: "notes.md".to_string(),
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(dir.join("notes.md")).unwrap(), "existing", "must not clobber the existing file");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn create_file_rejects_a_dotdot_name_escaping_the_project() {
+        let dir = temp_project("create-file-escape");
+        let result = create_file(&CreateFileRequest {
+            project_id: dir.display().to_string(),
+            parent_uri: dir.display().to_string(),
+            name: "../escaped.tex".to_string(),
+        });
+        assert!(result.is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn create_directory_rejects_a_parent_outside_the_project() {
+        let dir = temp_project("create-dir-outside");
+        let outside = temp_project("create-dir-outside-target");
+        let result = create_directory(&CreateDirectoryRequest {
+            project_id: dir.display().to_string(),
+            parent_uri: outside.display().to_string(),
+            name: "new-folder".to_string(),
+        });
+        assert!(result.is_err(), "a parent outside the project directory must be rejected");
+        fs::remove_dir_all(&dir).unwrap();
+        fs::remove_dir_all(&outside).unwrap();
+    }
+
+    #[test]
+    fn rename_entry_renames_in_place_and_preserves_content() {
+        let dir = temp_project("rename");
+        fs::write(dir.join("old.tex"), "content").unwrap();
+        let resp = rename_entry(&RenameEntryRequest {
+            project_id: dir.display().to_string(),
+            uri: dir.join("old.tex").display().to_string(),
+            new_name: "new.tex".to_string(),
+        })
+        .unwrap();
+        assert_eq!(resp.uri, dir.join("new.tex").display().to_string());
+        assert!(!dir.join("old.tex").exists());
+        assert_eq!(fs::read_to_string(dir.join("new.tex")).unwrap(), "content");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn move_entry_moves_into_a_different_directory() {
+        let dir = temp_project("move");
+        fs::create_dir_all(dir.join("chapters")).unwrap();
+        fs::write(dir.join("intro.tex"), "intro").unwrap();
+        let resp = move_entry(&MoveEntryRequest {
+            project_id: dir.display().to_string(),
+            uri: dir.join("intro.tex").display().to_string(),
+            new_parent_uri: dir.join("chapters").display().to_string(),
+        })
+        .unwrap();
+        assert_eq!(resp.uri, dir.join("chapters").join("intro.tex").display().to_string());
+        assert!(!dir.join("intro.tex").exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn copy_entry_duplicates_a_directory_recursively() {
+        let dir = temp_project("copy-dir");
+        fs::create_dir_all(dir.join("figures")).unwrap();
+        fs::write(dir.join("figures").join("plot.png"), "bytes").unwrap();
+        let resp = copy_entry(&CopyEntryRequest {
+            project_id: dir.display().to_string(),
+            uri: dir.join("figures").display().to_string(),
+            dest_parent_uri: dir.display().to_string(),
+            new_name: Some("figures-copy".to_string()),
+        })
+        .unwrap();
+        assert_eq!(resp.uri, dir.join("figures-copy").display().to_string());
+        assert_eq!(fs::read_to_string(dir.join("figures-copy").join("plot.png")).unwrap(), "bytes");
+        assert!(dir.join("figures").join("plot.png").exists(), "the original must be untouched");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn list_project_tree_returns_every_file_not_just_the_latex_graph() {
+        let dir = temp_project("list-tree");
+        fs::write(dir.join("main.tex"), "\\documentclass{article}").unwrap();
+        fs::write(dir.join("notes.md"), "unreferenced").unwrap();
+        let tree = list_project_tree(&ListProjectTreeRequest { project_id: dir.display().to_string() });
+        let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&"notes.md"), "{names:?}");
+        assert!(names.contains(&"main.tex"), "{names:?}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn insert_with_tabstops_produces_one_brace_group_per_arity() {

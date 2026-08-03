@@ -9,6 +9,8 @@ import type {
   CompletionRequest,
   CoreEvent,
   DetectSystemTexResponse,
+  EntryResponse,
+  ExplorerNode,
   FetchedPackage,
   InstalledPackage,
   OpenProjectRequest,
@@ -126,6 +128,30 @@ export class StdioTransport implements CoreApi {
 
   async writeFile(uri: DocUri, text: string): Promise<void> {
     await runOnce("writeFile", { uri, text }).promise;
+  }
+
+  async listProjectTree(projectId: ProjectId): Promise<ExplorerNode[]> {
+    return (await runOnce("listProjectTree", { projectId }).promise) as ExplorerNode[];
+  }
+
+  async createFile(projectId: ProjectId, parentUri: DocUri, name: string): Promise<EntryResponse> {
+    return (await runOnce("createFile", { projectId, parentUri, name }).promise) as EntryResponse;
+  }
+
+  async createDirectory(projectId: ProjectId, parentUri: DocUri, name: string): Promise<EntryResponse> {
+    return (await runOnce("createDirectory", { projectId, parentUri, name }).promise) as EntryResponse;
+  }
+
+  async renameEntry(projectId: ProjectId, uri: DocUri, newName: string): Promise<EntryResponse> {
+    return (await runOnce("renameEntry", { projectId, uri, newName }).promise) as EntryResponse;
+  }
+
+  async moveEntry(projectId: ProjectId, uri: DocUri, newParentUri: DocUri): Promise<EntryResponse> {
+    return (await runOnce("moveEntry", { projectId, uri, newParentUri }).promise) as EntryResponse;
+  }
+
+  async copyEntry(projectId: ProjectId, uri: DocUri, destParentUri: DocUri, newName?: string): Promise<EntryResponse> {
+    return (await runOnce("copyEntry", { projectId, uri, destParentUri, newName }).promise) as EntryResponse;
   }
 
   async searchProject(r: SearchProjectRequest): Promise<SearchProjectResponse> {

@@ -51,10 +51,16 @@ export type CompletionKind = "command" | "environment" | "label" | "citation" | 
 
 export type CompletionRequest = { projectId: string, uri: string, position: Position, text: string, };
 
+export type CopyEntryRequest = { projectId: string, uri: string, destParentUri: string, newName?: string | null, };
+
 /**
  * Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet.
  */
 export type CoreEvent = { "kind": "compile-started", compileId: string, } | { "kind": "compile-progress", compileId: string, phase: CompilePhase, pass: number, } | { "kind": "compile-finished", result: CompileResponse, } | { "kind": "files-changed", projectId: string, uris: Array<string>, } | { "kind": "index-updated", projectId: string, } | { "kind": "bundle-fetch", package: string, bytes: number, done: boolean, };
+
+export type CreateDirectoryRequest = { projectId: string, parentUri: string, name: string, };
+
+export type CreateFileRequest = { projectId: string, parentUri: string, name: string, };
 
 /**
  * `engine`/`version` are `None` together iff `available` is `false`.
@@ -80,6 +86,19 @@ export type DiagnosticRange = { start: Position, end: Position, };
 export type DirtyBuffer = { uri: string, text: string, };
 
 /**
+ * Returned by create/rename/move/copy: the entry's resulting absolute path.
+ */
+export type EntryResponse = { uri: string, };
+
+export type ExplorerNode = { uri: string, name: string, kind: ExplorerNodeKind, 
+/**
+ * `Some` (possibly empty) for a directory, `None` for a file.
+ */
+children: Array<ExplorerNode> | null, };
+
+export type ExplorerNodeKind = "file" | "directory";
+
+/**
  * `name` is the package/class name, not a filename. `bytes` is the real downloaded size, known only after the fact.
  */
 export type FetchedPackage = { name: string, bytes: bigint, };
@@ -97,6 +116,10 @@ export type InstallPackageRequest = { name: string, };
  * `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number.
  */
 export type InstalledPackage = { name: string, bytes: bigint | null, source: PackageSource, };
+
+export type ListProjectTreeRequest = { projectId: string, };
+
+export type MoveEntryRequest = { projectId: string, uri: string, newParentUri: string, };
 
 export type OpenProjectRequest = { path: string, };
 
@@ -141,6 +164,8 @@ export type PrefetchPackagesResponse = { fetched: Array<FetchedPackage>, failed:
 export type ReadFileRequest = { uri: string, };
 
 export type RemovePackageRequest = { name: string, };
+
+export type RenameEntryRequest = { projectId: string, uri: string, newName: string, };
 
 export type ReplaceInProjectRequest = { projectId: string, query: string, replacement: string, caseSensitive: boolean, wholeWord: boolean, regex: boolean, dirtyBuffers: Array<DirtyBuffer>, };
 

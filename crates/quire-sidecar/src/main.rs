@@ -88,6 +88,12 @@ fn handle_request(req: Request) -> Value {
         "removePackage" => dispatch(req.id, req.params, |p| handlers::remove_package(&p)),
         "readFile" => dispatch(req.id, req.params, |p| handlers::read_file(&p)),
         "writeFile" => dispatch(req.id, req.params, |p| handlers::write_file(&p)),
+        "listProjectTree" => dispatch(req.id, req.params, |p| Ok(handlers::list_project_tree(&p))),
+        "createFile" => dispatch(req.id, req.params, |p| handlers::create_file(&p)),
+        "createDirectory" => dispatch(req.id, req.params, |p| handlers::create_directory(&p)),
+        "renameEntry" => dispatch(req.id, req.params, |p| handlers::rename_entry(&p)),
+        "moveEntry" => dispatch(req.id, req.params, |p| handlers::move_entry(&p)),
+        "copyEntry" => dispatch(req.id, req.params, |p| handlers::copy_entry(&p)),
         "searchProject" => dispatch(req.id, req.params, |p| handlers::search_project(&p)),
         "replaceInProject" => dispatch(req.id, req.params, |p| handlers::replace_in_project(&p)),
         other => json!({

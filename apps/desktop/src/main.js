@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { StdioTransport } = require("@quire/client");
@@ -235,6 +235,18 @@ app.whenReady().then(() => {
   ipcMain.handle("core:removePackage", (_event, name) => client.removePackage(name));
   ipcMain.handle("core:readFile", (_event, uri) => client.readFile(uri));
   ipcMain.handle("core:writeFile", (_event, uri, text) => client.writeFile(uri, text));
+  ipcMain.handle("core:listProjectTree", (_event, projectId) => client.listProjectTree(projectId));
+  ipcMain.handle("core:createFile", (_event, projectId, parentUri, name) => client.createFile(projectId, parentUri, name));
+  ipcMain.handle("core:createDirectory", (_event, projectId, parentUri, name) =>
+    client.createDirectory(projectId, parentUri, name),
+  );
+  ipcMain.handle("core:renameEntry", (_event, projectId, uri, newName) => client.renameEntry(projectId, uri, newName));
+  ipcMain.handle("core:moveEntry", (_event, projectId, uri, newParentUri) =>
+    client.moveEntry(projectId, uri, newParentUri),
+  );
+  ipcMain.handle("core:copyEntry", (_event, projectId, uri, destParentUri, newName) =>
+    client.copyEntry(projectId, uri, destParentUri, newName),
+  );
   ipcMain.handle("core:searchProject", (_event, r) => client.searchProject(r));
   ipcMain.handle("core:replaceInProject", (_event, r) => client.replaceInProject(r));
 
@@ -263,6 +275,13 @@ app.whenReady().then(() => {
     fs.writeFileSync(result.filePath, "");
     return result.filePath;
   });
+
+  // Recoverable delete (OS trash/Recycle Bin), not a permanent fs.rm -- deliberately the only
+  // delete affordance the Explorer offers. No quire-core involvement: OS trash has no
+  // cross-platform equivalent (D5, iPad), same reasoning as pasteImage staying Electron-only.
+  ipcMain.handle("desktop:trashEntry", (_event, targetPath) => shell.trashItem(targetPath));
+
+  ipcMain.handle("desktop:revealInFileManager", (_event, targetPath) => shell.showItemInFolder(targetPath));
 
   ipcMain.handle("desktop:chooseFile", async (_event, projectDir) => {
     const result = await dialog.showOpenDialog(mainWindow, {

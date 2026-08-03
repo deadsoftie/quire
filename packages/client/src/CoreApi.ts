@@ -6,6 +6,8 @@ import type {
   CompletionRequest,
   CoreEvent,
   DetectSystemTexResponse,
+  EntryResponse,
+  ExplorerNode,
   FetchedPackage,
   InstalledPackage,
   OpenProjectRequest,
@@ -42,6 +44,14 @@ export interface CoreApi {
 
   readFile(uri: DocUri): Promise<string>;
   writeFile(uri: DocUri, text: string): Promise<void>;
+
+  /** Every file/folder under the project directory, nested -- unlike `OpenProjectResponse.files`, not scoped to the LaTeX dependency graph. */
+  listProjectTree(projectId: ProjectId): Promise<ExplorerNode[]>;
+  createFile(projectId: ProjectId, parentUri: DocUri, name: string): Promise<EntryResponse>;
+  createDirectory(projectId: ProjectId, parentUri: DocUri, name: string): Promise<EntryResponse>;
+  renameEntry(projectId: ProjectId, uri: DocUri, newName: string): Promise<EntryResponse>;
+  moveEntry(projectId: ProjectId, uri: DocUri, newParentUri: DocUri): Promise<EntryResponse>;
+  copyEntry(projectId: ProjectId, uri: DocUri, destParentUri: DocUri, newName?: string): Promise<EntryResponse>;
 
   searchProject(r: SearchProjectRequest): Promise<SearchProjectResponse>;
   replaceInProject(r: ReplaceInProjectRequest): Promise<ReplaceInProjectResponse>;

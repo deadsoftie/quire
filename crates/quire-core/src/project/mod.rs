@@ -125,6 +125,67 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplorerKind {
+    File,
+    Directory,
+}
+
+/// A real filesystem entry, unlike `FileNode` above which only ever covers what `\input`/
+/// `\include`/`\includegraphics`/`\bibliography` actually reference.
+#[derive(Debug, Clone)]
+pub struct ExplorerEntry {
+    pub path: PathBuf,
+    pub kind: ExplorerKind,
+    /// `Some` (possibly empty) for a directory, `None` for a file.
+    pub children: Option<Vec<ExplorerEntry>>,
+}
+
+/// Whole-directory walk, not the LaTeX dependency graph -- every file/folder under `root`
+/// (`SKIP_NAMES` excluded), nested, directories first then alphabetical within each group.
+pub fn build_explorer_tree(root: &Path) -> Vec<ExplorerEntry> {
+    let mut visited = HashSet::new();
+    walk_explorer_dir(root, &mut visited).unwrap_or_default()
+}
+
+/// Symlink-cycle-safe via the same canonicalize + visited-set pattern `root.rs`'s tex-file
+/// walk and `index/mod.rs`'s two path-completion/search walks already use.
+fn walk_explorer_dir(dir: &Path, visited: &mut HashSet<PathBuf>) -> Option<Vec<ExplorerEntry>> {
+    let real_dir = dir.canonicalize().ok()?;
+    if !visited.insert(real_dir) {
+        return None;
+    }
+    let entries = fs::read_dir(dir).ok()?;
+
+    let mut nodes: Vec<ExplorerEntry> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            if SKIP_NAMES.contains(&name.to_string_lossy().as_ref()) {
+                return None;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                let children = walk_explorer_dir(&path, visited).unwrap_or_default();
+                Some(ExplorerEntry { path, kind: ExplorerKind::Directory, children: Some(children) })
+            } else {
+                Some(ExplorerEntry { path, kind: ExplorerKind::File, children: None })
+            }
+        })
+        .collect();
+
+    nodes.sort_by(|a, b| {
+        let a_is_dir = a.kind == ExplorerKind::Directory;
+        let b_is_dir = b.kind == ExplorerKind::Directory;
+        b_is_dir.cmp(&a_is_dir).then_with(|| {
+            a.path.file_name().map(|n| n.to_string_lossy().to_lowercase())
+                .cmp(&b.path.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+        })
+    });
+
+    Some(nodes)
+}
+
 pub(crate) fn strip_comments(content: &str) -> String {
     let mut out = String::with_capacity(content.len());
     for line in content.lines() {
@@ -409,6 +470,73 @@ mod tests {
         let graph = build_file_graph(&dir.join("does_not_exist.tex"));
         assert_eq!(graph.files.len(), 1);
         assert!(graph.files[0].references.is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn explorer_tree_shows_files_the_latex_graph_never_would() {
+        let dir = temp_dir("explorer-full-walk");
+        fs::write(dir.join("main.tex"), "\\documentclass{article}").unwrap();
+        fs::write(dir.join("notes.md"), "unreferenced").unwrap();
+        fs::create_dir_all(dir.join("data")).unwrap();
+        fs::write(dir.join("data").join("values.csv"), "1,2,3").unwrap();
+
+        let tree = build_explorer_tree(&dir);
+        let names: Vec<String> =
+            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert!(names.contains(&"notes.md".to_string()), "{names:?}");
+        assert!(names.contains(&"data".to_string()), "{names:?}");
+
+        let data_node = tree.iter().find(|n| n.kind == ExplorerKind::Directory).expect("data dir present");
+        let children = data_node.children.as_ref().expect("directories carry children");
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].path.file_name().unwrap(), "values.csv");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn explorer_tree_sorts_directories_before_files_alphabetically() {
+        let dir = temp_dir("explorer-sort");
+        fs::write(dir.join("zeta.tex"), "").unwrap();
+        fs::create_dir_all(dir.join("alpha-dir")).unwrap();
+        fs::write(dir.join("beta.tex"), "").unwrap();
+
+        let tree = build_explorer_tree(&dir);
+        let names: Vec<String> =
+            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, vec!["alpha-dir", "beta.tex", "zeta.tex"]);
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn explorer_tree_excludes_skip_names() {
+        let dir = temp_dir("explorer-skip");
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::create_dir_all(dir.join(".quire")).unwrap();
+        fs::write(dir.join("main.tex"), "").unwrap();
+
+        let tree = build_explorer_tree(&dir);
+        let names: Vec<String> =
+            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, vec!["main.tex"], "{names:?}");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explorer_tree_self_referential_symlink_does_not_recurse_forever() {
+        let dir = temp_dir("explorer-symlink-cycle");
+        fs::write(dir.join("main.tex"), "").unwrap();
+        std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
+
+        let tree = build_explorer_tree(&dir);
+        let names: Vec<String> =
+            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert!(names.contains(&"main.tex".to_string()), "{names:?}");
+
         fs::remove_dir_all(&dir).unwrap();
     }
 }

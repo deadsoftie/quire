@@ -42,6 +42,10 @@ declare global {
       createFile: (projectDir: string) => Promise<string | null>;
       /** Native open-file picker rooted at the given project dir; `null` if cancelled. */
       chooseFile: (projectDir: string) => Promise<string | null>;
+      /** Sends a file/folder to the OS trash (recoverable) -- the Explorer's only delete affordance, deliberately outside CoreApi (no cross-platform trash concept, D5). */
+      trashEntry: (targetPath: string) => Promise<void>;
+      /** Opens the OS file manager with the given path selected. */
+      revealInFileManager: (targetPath: string) => Promise<void>;
       /** Native Save/Discard/Cancel confirm dialog, for closing dirty tabs/projects outside TabBar's own inline confirmation UI. */
       confirmDiscard: (message: string) => Promise<"save" | "discard" | "cancel">;
       /** Keeps the native View menu's checkboxes in sync with renderer state -- see App.tsx's reportViewState effect. */
