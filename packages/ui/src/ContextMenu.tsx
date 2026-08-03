@@ -60,6 +60,12 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
+    } else if (event.key === "Tab") {
+      // Selection here is activeIndex-driven, not real per-item DOM focus (items are tabIndex={-1}
+      // below) -- Tab has nothing meaningful left to do inside this menu, so it just closes it
+      // rather than silently leaking focus wherever the browser's default tab order would go next.
+      event.preventDefault();
+      onClose();
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
       setActiveIndex((i) => nextEnabledIndex(items, i, 1));
@@ -88,6 +94,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
         ref={menuRef}
         className="context-menu surface surface--raised"
         role="menu"
+        aria-label="File actions"
         tabIndex={-1}
         style={{ left: position.x, top: position.y }}
         onKeyDown={onKeyDown}
@@ -98,6 +105,10 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             <button
               type="button"
               role="menuitem"
+              // Not part of the tab order -- activeIndex/arrow keys drive selection (see onKeyDown's
+              // own Tab handling above); a native tabIndex here would let Tab silently hand real DOM
+              // focus to a button with no relation to the activeIndex highlight.
+              tabIndex={-1}
               className={
                 "context-menu__item" +
                 (index === activeIndex ? " context-menu__item--active" : "") +

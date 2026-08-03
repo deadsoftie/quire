@@ -17,7 +17,8 @@ interface FileTreePanelProps {
   onSelectFile: (uri: string) => void;
   onCreateFile: (parentUri: string, name: string) => Promise<void>;
   onCreateDirectory: (parentUri: string, name: string) => Promise<void>;
-  onRename: (uri: string, newName: string) => Promise<void>;
+  /** Resolves to the renamed entry's new uri, or `null` on failure -- used to keep keyboard focus on the same logical row across the uri change. */
+  onRename: (uri: string, newName: string) => Promise<string | null>;
   onMove: (uri: string, newParentUri: string) => Promise<void>;
   onCopy: (uri: string, destParentUri: string) => Promise<void>;
   onTrash: (uri: string) => Promise<void>;
@@ -58,10 +59,12 @@ function iconFor(node: ExplorerNode, expanded: boolean) {
 // unchanged/empty blur cancels without ever calling the RPC underneath.
 function EditableNameInput({
   initialValue,
+  ariaLabel,
   onCommit,
   onCancel,
 }: {
   initialValue: string;
+  ariaLabel: string;
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -86,6 +89,7 @@ function EditableNameInput({
     <input
       ref={inputRef}
       className="file-tree__name-input"
+      aria-label={ariaLabel}
       defaultValue={initialValue}
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
@@ -108,19 +112,21 @@ function EditableNameRow({
   depth,
   kind,
   initialValue,
+  ariaLabel,
   onCommit,
   onCancel,
 }: {
   depth: number;
   kind: "file" | "directory";
   initialValue: string;
+  ariaLabel: string;
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
   return (
     <div className="file-tree__row file-tree__row--editing" style={{ paddingLeft: `calc(var(--s-2) + ${depth} * var(--s-4))` }}>
       <span className="file-tree__icon">{kind === "directory" ? <Folder size={14} /> : <File size={14} />}</span>
-      <EditableNameInput initialValue={initialValue} onCommit={onCommit} onCancel={onCancel} />
+      <EditableNameInput initialValue={initialValue} ariaLabel={ariaLabel} onCommit={onCommit} onCancel={onCancel} />
     </div>
   );
 }
@@ -243,17 +249,39 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     }
   }
 
+  // Restores keyboard focus to the renamed row (by its new uri, so a subsequent arrow-key press
+  // continues from the same logical row) rather than leaving it wherever the now-unmounted input
+  // used to be -- same reasoning as closeMenu below, applied to the F2 path instead of right-click.
   async function commitRename(uri: string, newName: string) {
     setRenamingUri(null);
-    await onRename(uri, newName);
+    const newUri = await onRename(uri, newName);
+    focusRow(newUri ?? uri);
   }
 
   async function commitCreate(name: string) {
     const pending = pendingCreate;
     setPendingCreate(null);
     if (!pending) return;
-    if (pending.kind === "file") await onCreateFile(pending.parentUri, name);
-    else await onCreateDirectory(pending.parentUri, name);
+    if (pending.kind === "file") {
+      // Left unfocused deliberately: creating a file opens it in the editor, which is where
+      // attention (and typing) goes next -- refocusing the tree row here would fight that.
+      await onCreateFile(pending.parentUri, name);
+    } else {
+      await onCreateDirectory(pending.parentUri, name);
+      focusRow(pending.parentUri);
+    }
+  }
+
+  function cancelRename() {
+    const uri = renamingUri;
+    setRenamingUri(null);
+    if (uri) focusRow(uri);
+  }
+
+  function cancelCreate() {
+    const pending = pendingCreate;
+    setPendingCreate(null);
+    if (pending) focusRow(pending.parentUri);
   }
 
   // A "Cut" clears itself after one paste (the original moved away, so it couldn't be pasted
@@ -326,6 +354,14 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     setMenuTarget({ x: event.clientX, y: event.clientY, node });
   }
 
+  // Every ContextMenu close path (Escape, Tab, outside click, a second right-click, or picking an
+  // item) routes through this -- without it, DOM focus silently drops to document.body once the
+  // menu unmounts, leaving arrow-key navigation dead until the tree is clicked again by mouse.
+  function closeMenu() {
+    setMenuTarget(null);
+    if (focusedUri) focusRow(focusedUri);
+  }
+
   // Right-clicking a file targets its containing directory for New File/New Folder/Paste --
   // those always create a sibling, never a child of a file.
   function menuItemsFor(node: ExplorerNode | null): ContextMenuItem[] {
@@ -388,25 +424,30 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
       ) : (
         <ul className="file-tree" role="tree" aria-label="Explorer">
           {pendingCreate && pendingCreate.parentUri === rootUri && (
-            <li>
+            // role="presentation": the <ul> is a tree, not a list, once role="tree" is applied --
+            // its <li> children shouldn't carry the browser's default "listitem" role alongside
+            // the real treeitem/none roles below (same fix ContextMenu's own <li> already needed).
+            <li role="presentation">
               <EditableNameRow
                 depth={0}
                 kind={pendingCreate.kind}
                 initialValue=""
+                ariaLabel={pendingCreate.kind === "file" ? "New file name" : "New folder name"}
                 onCommit={commitCreate}
-                onCancel={() => setPendingCreate(null)}
+                onCancel={cancelCreate}
               />
             </li>
           )}
           {rows.map((row, index) => (
-            <li key={row.node.uri}>
+            <li key={row.node.uri} role="presentation">
               {renamingUri === row.node.uri ? (
                 <EditableNameRow
                   depth={row.depth}
                   kind={row.node.kind}
                   initialValue={row.node.name}
+                  ariaLabel={`Rename ${row.node.name}`}
                   onCommit={(name) => commitRename(row.node.uri, name)}
-                  onCancel={() => setRenamingUri(null)}
+                  onCancel={cancelRename}
                 />
               ) : (
                 <div
@@ -448,8 +489,9 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
                   depth={row.depth + 1}
                   kind={pendingCreate.kind}
                   initialValue=""
+                  ariaLabel={pendingCreate.kind === "file" ? "New file name" : "New folder name"}
                   onCommit={commitCreate}
-                  onCancel={() => setPendingCreate(null)}
+                  onCancel={cancelCreate}
                 />
               )}
             </li>
@@ -461,7 +503,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
           x={menuTarget.x}
           y={menuTarget.y}
           items={menuItemsFor(menuTarget.node)}
-          onClose={() => setMenuTarget(null)}
+          onClose={closeMenu}
         />
       )}
     </div>

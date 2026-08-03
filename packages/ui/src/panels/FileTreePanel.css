@@ -2,8 +2,9 @@
   min-height: 100%;
 }
 
-/* Dropping onto empty space moves to the project root -- same accent this app already uses everywhere else for "something is happening." */
-.file-tree__container--drag-over {
+/* Same drop-target accent whether the target is a real directory row or empty space (-> project root) -- one visual language for "this is where it'll land." */
+.file-tree__container--drag-over,
+.file-tree__row--drag-over {
   outline: var(--seam) dashed var(--nonrepro);
   outline-offset: -1px;
 }
@@ -51,8 +52,6 @@
 
 .file-tree__row--drag-over {
   background: var(--nonrepro-dim);
-  outline: var(--seam) dashed var(--nonrepro);
-  outline-offset: -1px;
 }
 
 .file-tree__icon {

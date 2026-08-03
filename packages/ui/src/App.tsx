@@ -628,15 +628,15 @@ function AppShell() {
   // closing and reopening -- that would silently discard unsaved edits and cursor/scroll position.
   // Shared with moveExplorerEntry below: a move is the same kind of uri change as a rename.
   const renameExplorerEntry = useCallback(
-    async (uri: string, newName: string) => {
+    async (uri: string, newName: string): Promise<string | null> => {
       const proj = projectRef.current;
-      if (!proj) return;
+      if (!proj) return null;
       let renamed;
       try {
         renamed = await window.quire.renameEntry(proj.projectId, uri, newName);
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
-        return;
+        return null;
       }
       const { tabs: nextTabs, nextActiveUri } = rewriteTabUris(tabsRef.current, uri, renamed.uri, activeUri);
       tabsRef.current = nextTabs;
@@ -648,6 +648,7 @@ function AppShell() {
       // watcher's own debounced files-changed catches up. Every other explicit on-disk mutation in
       // this file (save, open, project-wide replace) already recompiles immediately for the same reason.
       runCompile("edit");
+      return renamed.uri;
     },
     [activeUri, refreshExplorerTree, runCompile],
   );
