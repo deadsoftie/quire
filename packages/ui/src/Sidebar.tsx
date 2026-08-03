@@ -51,7 +51,7 @@ export function Sidebar({ title, caption, action, width, onWidthChange, children
         {children}
       </PanelShell>
       <div
-        className="sidebar__resize hit-target"
+        className="sidebar__resize"
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize sidebar"

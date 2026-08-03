@@ -15,9 +15,9 @@
 .sidebar__resize {
   position: absolute;
   top: 0;
-  right: -4px;
+  right: -3px;
   bottom: 0;
-  width: 8px;
+  width: 6px;
   cursor: col-resize;
   touch-action: none;
 }
