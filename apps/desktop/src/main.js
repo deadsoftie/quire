@@ -13,6 +13,11 @@ const BLANK_PROJECT_SOURCE = "\\documentclass{article}\n\\begin{document}\nHello
 const TEMPLATES_DIR = path.join(__dirname, "..", "..", "..", "templates");
 const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 
+// Source design file (Icon Composer project) lives at repo root as QuireIcon.icon/; this is its exported
+// flat PNG. No packager (electron-builder/forge) is configured yet, so this only covers the dev-mode
+// window/taskbar/dock icon -- a packaged build's .icns/.ico would need their own icon pipeline later.
+const APP_ICON_PATH = path.join(__dirname, "..", "assets", "icon.png");
+
 let client;
 let mainWindow;
 
@@ -158,6 +163,8 @@ function createWindow() {
     height: 800,
     // Matches --ink-900 (dark theme default) to avoid a white flash before first paint.
     backgroundColor: "#16181d",
+    // Windows/Linux taskbar icon; macOS's Dock icon is set separately below via app.dock.setIcon.
+    icon: APP_ICON_PATH,
     ...(isMac ? { titleBarStyle: "hidden", trafficLightPosition: { x: 12, y: 10 } } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -397,6 +404,9 @@ app.whenReady().then(() => {
       return null;
     }
   });
+
+  // BrowserWindow's `icon` option doesn't drive the Dock in dev mode (only a packaged .app's Info.plist does).
+  if (isMac) app.dock.setIcon(APP_ICON_PATH);
 
   Menu.setApplicationMenu(buildMenu());
   createWindow();
