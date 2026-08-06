@@ -18,7 +18,8 @@ export interface SnippetEntry {
   tags: string[];
   /** CM6 tabstop syntax, e.g. "${1:foo}" -- same dialect as snippets.ts's inline completions. */
   template: string;
-  /** Informational only, shown on the card -- inserting never edits the preamble to add this. */
+  /** Shown on the card, and also drives Editor.tsx's insertSnippetTemplate: it patches the preamble
+   * (\usepackage, amsthm's \newtheorem, or a \documentclass switch for beamer) with this if missing. */
   requiresPackage?: string;
 }
 

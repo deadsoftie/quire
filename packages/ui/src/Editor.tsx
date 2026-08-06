@@ -27,6 +27,7 @@ import { formatLatex } from "./latex/formatter";
 import { latex } from "./latex/language";
 import { snippetCompletionSource } from "./snippets";
 import { SNIPPET_DRAG_MIME, snippetById } from "./snippetLibrary";
+import type { SnippetEntry } from "./snippetLibrary";
 import { renderSymbolPreview } from "./symbolPreview";
 
 // Chromium normalizes most clipboard images to `image/png` regardless of source; only explicit JPEG keeps its own extension.
@@ -40,11 +41,72 @@ export function isTexFile(uri: string): boolean {
   return /\.tex$/i.test(uri);
 }
 
+// Environments amsthm doesn't define on its own -- these three entries each need a \newtheorem
+// declaration alongside \usepackage{amsthm}, keyed by snippet id since it's per-environment, not per-package.
+const AMSTHM_DECLARATIONS: Record<string, string> = {
+  theorem: "\\newtheorem{theorem}{Theorem}",
+  "lemma-proof": "\\newtheorem{lemma}{Lemma}",
+  definition: "\\newtheorem{definition}{Definition}",
+};
+
+function preambleOf(docText: string): string {
+  const end = docText.indexOf("\\begin{document}");
+  return end === -1 ? docText : docText.slice(0, end);
+}
+
+function hasUsepackage(preamble: string, pkg: string): boolean {
+  const re = /\\usepackage(?:\[[^\]]*\])?\{([^}]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(preamble))) {
+    if (m[1].split(",").some((name) => name.trim() === pkg)) return true;
+  }
+  return false;
+}
+
+// Computes the preamble edit needed to make a snippet's `requiresPackage` card hint actually true --
+// a missing \usepackage line, amsthm's \newtheorem declaration, or (for the 3 beamer entries) switching
+// \documentclass to beamer -- or null if the document already satisfies it. Returns an offset range
+// rather than applying anything, so the caller can fold it into the same insertion flow.
+export function preambleFix(docText: string, entry: SnippetEntry): { from: number; to: number; insert: string } | null {
+  const pkg = entry.requiresPackage;
+  if (!pkg) return null;
+
+  if (pkg === "beamer") {
+    const m = /\\documentclass(\[[^\]]*\])?\{([^}]*)\}/.exec(docText);
+    if (!m || m[2] === "beamer") return null;
+    return { from: m.index, to: m.index + m[0].length, insert: `\\documentclass${m[1] ?? ""}{beamer}` };
+  }
+
+  const preamble = preambleOf(docText);
+  const lines: string[] = [];
+  if (!hasUsepackage(preamble, pkg)) lines.push(`\\usepackage{${pkg}}`);
+  const declaration = AMSTHM_DECLARATIONS[entry.id];
+  if (declaration && !preamble.includes(declaration)) lines.push(declaration);
+  if (lines.length === 0) return null;
+
+  const at = docText.indexOf("\\begin{document}");
+  const insertAt = at === -1 ? docText.length : at;
+  return { from: insertAt, to: insertAt, insert: `${lines.join("\n")}\n` };
+}
+
 // Shared by the SnippetsPanel drop handler and its click/keyboard insertSnippet() path -- one insertion
 // mechanism, not two. Routes through CM6's own snippet() apply function (line 161's `apply` field uses
-// the same one) so ${1:tabstop} fields get real Tab-cycling, not a flat text insert.
-function insertSnippetTemplate(view: EditorView, template: string, from: number, to: number) {
-  snippet(template)(view, null, from, to);
+// the same one) so ${1:tabstop} fields get real Tab-cycling, not a flat text insert. When the entry needs
+// a package/class the document doesn't have yet, patches the preamble first as its own dispatch (so it's
+// its own undo step) and shifts the snippet's insertion point by whatever that patch added ahead of it.
+function insertSnippetTemplate(view: EditorView, entry: SnippetEntry, from: number, to: number) {
+  const fix = preambleFix(view.state.doc.toString(), entry);
+  let insertFrom = from;
+  let insertTo = to;
+  if (fix) {
+    view.dispatch({ changes: { from: fix.from, to: fix.to, insert: fix.insert } });
+    const delta = fix.insert.length - (fix.to - fix.from);
+    if (fix.from <= insertFrom) {
+      insertFrom += delta;
+      insertTo += delta;
+    }
+  }
+  snippet(entry.template)(view, null, insertFrom, insertTo);
 }
 
 // @codemirror/lint's own underline bakes a fixed color into the SVG, so recoloring needs our own copy, not a CSS override.
@@ -270,7 +332,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     const entry = snippetById(id);
     if (!entry) return;
     const { from, to } = view.state.selection.main;
-    insertSnippetTemplate(view, entry.template, from, to);
+    insertSnippetTemplate(view, entry, from, to);
     view.focus();
   }
 
@@ -401,7 +463,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
             event.preventDefault();
             const pos = editorView.posAtCoords({ x: event.clientX, y: event.clientY }) ?? editorView.state.selection.main.head;
-            insertSnippetTemplate(editorView, entry.template, pos, pos);
+            insertSnippetTemplate(editorView, entry, pos, pos);
             editorView.focus();
             return true;
           },
