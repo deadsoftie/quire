@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "concurrently -k -s first \"pnpm --filter @quire/ui dev\" \"wait-on http://localhost:5173 && pnpm --filter @quire/desktop dev\""
+    "dev": "concurrently -k -s first \"pnpm --filter @quire/ui dev\" \"wait-on http://localhost:5173 && pnpm --filter @quire/desktop dev\"",
+    "package": "bash scripts/package.sh"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",
