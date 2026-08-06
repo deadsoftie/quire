@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
-const { StdioTransport } = require("@quire/client");
+const { StdioTransport, setSidecarPath } = require("@quire/client");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 const isMac = process.platform === "darwin";
@@ -9,8 +9,11 @@ const isMac = process.platform === "darwin";
 // Duplicated literal, not imported, same reasoning as App.tsx's SIDECAR_CALL_CANCELLED comment; needs real body content since an empty document fails to compile.
 const BLANK_PROJECT_SOURCE = "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-// templates/*.tex, resolved relative to this dev checkout; a packaged build will need this path swapped for process.resourcesPath instead.
-const TEMPLATES_DIR = path.join(__dirname, "..", "..", "..", "templates");
+// Dev: relative to this checkout. Packaged: electron-builder's extraResources config (see
+// ELECTRON_BUILDER_PLAN.md Phase 1) copies each of these next to process.resourcesPath under the
+// same names used here (quire-sidecar, templates/, bundles/, ui/) -- every packaged-app resource is
+// found the same way, a flat directory next to the app, not asar-relative guessing.
+const TEMPLATES_DIR = app.isPackaged ? path.join(process.resourcesPath, "templates") : path.join(__dirname, "..", "..", "..", "templates");
 const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 
 // Source design file (Icon Composer project) lives at repo root as QuireIcon.icon/; this is its exported
@@ -174,7 +177,13 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(DEV_SERVER_URL);
+  if (app.isPackaged) {
+    // packages/ui/dist copied here by electron-builder's extraResources config -- see the
+    // TEMPLATES_DIR comment above for why this is a flat resources-relative path, not asar-relative.
+    mainWindow.loadFile(path.join(process.resourcesPath, "ui", "index.html"));
+  } else {
+    mainWindow.loadURL(DEV_SERVER_URL);
+  }
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -244,6 +253,15 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
 }
 
 app.whenReady().then(() => {
+  if (app.isPackaged) {
+    // Both quire-sidecar spawn sites (packages/client's runOnce and ProjectWatcher) read this back
+    // via getSidecarPath(); quire-core's bundle.rs reads QUIRE_BUNDLE_ROOT from its own environment,
+    // inherited automatically since child_process.spawn() passes the parent's process.env through
+    // by default -- no extra plumbing needed on the Rust side beyond what Phase 0 already added.
+    setSidecarPath(path.join(process.resourcesPath, "quire-sidecar"));
+    process.env.QUIRE_BUNDLE_ROOT = path.join(process.resourcesPath, "bundles");
+  }
+
   client = new StdioTransport();
   const sessionFile = path.join(app.getPath("userData"), "session.json");
   const themesFile = path.join(app.getPath("userData"), "themes.json");

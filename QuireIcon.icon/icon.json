@@ -6,23 +6,21 @@
     {
       "layers" : [
         {
-          "glass" : false,
-          "image-name" : "2 – Layer.svg",
-          "name" : "2 – Layer"
+          "image-name" : "2 – Layer 2.svg",
+          "name" : "2 – Layer 2"
         },
         {
-          "glass" : false,
-          "image-name" : "1 – Layer.svg",
-          "name" : "1 – Layer"
+          "image-name" : "1 – Layer 2.svg",
+          "name" : "1 – Layer 2"
         }
       ],
       "shadow" : {
         "kind" : "neutral",
-        "opacity" : 0.5
+        "opacity" : 0.6
       },
       "translucency" : {
         "enabled" : true,
-        "value" : 0.5
+        "value" : 0.2
       }
     }
   ],

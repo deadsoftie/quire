@@ -1,8 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import * as path from "node:path";
 import * as readline from "node:readline";
-
-const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
+import { getSidecarPath } from "./sidecarPath";
 
 export class ProjectWatcher {
   private proc: ChildProcess;
@@ -10,7 +8,7 @@ export class ProjectWatcher {
   private stopped = false;
 
   constructor(dir: string, onChange: (paths: string[]) => void) {
-    this.proc = spawn(SIDECAR_PATH, ["watch", dir], { stdio: ["ignore", "pipe", "inherit"] });
+    this.proc = spawn(getSidecarPath(), ["watch", dir], { stdio: ["ignore", "pipe", "inherit"] });
 
     this.rl = readline.createInterface({ input: this.proc.stdout! });
     this.rl.on("line", (line) => {

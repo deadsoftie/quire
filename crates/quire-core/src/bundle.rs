@@ -9,9 +9,20 @@ use tectonic_bundles::{dir::DirBundle, Bundle};
 
 use crate::CompileError;
 
-/// Resolved relative to this crate's manifest dir; a packaged app will need a different path.
+/// Resolved relative to this crate's manifest dir by default (dev builds, `cargo test`) -- that's a
+/// *compile-time* macro, so it bakes the build machine's own source path into the release binary,
+/// which is wrong for a binary run anywhere else. A packaged app sets QUIRE_BUNDLE_ROOT (see
+/// apps/desktop/src/main.js) to override with wherever the packager laid `bundles/` out as an
+/// extraResource, since that layout differs per platform/packager.
+fn bundles_root() -> PathBuf {
+    if let Ok(dir) = std::env::var("QUIRE_BUNDLE_ROOT") {
+        return PathBuf::from(dir);
+    }
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles"))
+}
+
 fn core_bundle_dir() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles/core"))
+    bundles_root().join("core")
 }
 
 fn open_network_bundle() -> Result<Box<dyn Bundle>, CompileError> {
@@ -128,7 +139,7 @@ struct CoreManifest {
 
 /// The curated, human-meaningful package/class names core ships; empty until `build_core_bundle` has run.
 pub fn core_packages() -> Vec<String> {
-    let manifest_path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles/manifest.json"));
+    let manifest_path = bundles_root().join("manifest.json");
     let Ok(text) = fs::read_to_string(manifest_path) else { return Vec::new() };
     let Ok(manifest) = serde_json::from_str::<CoreManifest>(&text) else { return Vec::new() };
     let mut names = manifest.document_classes;

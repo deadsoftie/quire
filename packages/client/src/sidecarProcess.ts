@@ -1,8 +1,6 @@
 import { spawn } from "node:child_process";
-import * as path from "node:path";
 import * as readline from "node:readline";
-
-const SIDECAR_PATH = path.join(__dirname, "..", "..", "..", "target", "debug", "quire-sidecar");
+import { getSidecarPath } from "./sidecarPath";
 
 // Marker string, not an Error subclass -- Electron's IPC boundary drops the prototype, so instanceof wouldn't match.
 export const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
@@ -14,7 +12,7 @@ export interface SidecarCall {
 
 // `detached` + process-group kill, not plain child.kill(): Tectonic shells out to biber/bibtex, and only a group-kill takes both out.
 export function runOnce(method: string, params: unknown, cwd?: string): SidecarCall {
-  const proc = spawn(SIDECAR_PATH, [], {
+  const proc = spawn(getSidecarPath(), [], {
     cwd,
     stdio: ["pipe", "pipe", "inherit"],
     detached: process.platform !== "win32",
