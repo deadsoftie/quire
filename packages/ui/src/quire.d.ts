@@ -15,7 +15,7 @@ interface ViewMenuState {
   typewriterMode: boolean;
   proseMode: boolean;
   wordWrap: boolean;
-  lightTheme: boolean;
+  themeId: string;
   pdfInverted: boolean;
 }
 

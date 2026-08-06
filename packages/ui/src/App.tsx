@@ -14,10 +14,10 @@ import type {
 import { FolderPlus, Plus } from "lucide-react";
 import { ActivityBar } from "./ActivityBar";
 import { CommandPalette } from "./commands/CommandPalette";
-import { CommandProvider, useCommand } from "./commands/CommandContext";
+import { CommandProvider, useCommand, useCommandRegistrar } from "./commands/CommandContext";
 import { Editor } from "./Editor";
 import type { EditorHandle } from "./Editor";
-import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, applyTheme, normalizeCustomThemes, resolveTheme } from "./theme";
+import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, allThemes, applyTheme, normalizeCustomThemes, resolveTheme } from "./theme";
 import type { ThemeDefinition } from "./theme";
 import { ThemeEditorDialog } from "./ThemeEditorDialog";
 import { FindWidget } from "./FindWidget";
@@ -997,7 +997,7 @@ function AppShell() {
       typewriterMode,
       proseMode,
       wordWrap,
-      lightTheme: resolveTheme(themeId, customThemes).appearance === "light",
+      themeId,
       pdfInverted,
     });
   }, [sidebarSection, focusMode, typewriterMode, proseMode, wordWrap, themeId, customThemes, pdfInverted]);
@@ -1189,13 +1189,18 @@ function AppShell() {
     run: () => setWordWrap((v) => !v),
   });
 
-  useCommand({
-    id: "app.toggle-theme",
-    title: "Toggle Theme",
-    // Cycles appearance, not the specific palette -- landing on each mode's Quire default regardless of which custom/built-in theme was active.
-    run: () =>
-      setThemeId((id) => (resolveTheme(id, customThemes).appearance === "dark" ? DEFAULT_LIGHT_THEME_ID : DEFAULT_DARK_THEME_ID)),
-  });
+  const { register: registerCommand } = useCommandRegistrar();
+  useEffect(() => {
+    const unregisters = allThemes(customThemes).map((theme) =>
+      registerCommand({
+        id: `theme.select.${theme.id}`,
+        title: `Theme: ${theme.name}`,
+        run: () => setThemeId(theme.id),
+      }),
+    );
+    return () => unregisters.forEach((unregister) => unregister());
+  }, [customThemes, registerCommand]);
+
   useCommand({
     id: "pdf.toggle-inversion",
     title: "Toggle PDF Inversion",

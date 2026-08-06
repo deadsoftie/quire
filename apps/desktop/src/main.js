@@ -16,6 +16,21 @@ const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 let client;
 let mainWindow;
 
+// Built-in theme ids/names, duplicated from packages/design/src/themes.ts's builtinThemes --
+// same reasoning as VIEW_MENU_CHECK_IDS below: no shared TS import can cross the CJS main-process
+// boundary. Custom (user-defined) themes aren't listed here since Electron's menu is built once at
+// startup; they remain reachable only via the command palette.
+const BUILTIN_THEMES = [
+  { id: "quire-dark", name: "Quire Dark" },
+  { id: "monokai", name: "Monokai" },
+  { id: "dracula", name: "Dracula" },
+  { id: "gruvbox-dark", name: "Gruvbox Dark" },
+  { id: "quire-light", name: "Quire Light" },
+  { id: "gruvbox-light", name: "Gruvbox Light" },
+  { id: "solarized-light", name: "Solarized Light" },
+  { id: "github-light", name: "GitHub Light" },
+];
+
 // Every non-role menu item dispatches through this single channel by id, so a menu click, its accelerator, and the palette all run the same command.
 function sendMenuCommand(id) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -82,7 +97,15 @@ function buildMenu() {
         { id: "view.prose-mode", label: "Serif Prose Mode", type: "checkbox", click: () => sendMenuCommand("editor.toggle-prose-mode") },
         { id: "view.word-wrap", label: "Word Wrap", type: "checkbox", click: () => sendMenuCommand("editor.toggle-word-wrap") },
         { type: "separator" },
-        { id: "view.light-theme", label: "Light Theme", type: "checkbox", click: () => sendMenuCommand("app.toggle-theme") },
+        {
+          label: "Theme",
+          submenu: BUILTIN_THEMES.map((theme) => ({
+            id: `view.theme.${theme.id}`,
+            label: theme.name,
+            type: "radio",
+            click: () => sendMenuCommand(`theme.select.${theme.id}`),
+          })),
+        },
         { id: "view.pdf-inverted", label: "Invert PDF Colors", type: "checkbox", click: () => sendMenuCommand("pdf.toggle-inversion") },
         { type: "separator" },
         { label: "Reset Editor/Preview Split", click: () => sendMenuCommand("layout.reset-split") },
@@ -111,7 +134,6 @@ const VIEW_MENU_CHECK_IDS = {
   typewriterMode: "view.typewriter",
   proseMode: "view.prose-mode",
   wordWrap: "view.word-wrap",
-  lightTheme: "view.light-theme",
   pdfInverted: "view.pdf-inverted",
 };
 
@@ -121,6 +143,12 @@ function updateViewMenuChecks(state) {
   for (const [key, id] of Object.entries(VIEW_MENU_CHECK_IDS)) {
     const item = menu.getMenuItemById(id);
     if (item) item.checked = Boolean(state[key]);
+  }
+  // Radio items, not booleans -- only matches a built-in theme id; a custom active theme leaves
+  // the whole group unchecked, which is fine since custom themes aren't listed in this menu.
+  for (const theme of BUILTIN_THEMES) {
+    const item = menu.getMenuItemById(`view.theme.${theme.id}`);
+    if (item) item.checked = state.themeId === theme.id;
   }
 }
 
