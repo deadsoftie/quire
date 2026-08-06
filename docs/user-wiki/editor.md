@@ -30,7 +30,7 @@ Type and Quire offers completions as you go, categorized by context:
 - **Math symbols** — in math mode, symbol names like `\alpha` show a live KaTeX preview
   of what the symbol actually renders as.
 
-## Snippets
+## Inline snippets
 
 A short trigger word, expanded via Tab, with tab-stops to fill in:
 
@@ -45,6 +45,24 @@ A short trigger word, expanded via Tab, with tab-stops to fill in:
 
 Snippets only trigger on a bare word (not right after a `\`, so typing `\sec` still
 offers the `\section` *command*, not the `sec` snippet).
+
+## Snippets panel
+
+A much larger, browsable catalog lives in the **Snippets** side panel (see
+[Navigation](navigation.md)) — dozens of ready-made blocks (front matter, math
+environments, figures/tables, lists, references, code listings, layout tricks, Beamer
+slides) grouped by category, searchable by name/description/tag. Two ways to use a
+card:
+
+- **Drag it** into the editor at the exact spot you want it.
+- Click **Insert** to drop it at your cursor.
+
+Either way, if the block needs a package your document doesn't have loaded yet (e.g. the
+TikZ canvas needs `tikz`, a theorem block needs `amsthm`, a Beamer slide needs the
+`beamer` document class), Quire adds the missing `\usepackage{...}` line — or, for
+Beamer slides, switches your `\documentclass` — right before inserting the snippet, so
+it compiles as-is instead of erroring on a missing package. A card's "requires X" note
+tells you up front which ones do this.
 
 ## Environment name sync
 

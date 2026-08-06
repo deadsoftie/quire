@@ -42,14 +42,16 @@ not) is reachable through the command palette (⌘K).
 | Shortcut | Action |
 |---|---|
 | ⌘1 | Show Explorer |
+| ⇧⌘F | Show Search |
 | ⌘2 | Show Outline |
 | ⌘3 | Show Problems |
 | — | Show Packages |
+| — | Show Snippets |
 | — | Focus Mode |
 | — | Typewriter Scrolling |
 | — | Serif Prose Mode |
 | — | Word Wrap |
-| — | Light Theme |
+| — | Theme (submenu — one item per built-in theme) |
 | — | Invert PDF Colors |
 | — | Reset Editor/Preview Split |
 | ⌘R | Reload |

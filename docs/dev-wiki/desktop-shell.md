@@ -10,7 +10,12 @@
   `quire-core` is a library, not a server;
 - owns every native dialog (`dialog.showOpenDialog`/`showSaveDialog`/`showMessageBox`)
   and the application menu;
-- persists session state to a JSON file under `app.getPath("userData")`.
+- persists session state to a JSON file under `app.getPath("userData")`;
+- sets the dev-mode window/taskbar icon (`BrowserWindow`'s `icon` option) and, on
+  macOS, the Dock icon (`app.dock.setIcon`, since the `icon` option alone doesn't drive
+  the Dock outside a packaged `.app`) from `apps/desktop/assets/icon.png`. No packager
+  (electron-builder/forge) is configured yet, so this doesn't yet cover a built app's
+  `.icns`/`.ico`.
 
 The renderer (`packages/ui`, loaded from the Vite dev server or a built bundle) runs
 sandboxed and context-isolated — no direct Node or filesystem access. Everything it
@@ -43,7 +48,15 @@ once as an in-app keydown handler) would double-fire.
 Checkbox items (View menu toggles) don't reactively bind to renderer state on their
 own — `updateViewMenuChecks(state)` is called from `desktop:reportViewState`, which
 `App.tsx`'s own effect calls whenever any of that state changes, keeping the menu's
-checkmarks in sync by hand rather than by binding.
+checkmarks in sync by hand rather than by binding. The View menu's **Theme** submenu is
+the one non-boolean case: it's a `type: "radio"` group (one item per built-in theme, ids
+`view.theme.<id>`, dispatching `theme.select.<id>`) synced against `state.themeId`
+rather than a boolean key in `VIEW_MENU_CHECK_IDS`. Custom (user-created) themes aren't
+listed there — Electron's menu is built once at launch — so a custom theme active leaves
+the whole radio group unchecked; the command palette is the only surface that lists
+custom themes. Built-in theme ids/names are duplicated in `main.js` from
+`packages/design/src/themes.ts`'s `builtinThemes` for the same reason as everything else
+in this section: no shared TS import can cross the CJS main-process boundary.
 
 ## Native dialogs worth knowing the shape of
 

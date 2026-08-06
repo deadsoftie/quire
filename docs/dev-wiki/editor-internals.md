@@ -63,6 +63,14 @@ keybinding, when one exists, is always the native Electron menu accelerator, nev
 second in-app keydown handler. Every command with a shortcut in this app has a comment
 to that effect; registering both would double-fire on the same keypress.
 
+`useCommand` assumes a fixed identity per call site — it can't be called a variable
+number of times per render (rules-of-hooks). For a genuinely variable-length set (one
+palette command per theme, built-in plus however many custom ones exist),
+`useCommandRegistrar()` exposes the registry's raw `register` function instead, and
+`App.tsx` drives it from a single `useEffect` that (re)registers the whole list
+whenever `customThemes` changes — see the theme picker in
+[The desktop shell](desktop-shell.md).
+
 ## Editor modes as compartments (`editorModes.ts`)
 
 Focus mode, Typewriter scrolling, Serif prose mode, and Word wrap are each a CM6
@@ -78,7 +86,33 @@ document — for the math tint, since it doesn't depend on cursor position at al
 
 `makeCompletionSource` (in `Editor.tsx`) wraps the RPC `complete()` call as a CM6
 completion source; `snippets.ts`'s `snippetCompletionSource` is a second, independent
-completion source for the fixed snippet list (`fig`, `tab`, `eq`, `itm`, `sec`, `beg`),
-both registered together via `autocompletion({ override: [...] })`. Snippets reject
-right after a bare `\` specifically so typing `\sec` still offers the `\section`
+completion source for the fixed inline snippet list (`fig`, `tab`, `eq`, `itm`, `sec`,
+`beg`), both registered together via `autocompletion({ override: [...] })`. Snippets
+reject right after a bare `\` specifically so typing `\sec` still offers the `\section`
 *command* completion, not the `sec` snippet.
+
+## The SnippetsPanel catalog
+
+A separate, larger system: `data/snippet-library.json` (45 entries, validated end-to-end
+by `crates/quire-core/tests/snippet_catalog.rs`, which substitutes each template's
+tabstops and compiles the result through the real Tectonic pipeline) backs
+`snippetLibrary.ts`'s `listSnippets`/`searchSnippets`/`groupByCategory`, rendered by
+`panels/SnippetsPanel.tsx`. Both the click-to-insert path (`Editor.tsx`'s
+`insertSnippet`) and the drag-and-drop path (the editor's `drop` handler, matched via
+the custom `SNIPPET_DRAG_MIME`) funnel through one shared `insertSnippetTemplate`, which
+calls CM6's own `snippet()` apply function so `${1:tabstop}` fields get real Tab-cycling
+— same dialect, same underlying mechanism as the inline snippets above, just a much
+bigger, browsable catalog instead of trigger words.
+
+An entry's `requiresPackage` isn't just informational: `insertSnippetTemplate` calls
+`preambleFix(docText, entry)` first, which scans the document's preamble (the text
+before `\begin{document}`) and, if the package isn't already loaded (bare, with
+options, or bundled into a comma-separated `\usepackage{a,b,c}`), computes an edit to
+add it — plus, for the three `amsthm` entries, the `\newtheorem{...}` declaration
+`amsthm` doesn't provide on its own, and for the three `beamer` entries, a
+`\documentclass` switch to `beamer` (preserving any class options). That edit dispatches
+as its own transaction before the snippet insert, so it's its own undo step, and the
+snippet's insertion offset is shifted by whatever the patch added ahead of it.
+`preambleFix` is a pure function (exported from `Editor.tsx` for this reason) covering
+`Editor.test.ts`'s real test coverage of the tricky cases — already-loaded detection,
+already-declared `\newtheorem`, already-`beamer` documents.
