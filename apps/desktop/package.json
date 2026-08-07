@@ -32,7 +32,10 @@
     "mac": {
       "target": ["dmg"],
       "category": "public.app-category.productivity",
-      "identity": null
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "binaries": ["Contents/Resources/quire-sidecar"]
     },
     "linux": {
       "target": ["AppImage", "deb"],
