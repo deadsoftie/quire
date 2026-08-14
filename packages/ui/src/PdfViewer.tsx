@@ -58,7 +58,7 @@ interface PdfViewerProps {
   data: Uint8Array | null;
   /** Pages changed since the immediately preceding compile; a first-ever compile already reports every page (quire-core's own fallback), so no separate "first load" case is needed here. */
   changedPages: number[];
-  /** Independent of app theme -- inverted figures often look wrong, so this is never derived from it. */
+  /** Independent of app theme - inverted figures often look wrong, so this is never derived from it. */
   inverted: boolean;
 }
 
@@ -78,9 +78,9 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const wrapperRefCallbacks = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
   const canvasRefCallbacks = useRef(new Map<number, (el: HTMLCanvasElement | null) => void>());
   const renderTasks = useRef(new Map<number, RenderTask>());
-  // Which pdfDoc each page's *current* canvas element last painted -- a fresh element (see setCanvasRef) always needs a fresh draw.
+  // Which pdfDoc each page's *current* canvas element last painted - a fresh element (see setCanvasRef) always needs a fresh draw.
   const renderedForDocRef = useRef(new Map<number, PDFDocumentProxy>());
-  // The doc a page's bitmap must match for changedPages' skip to be valid -- see shouldRenderPage.
+  // The doc a page's bitmap must match for changedPages' skip to be valid - see shouldRenderPage.
   const previousPdfDocRef = useRef<PDFDocumentProxy | null>(null);
   // Detects a render-resolution change (zoom/resize), which shouldRenderPage's doc-identity check knows nothing about.
   const lastScaleKeyRef = useRef<string | null>(null);
@@ -99,7 +99,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     };
   }, [data]);
 
-  // Metadata-only, fetched once so every placeholder reserves its real space -- without this, mounting/unmounting canvases while scrolling would shift the scroll position.
+  // Metadata-only, fetched once so every placeholder reserves its real space - without this, mounting/unmounting canvases while scrolling would shift the scroll position.
   useEffect(() => {
     if (!pdfDoc) {
       setNaturalSizes(new Map());
@@ -123,7 +123,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     };
   }, [pdfDoc]);
 
-  // Tracks the pane's available width for "fit-width" -- resizing the window or the seam both need to re-fit the page.
+  // Tracks the pane's available width for "fit-width" - resizing the window or the seam both need to re-fit the page.
   useEffect(() => {
     const root = scrollRootRef.current;
     if (!root) return;
@@ -175,7 +175,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
     const doc = pdfDoc;
     const changedSet = new Set(changedPages);
 
-    // The doc hasn't changed but the render resolution has -- every visible page's bitmap is now the wrong size.
+    // The doc hasn't changed but the render resolution has - every visible page's bitmap is now the wrong size.
     const scaleKey = `${zoomMode}:${containerWidth}`;
     if (lastScaleKeyRef.current !== scaleKey) {
       lastScaleKeyRef.current = scaleKey;
@@ -256,7 +256,7 @@ export function PdfViewer({ data, changedPages, inverted }: PdfViewerProps) {
   const numPages = pdfDoc?.numPages ?? 0;
   const pageNumbers = Array.from({ length: numPages }, (_, i) => i + 1);
 
-  // Any page's natural width is a reasonable stand-in for the whole document's -- pages essentially never mix widths.
+  // Any page's natural width is a reasonable stand-in for the whole document's - pages essentially never mix widths.
   const firstNaturalWidth = naturalSizes.get(1)?.width ?? 0;
   const currentPercent = Math.round(resolveScale(zoomMode, containerWidth, firstNaturalWidth) * 100);
 

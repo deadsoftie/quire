@@ -105,7 +105,7 @@ fn macro_completion_merges_newcommand_declaremathoperator_and_def_across_files_w
     assert_eq!(vect.detail.as_deref(), Some("\\mathbf{#1}"));
 
     let argmax = by_label.get("argmax").expect("\\DeclareMathOperator should complete");
-    assert_eq!(argmax.insert, "argmax", "DeclareMathOperator is always arity 0 -- no braces");
+    assert_eq!(argmax.insert, "argmax", "DeclareMathOperator is always arity 0 - no braces");
 
     let greet = by_label.get("greet").expect("\\def\\greet#1#2{...} defined in the \\input'd defs.tex should complete across files");
     assert_eq!(greet.insert, "greet{${1:arg1}}{${2:arg2}}");

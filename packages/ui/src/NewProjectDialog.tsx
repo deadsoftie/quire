@@ -7,9 +7,9 @@ interface NewProjectDialogProps {
   onClose: () => void;
 }
 
-// Ids match templates/<id>.tex exactly -- desktop:scaffoldProject validates against this same set.
+// Ids match templates/<id>.tex exactly - desktop:scaffoldProject validates against this same set.
 const TEMPLATE_OPTIONS: { id: string | null; label: string; description: string }[] = [
-  { id: null, label: "Blank Document", description: "An empty article -- start from scratch." },
+  { id: null, label: "Blank Document", description: "An empty article - start from scratch." },
   { id: "article", label: "Article", description: "Title, author, abstract, section skeleton." },
   { id: "ieee", label: "IEEE", description: "IEEE conference paper format." },
   { id: "acm", label: "ACM / SIGCONF", description: "ACM SIGCONF proceedings format." },

@@ -24,7 +24,7 @@
     },
     {
       "name": "biber",
-      "reason": "Same BCF mismatch as biblatex above -- biber itself doesn't work at all today, for anyone, independent of any bundling decision."
+      "reason": "Same BCF mismatch as biblatex above - biber itself doesn't work at all today, for anyone, independent of any bundling decision."
     },
     {
       "name": "tikz/pgf",

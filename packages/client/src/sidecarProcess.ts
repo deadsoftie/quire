@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import * as readline from "node:readline";
 import { getSidecarPath } from "./sidecarPath";
 
-// Marker string, not an Error subclass -- Electron's IPC boundary drops the prototype, so instanceof wouldn't match.
+// Marker string, not an Error subclass - Electron's IPC boundary drops the prototype, so instanceof wouldn't match.
 export const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 export interface SidecarCall {
@@ -25,7 +25,7 @@ export function runOnce(method: string, params: unknown, cwd?: string): SidecarC
         process.kill(-proc.pid!, "SIGKILL");
         return;
       } catch {
-        // group already gone -- fall through to the plain kill as a backstop.
+        // group already gone - fall through to the plain kill as a backstop.
       }
     }
     proc.kill("SIGKILL");

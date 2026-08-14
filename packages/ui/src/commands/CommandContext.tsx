@@ -83,12 +83,12 @@ export function usePaletteCommands() {
 }
 
 // For registering a variable-length list of commands (e.g. one per theme) where the count
-// can change across renders -- useCommand can't be called a variable number of times per rules-of-hooks.
+// can change across renders - useCommand can't be called a variable number of times per rules-of-hooks.
 export function useCommandRegistrar() {
   return { register: useCommandRegistryValue().register };
 }
 
-// `run` doesn't need a stable identity across renders -- it's always invoked through a ref to the latest closure.
+// `run` doesn't need a stable identity across renders - it's always invoked through a ref to the latest closure.
 export function useCommand(command: Command) {
   const { register } = useCommandRegistryValue();
   const runRef = useRef(command.run);

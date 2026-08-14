@@ -9,16 +9,16 @@ const isMac = process.platform === "darwin";
 // Duplicated literal, not imported, same reasoning as App.tsx's SIDECAR_CALL_CANCELLED comment; needs real body content since an empty document fails to compile.
 const BLANK_PROJECT_SOURCE = "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-// Dev: relative to this checkout. Packaged: electron-builder's extraResources config (see
-// ELECTRON_BUILDER_PLAN.md Phase 1) copies each of these next to process.resourcesPath under the
-// same names used here (quire-sidecar, templates/, bundles/, ui/) -- every packaged-app resource is
-// found the same way, a flat directory next to the app, not asar-relative guessing.
+// Dev: relative to this checkout. Packaged: electron-builder's extraResources config copies
+// each of these next to process.resourcesPath under the same names used here (quire-sidecar,
+// templates/, bundles/, ui/) - every packaged-app resource is found the same way, a flat
+// directory next to the app, not asar-relative guessing.
 const TEMPLATES_DIR = app.isPackaged ? path.join(process.resourcesPath, "templates") : path.join(__dirname, "..", "..", "..", "templates");
 const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 
 // Source design file (Icon Composer project) lives at repo root as QuireIcon.icon/; this is its exported
 // flat PNG. No packager (electron-builder/forge) is configured yet, so this only covers the dev-mode
-// window/taskbar/dock icon -- a packaged build's .icns/.ico would need their own icon pipeline later.
+// window/taskbar/dock icon - a packaged build's .icns/.ico would need their own icon pipeline later.
 const APP_ICON_PATH = path.join(__dirname, "..", "assets", "icon.png");
 
 let client;
@@ -73,14 +73,14 @@ function buildMenu() {
     {
       label: "Edit",
       submenu: [
-        // Not `role: "undo"/"redo"` -- CM6 manages its own history, so the native role would be a silent no-op with focus in the editor.
+        // Not `role: "undo"/"redo"` - CM6 manages its own history, so the native role would be a silent no-op with focus in the editor.
         { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => sendMenuCommand("editor.undo") },
         { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", click: () => sendMenuCommand("editor.redo") },
         { type: "separator" },
         { label: "Find", accelerator: "CmdOrCtrl+F", click: () => sendMenuCommand("editor.find") },
         { label: "Find and Replace", accelerator: "CmdOrCtrl+Alt+F", click: () => sendMenuCommand("editor.find-replace") },
         { type: "separator" },
-        // Cut/copy/paste/select-all DO work correctly via native roles -- CM6 integrates with browser clipboard events for these.
+        // Cut/copy/paste/select-all DO work correctly via native roles - CM6 integrates with browser clipboard events for these.
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
@@ -92,7 +92,7 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
-        // Parity with the command palette -- checkbox state is kept in sync by updateViewMenuChecks, since Electron menus don't reactively bind on their own.
+        // Parity with the command palette - checkbox state is kept in sync by updateViewMenuChecks, since Electron menus don't reactively bind on their own.
         { id: "view.file-tree", label: "Show Explorer", type: "checkbox", accelerator: "CmdOrCtrl+1", click: () => sendMenuCommand("panel.file-tree") },
         { id: "view.search", label: "Show Search", type: "checkbox", accelerator: "CmdOrCtrl+Shift+F", click: () => sendMenuCommand("panel.search") },
         { id: "view.outline", label: "Show Outline", type: "checkbox", accelerator: "CmdOrCtrl+2", click: () => sendMenuCommand("panel.outline") },
@@ -130,7 +130,7 @@ function buildMenu() {
   return Menu.buildFromTemplate(template);
 }
 
-// Keys match exactly what App.tsx's reportViewState effect sends -- deliberate duplication, no shared TS import possible here.
+// Keys match exactly what App.tsx's reportViewState effect sends - deliberate duplication, no shared TS import possible here.
 const VIEW_MENU_CHECK_IDS = {
   "file-tree": "view.file-tree",
   search: "view.search",
@@ -152,7 +152,7 @@ function updateViewMenuChecks(state) {
     const item = menu.getMenuItemById(id);
     if (item) item.checked = Boolean(state[key]);
   }
-  // Radio items, not booleans -- only matches a built-in theme id; a custom active theme leaves
+  // Radio items, not booleans - only matches a built-in theme id; a custom active theme leaves
   // the whole group unchecked, which is fine since custom themes aren't listed in this menu.
   for (const theme of BUILTIN_THEMES) {
     const item = menu.getMenuItemById(`view.theme.${theme.id}`);
@@ -178,7 +178,7 @@ function createWindow() {
   });
 
   if (app.isPackaged) {
-    // packages/ui/dist copied here by electron-builder's extraResources config -- see the
+    // packages/ui/dist copied here by electron-builder's extraResources config - see the
     // TEMPLATES_DIR comment above for why this is a flat resources-relative path, not asar-relative.
     mainWindow.loadFile(path.join(process.resourcesPath, "ui", "index.html"));
   } else {
@@ -191,7 +191,7 @@ function createWindow() {
 
 // `templateId` is renderer-supplied IPC input, validated against TEMPLATE_IDS so a compromised renderer can't read arbitrary paths.
 function scaffoldProject(dirPath, templateId) {
-  // Dotfiles ignored -- a freshly created Finder folder already has a .DS_Store, not meaningfully "not empty".
+  // Dotfiles ignored - a freshly created Finder folder already has a .DS_Store, not meaningfully "not empty".
   const visibleEntries = fs.readdirSync(dirPath).filter((name) => !name.startsWith("."));
   if (visibleEntries.length > 0) {
     throw new Error("That folder isn't empty. Choose a new or empty folder for a new project.");
@@ -228,7 +228,7 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
   });
   if (result.canceled || !result.filePath) return null;
 
-  // ESM-only package ("archiver" >=8 dropped its old CJS factory-function API) -- dynamic import from this CJS file.
+  // ESM-only package ("archiver" >=8 dropped its old CJS factory-function API) - dynamic import from this CJS file.
   const { ZipArchive } = await import("archiver");
 
   await new Promise((resolve, reject) => {
@@ -257,7 +257,7 @@ app.whenReady().then(() => {
     // Both quire-sidecar spawn sites (packages/client's runOnce and ProjectWatcher) read this back
     // via getSidecarPath(); quire-core's bundle.rs reads QUIRE_BUNDLE_ROOT from its own environment,
     // inherited automatically since child_process.spawn() passes the parent's process.env through
-    // by default -- no extra plumbing needed on the Rust side beyond what Phase 0 already added.
+    // by default - no extra plumbing needed on the Rust side beyond what Phase 0 already added.
     setSidecarPath(path.join(process.resourcesPath, "quire-sidecar"));
     process.env.QUIRE_BUNDLE_ROOT = path.join(process.resourcesPath, "bundles");
   }
@@ -329,7 +329,7 @@ app.whenReady().then(() => {
     return result.filePath;
   });
 
-  // Recoverable delete (OS trash/Recycle Bin), not a permanent fs.rm -- deliberately the only
+  // Recoverable delete (OS trash/Recycle Bin), not a permanent fs.rm - deliberately the only
   // delete affordance the Explorer offers. No quire-core involvement: OS trash has no
   // cross-platform equivalent (D5, iPad), same reasoning as pasteImage staying Electron-only.
   ipcMain.handle("desktop:trashEntry", (_event, targetPath) => shell.trashItem(targetPath));
@@ -374,7 +374,7 @@ app.whenReady().then(() => {
     try {
       return JSON.parse(fs.readFileSync(sessionFile, "utf8"));
     } catch {
-      return null; // no session file yet, or it's corrupt -- either way, nothing to restore
+      return null; // no session file yet, or it's corrupt - either way, nothing to restore
     }
   });
 
@@ -382,7 +382,7 @@ app.whenReady().then(() => {
     fs.writeFileSync(sessionFile, JSON.stringify(session));
   });
 
-  // Renderer validates/normalizes each entry (see normalizeCustomThemes in theme.ts) -- this
+  // Renderer validates/normalizes each entry (see normalizeCustomThemes in theme.ts) - this
   // layer just needs to not crash on a missing or corrupt file, same as loadSession above.
   ipcMain.handle("desktop:loadThemes", () => {
     try {
@@ -397,9 +397,9 @@ app.whenReady().then(() => {
     fs.writeFileSync(themesFile, JSON.stringify({ version: 1, themes }));
   });
 
-  // Single-theme JSON, not the whole themes.json shape -- lets a user share/receive one theme at
+  // Single-theme JSON, not the whole themes.json shape - lets a user share/receive one theme at
   // a time. `content` is written verbatim (renderer already serialized it); returns the raw text
-  // on import, unvalidated -- renderer runs it through normalizeCustomThemes before use.
+  // on import, unvalidated - renderer runs it through normalizeCustomThemes before use.
   ipcMain.handle("desktop:exportTheme", async (_event, defaultFileName, content) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: path.join(app.getPath("documents"), `${defaultFileName}.json`),

@@ -14,7 +14,7 @@ interface SnippetCardProps {
   onInsert: (id: string) => void;
 }
 
-// The real "Insert" button below is the card's only focusable/keyboard-activatable control -- the
+// The real "Insert" button below is the card's only focusable/keyboard-activatable control - the
 // <li> itself just carries the drag payload (a mouse-only affordance) rather than doubling as a
 // second, redundant button, which would leave keyboard/screen-reader users hitting two stops for
 // one action.
@@ -50,7 +50,7 @@ function SnippetCard({ snippet, onInsert }: SnippetCardProps) {
 }
 
 interface SnippetsPanelProps {
-  /** Inserts at the active editor's current cursor position -- the click/keyboard path; dragging a card calls Editor's drop handler directly instead. */
+  /** Inserts at the active editor's current cursor position - the click/keyboard path; dragging a card calls Editor's drop handler directly instead. */
   onInsert: (id: string) => void;
 }
 
@@ -71,7 +71,7 @@ export function SnippetsPanel({ onInsert }: SnippetsPanelProps) {
       />
 
       {groups.length === 0 ? (
-        <p className="panel-empty">No snippets match — try a different term.</p>
+        <p className="panel-empty">No snippets match - try a different term.</p>
       ) : (
         <div className="snippets-panel__groups">
           {groups.map(({ category, items }) => (

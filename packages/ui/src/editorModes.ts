@@ -20,7 +20,7 @@ export function proseModeExtension(): Extension {
 }
 
 // CodeMirror's own `{ dark }` flag scopes some of its built-in styling (e.g. the autocomplete
-// tooltip's default background) via internal `&dark`/`&light` selectors -- it has to track the
+// tooltip's default background) via internal `&dark`/`&light` selectors - it has to track the
 // active theme's actual appearance, not be hardcoded, or a light theme inherits dark defaults.
 export function appearanceExtension(appearance: "dark" | "light"): Extension {
   return EditorView.theme({}, { dark: appearance === "dark" });
@@ -106,7 +106,7 @@ export function mathHighlightSpans(state: EditorState, from = 0, to = state.doc.
     enter: (node) => {
       if (!MATH_SPAN_NODE_NAMES.has(node.name)) return;
       spans.push({ from: node.from, to: node.to });
-      return false; // math doesn't nest (module comment in latex.grammar) -- no need to descend
+      return false; // math doesn't nest (module comment in latex.grammar) - no need to descend
     },
   });
   return spans;
@@ -138,12 +138,12 @@ const mathHighlightPlugin = ViewPlugin.fromClass(
   { decorations: (plugin) => plugin.decorations },
 );
 
-// Reuses the ink-cyan family math delimiters/brackets already use (latex/language.ts) -- no new color.
+// Reuses the ink-cyan family math delimiters/brackets already use (latex/language.ts) - no new color.
 const mathHighlightTheme = EditorView.theme({
   ".cm-math-region": { backgroundColor: "var(--ink-cyan-dim)", borderRadius: "2px" },
 });
 
-// Always on, unlike the compartmentalized toggles above -- a permanent readability aid, not an editing mode.
+// Always on, unlike the compartmentalized toggles above - a permanent readability aid, not an editing mode.
 export function mathHighlightExtension(): Extension {
   return [mathHighlightPlugin, mathHighlightTheme];
 }

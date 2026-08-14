@@ -36,7 +36,7 @@ missingPackages: Array<string>,
  */
 bundleVersion: string, 
 /**
- * Whichever file this compile actually used as root -- the request's `targetRoot` when it
+ * Whichever file this compile actually used as root - the request's `targetRoot` when it
  * resolved, otherwise whatever automatic detection picked. Always populated; root resolution
  * happens before any response (including `EngineMissing`) is constructed.
  */
@@ -124,7 +124,7 @@ export type FileNodeKind = "tex" | "graphic" | "bib";
 export type InstallPackageRequest = { name: string, };
 
 /**
- * `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number.
+ * `bytes` is `None` for `Core` entries - a fixed app asset, not a meaningful per-package number.
  */
 export type InstalledPackage = { name: string, bytes: bigint | null, source: PackageSource, };
 
@@ -196,7 +196,7 @@ export type SearchProjectRequest = { projectId: string, query: string, caseSensi
 
 export type SearchProjectResponse = { matches: Array<SearchMatch>, 
 /**
- * True when the match count hit the internal cap -- the list isn't exhaustive.
+ * True when the match count hit the internal cap - the list isn't exhaustive.
  */
 truncated: boolean, };
 

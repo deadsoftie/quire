@@ -11,7 +11,7 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "eps", "bmp", "we
 
 interface FileTreePanelProps {
   tree: ExplorerNode[];
-  /** The project's root directory -- the sidebar header's New File/New Folder buttons always create here. */
+  /** The project's root directory - the sidebar header's New File/New Folder buttons always create here. */
   rootUri: string;
   activeUri: string | null;
   /** The currently "targeted" .tex file (compiles into the preview instead of the automatically detected root), or `null` for automatic. */
@@ -19,7 +19,7 @@ interface FileTreePanelProps {
   onSelectFile: (uri: string) => void;
   onCreateFile: (parentUri: string, name: string) => Promise<void>;
   onCreateDirectory: (parentUri: string, name: string) => Promise<void>;
-  /** Resolves to the renamed entry's new uri, or `null` on failure -- used to keep keyboard focus on the same logical row across the uri change. */
+  /** Resolves to the renamed entry's new uri, or `null` on failure - used to keep keyboard focus on the same logical row across the uri change. */
   onRename: (uri: string, newName: string) => Promise<string | null>;
   onMove: (uri: string, newParentUri: string) => Promise<void>;
   onCopy: (uri: string, destParentUri: string) => Promise<void>;
@@ -29,7 +29,7 @@ interface FileTreePanelProps {
   onRetarget: (uri: string | null) => Promise<void>;
 }
 
-/** Only a real .tex *file* can be targeted -- mirrors iconFor's own early-return-on-directory guard, made explicit here since this isn't routed through that function. */
+/** Only a real .tex *file* can be targeted - mirrors iconFor's own early-return-on-directory guard, made explicit here since this isn't routed through that function. */
 function isTargetableTexFile(node: ExplorerNode): boolean {
   return node.kind === "file" && extensionOf(node.name) === "tex";
 }
@@ -64,7 +64,7 @@ function iconFor(node: ExplorerNode, expanded: boolean) {
   return <File size={14} />;
 }
 
-// Shared by inline rename and inline create -- Enter/blur-with-a-real-change commits, Escape or an
+// Shared by inline rename and inline create - Enter/blur-with-a-real-change commits, Escape or an
 // unchanged/empty blur cancels without ever calling the RPC underneath.
 function EditableNameInput({
   initialValue,
@@ -167,7 +167,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
   // The uri currently under a drag (a real directory's uri, or `rootUri` for the background) --
   // drives the drop-target highlight. `null` means no drag is over a valid target right now.
   const [dragOverUri, setDragOverUri] = useState<string | null>(null);
-  // The uri being dragged, tracked from dragstart -- `dataTransfer.getData` is only readable on
+  // The uri being dragged, tracked from dragstart - `dataTransfer.getData` is only readable on
   // drop, not during dragover, so this is the only way to reject "into itself/its own descendant"
   // (a folder can't become its own child) before the drop, rather than letting the backend fail
   // it with a raw OS-level rename error.
@@ -274,7 +274,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
 
   // Restores keyboard focus to the renamed row (by its new uri, so a subsequent arrow-key press
   // continues from the same logical row) rather than leaving it wherever the now-unmounted input
-  // used to be -- same reasoning as closeMenu below, applied to the F2 path instead of right-click.
+  // used to be - same reasoning as closeMenu below, applied to the F2 path instead of right-click.
   async function commitRename(uri: string, newName: string) {
     setRenamingUri(null);
     const newUri = await onRename(uri, newName);
@@ -287,7 +287,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     if (!pending) return;
     if (pending.kind === "file") {
       // Left unfocused deliberately: creating a file opens it in the editor, which is where
-      // attention (and typing) goes next -- refocusing the tree row here would fight that.
+      // attention (and typing) goes next - refocusing the tree row here would fight that.
       await onCreateFile(pending.parentUri, name);
     } else {
       await onCreateDirectory(pending.parentUri, name);
@@ -321,7 +321,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
 
   function handleDragStart(event: ReactDragEvent, uri: string) {
     event.dataTransfer.setData(FILE_DRAG_MIME, uri);
-    // "copyMove": the row itself doesn't know its drop target yet -- dropping on a directory
+    // "copyMove": the row itself doesn't know its drop target yet - dropping on a directory
     // here moves the entry, dropping in the editor (Editor.tsx's own dragover) inserts a
     // reference instead. Each drop target picks its own dropEffect below/in Editor.tsx.
     event.dataTransfer.effectAllowed = "copyMove";
@@ -354,7 +354,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     if (draggedUri && draggedUri !== row.node.uri) await onMove(draggedUri, row.node.uri);
   }
 
-  // Only ever reached for empty space -- every row already stops propagation above.
+  // Only ever reached for empty space - every row already stops propagation above.
   function handleBackgroundDragOver(event: ReactDragEvent) {
     if (!event.dataTransfer.types.includes(FILE_DRAG_MIME)) return;
     event.preventDefault();
@@ -386,7 +386,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
   }
 
   // Every ContextMenu close path (Escape, Tab, outside click, a second right-click, or picking an
-  // item) routes through this -- without it, DOM focus silently drops to document.body once the
+  // item) routes through this - without it, DOM focus silently drops to document.body once the
   // menu unmounts, leaving arrow-key navigation dead until the tree is clicked again by mouse.
   function closeMenu() {
     setMenuTarget(null);
@@ -408,7 +408,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
     ];
 
     // Grouped with "acts on this file's identity" (right after creation, its own separator)
-    // rather than with the structural cut/copy/move group below -- targeting isn't a filesystem
+    // rather than with the structural cut/copy/move group below - targeting isn't a filesystem
     // mutation the way those are.
     if (node && isTargetableTexFile(node)) {
       const isTarget = node.uri === targetRoot;
@@ -455,7 +455,7 @@ export const FileTreePanel = forwardRef<FileTreePanelHandle, FileTreePanelProps>
 
   return (
     // Right-click here only ever fires when a row's own handler hasn't already stopped
-    // propagation -- i.e. the click landed on empty space below/around the rows -- meaning "create
+    // propagation - i.e. the click landed on empty space below/around the rows - meaning "create
     // at the project root," the same default the old native "New File" dialog always used.
     <div
       className={"file-tree__container" + (dragOverUri === rootUri ? " file-tree__container--drag-over" : "")}

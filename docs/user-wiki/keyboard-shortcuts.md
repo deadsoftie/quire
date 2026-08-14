@@ -22,7 +22,7 @@ not) is reachable through the command palette (⌘K).
 | ⌘O | Open Folder… |
 | ⌘W | Close File |
 | ⇧⌘W | Close All Files |
-| — | Close Folder |
+| - | Close Folder |
 | ⌘S | Save |
 | ⇧⌘S | Save As… |
 | ⇧⌘E | Export… |
@@ -45,15 +45,15 @@ not) is reachable through the command palette (⌘K).
 | ⇧⌘F | Show Search |
 | ⌘2 | Show Outline |
 | ⌘3 | Show Problems |
-| — | Show Packages |
-| — | Show Snippets |
-| — | Focus Mode |
-| — | Typewriter Scrolling |
-| — | Serif Prose Mode |
-| — | Word Wrap |
-| — | Theme (submenu — one item per built-in theme) |
-| — | Invert PDF Colors |
-| — | Reset Editor/Preview Split |
+| - | Show Packages |
+| - | Show Snippets |
+| - | Focus Mode |
+| - | Typewriter Scrolling |
+| - | Serif Prose Mode |
+| - | Word Wrap |
+| - | Theme (submenu - one item per built-in theme) |
+| - | Invert PDF Colors |
+| - | Reset Editor/Preview Split |
 | ⌘R | Reload |
 | ⇧⌘R | Force Reload |
 | ⌥⌘I | Toggle Developer Tools |

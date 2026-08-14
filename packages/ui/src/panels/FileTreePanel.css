@@ -2,7 +2,7 @@
   min-height: 100%;
 }
 
-/* Same drop-target accent whether the target is a real directory row or empty space (-> project root) -- one visual language for "this is where it'll land." */
+/* Same drop-target accent whether the target is a real directory row or empty space (-> project root) - one visual language for "this is where it'll land." */
 .file-tree__container--drag-over,
 .file-tree__row--drag-over {
   outline: var(--seam) dashed var(--nonrepro);
@@ -72,7 +72,7 @@
   padding-bottom: 0;
 }
 
-/* Hover/focus-reveal, like a native file manager's inline actions -- hidden until the row is
+/* Hover/focus-reveal, like a native file manager's inline actions - hidden until the row is
    actually being looked at, except when it's already the active target, which stays visible. */
 .file-tree__target-toggle {
   display: inline-flex;

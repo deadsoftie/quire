@@ -10,7 +10,7 @@ interface MissingPackagesCardProps {
   onInstall: () => void;
 }
 
-// "Nothing has gone wrong" -- never uses --proof-red; offline gets --proof-amber, everything else stays --nonrepro.
+// "Nothing has gone wrong" - never uses --proof-red; offline gets --proof-amber, everything else stays --nonrepro.
 export function MissingPackagesCard({ packages, installState, failedNames, onInstall }: MissingPackagesCardProps) {
   const offline = installState === "offline";
   const label = packages.length === 1 ? "package" : "packages";

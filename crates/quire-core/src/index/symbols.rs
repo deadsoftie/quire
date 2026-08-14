@@ -16,7 +16,7 @@ pub struct MathSymbol {
 
 pub fn all() -> Vec<MathSymbol> {
     let raw: Vec<RawSymbol> = serde_json::from_str(SYMBOLS_JSON).expect(
-        "data/symbols.json must be valid JSON matching RawSymbol's shape -- a build-time asset, not user input, so a parse failure here is a bug in the file itself",
+        "data/symbols.json must be valid JSON matching RawSymbol's shape - a build-time asset, not user input, so a parse failure here is a bug in the file itself",
     );
     raw.into_iter().map(|s| MathSymbol { name: s.name, detail: s.detail }).collect()
 }

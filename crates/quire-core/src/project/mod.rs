@@ -32,7 +32,7 @@ pub enum FileKind {
 pub struct Reference {
     pub command: IncludeCommand,
     pub raw_arg: String,
-    /// `None` for a dangling reference -- a real document state, not an error.
+    /// `None` for a dangling reference - a real document state, not an error.
     pub resolved: Option<PathBuf>,
 }
 
@@ -78,7 +78,7 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         }
 
         let Ok(content) = fs::read_to_string(&path) else {
-            // Unreadable (e.g. root doesn't exist) -- record it anyway, don't drop it silently.
+            // Unreadable (e.g. root doesn't exist) - record it anyway, don't drop it silently.
             files.push(FileNode {
                 path,
                 kind: FileKind::Tex,
@@ -141,7 +141,7 @@ pub struct ExplorerEntry {
     pub children: Option<Vec<ExplorerEntry>>,
 }
 
-/// Whole-directory walk, not the LaTeX dependency graph -- every file/folder under `root`
+/// Whole-directory walk, not the LaTeX dependency graph - every file/folder under `root`
 /// (`SKIP_NAMES` excluded), nested, directories first then alphabetical within each group.
 pub fn build_explorer_tree(root: &Path) -> Vec<ExplorerEntry> {
     let mut visited = HashSet::new();
@@ -280,7 +280,7 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
     refs
 }
 
-/// Rejects an absolute or `..`-laden path as unresolved -- otherwise project source could smuggle an out-of-project read/write target past every downstream consumer.
+/// Rejects an absolute or `..`-laden path as unresolved - otherwise project source could smuggle an out-of-project read/write target past every downstream consumer.
 pub(crate) fn resolve_within(base_dir: &Path, candidate: PathBuf) -> Option<PathBuf> {
     if !candidate.is_file() {
         return None;

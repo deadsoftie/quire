@@ -17,7 +17,7 @@ fn templates_dir() -> PathBuf {
 fn compile_template(name: &str) {
     assert!(
         core_bundle_dir().join("SHA256SUM").is_file(),
-        "bundles/core/SHA256SUM missing -- run `cargo run -p quire-core --example build_core_bundle` \
+        "bundles/core/SHA256SUM missing - run `cargo run -p quire-core --example build_core_bundle` \
          first, otherwise this test would silently fall back to the network bundle"
     );
 

@@ -1,4 +1,4 @@
-//! No `cancel_compile`: the caller kills the OS process instead. No project registry either -- `ProjectId` is just the project's root directory path.
+//! No `cancel_compile`: the caller kills the OS process instead. No project registry either - `ProjectId` is just the project's root directory path.
 
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -15,7 +15,7 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     let project_dir = Path::new(&req.path);
     let detection = project::detect_root(project_dir);
 
-    // `root: DocUri` isn't optional, so an ambiguous result still needs a best guess -- the first sorted candidate; `candidates` carries the full list for the UI to prompt with.
+    // `root: DocUri` isn't optional, so an ambiguous result still needs a best guess - the first sorted candidate; `candidates` carries the full list for the UI to prompt with.
     let root = detection
         .root
         .clone()
@@ -53,8 +53,8 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     })
 }
 
-/// No server-side state to update -- just validates `uri` so the caller can trust what it's about
-/// to remember (as a compile-time `targetRoot`, in practice -- see `compile`'s own re-validation
+/// No server-side state to update - just validates `uri` so the caller can trust what it's about
+/// to remember (as a compile-time `targetRoot`, in practice - see `compile`'s own re-validation
 /// of that field, which never trusts this call happened first).
 pub fn set_root(req: &SetRootRequest) -> Result<(), CompileError> {
     let project_dir = Path::new(&req.project_id);
@@ -69,7 +69,7 @@ pub fn set_root(req: &SetRootRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// No-op -- no server-side resource is tied to a project to release.
+/// No-op - no server-side resource is tied to a project to release.
 pub fn close_project(_req: &CloseProjectRequest) -> Result<(), CompileError> {
     Ok(())
 }
@@ -125,7 +125,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
         write_into_shadow(&project_dir, &shadow_dir, &file.path, content.as_bytes())?;
     }
 
-    // Non-Tex files never come from dirty buffers -- copy the real bytes into the shadow dir.
+    // Non-Tex files never come from dirty buffers - copy the real bytes into the shadow dir.
     for file in graph.files.iter().filter(|f| f.kind != FileKind::Tex) {
         let bytes = fs::read(&file.path).unwrap_or_default();
         write_into_shadow(&project_dir, &shadow_dir, &file.path, &bytes)?;
@@ -211,7 +211,7 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             } else {
                 translated
             };
-            // A missing package takes priority over generic errors -- it's the one failure mode with a real fix path.
+            // A missing package takes priority over generic errors - it's the one failure mode with a real fix path.
             let status = if missing_packages.is_empty() { CompileStatus::Errors } else { CompileStatus::PackagesMissing };
             CompileResponse {
                 compile_id,
@@ -262,7 +262,7 @@ fn generate_compile_id() -> String {
 }
 
 
-/// Reads from disk -- `OutlineRequest` carries no dirty-buffer text, so this reflects last-saved content only.
+/// Reads from disk - `OutlineRequest` carries no dirty-buffer text, so this reflects last-saved content only.
 pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     let project_dir = Path::new(&req.project_id);
     let Some(root) = resolve_root_for_uri(project_dir, &req.uri) else {
@@ -372,7 +372,7 @@ fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionI
     items
 }
 
-/// `label`/`insert` omit the leading backslash -- the client's trigger replaces starting right after it.
+/// `label`/`insert` omit the leading backslash - the client's trigger replaces starting right after it.
 fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
         .macros()
@@ -380,7 +380,7 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
             label: m.name.clone(),
             kind: CompletionKind::Macro,
             insert: insert_with_tabstops(&m.name, m.arity),
-            // The raw substitution body -- there's nothing else to show for a "readable" detail here.
+            // The raw substitution body - there's nothing else to show for a "readable" detail here.
             detail: if m.body.is_empty() { None } else { Some(m.body.clone()) },
             documentation: None,
             symbol_preview: None,
@@ -399,7 +399,7 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
         sort_priority: PACKAGE_PRIORITY,
     }));
 
-    // Never scoped by `\usepackage` -- these are the always-available fallback tier, unlike the package-gated block above.
+    // Never scoped by `\usepackage` - these are the always-available fallback tier, unlike the package-gated block above.
     items.extend(crate::index::symbols::all().into_iter().map(|s| CompletionItem {
         label: s.name.clone(),
         kind: CompletionKind::Symbol,
@@ -508,7 +508,7 @@ pub fn list_installed_packages() -> Vec<InstalledPackage> {
     packages
 }
 
-/// Installs a package by name directly, not via a project scan -- tries it as a package first, then as a document class.
+/// Installs a package by name directly, not via a project scan - tries it as a package first, then as a document class.
 pub fn install_package(req: &InstallPackageRequest) -> Result<FetchedPackage, CompileError> {
     let name = req.name.clone();
     match crate::bundle::fetch(&format!("{name}.sty")) {

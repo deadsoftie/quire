@@ -24,7 +24,7 @@ function renderMessage(message: string, hint: string): () => HTMLElement {
 }
 
 /**
- * quire-core usually reports a point location (start === end), not a token span -- left as a
+ * quire-core usually reports a point location (start === end), not a token span - left as a
  * zero-width range rather than guessed-widened, since CM6 already renders that case with its own
  * dedicated (and more honest) point marker instead of an underline implying a span we don't have.
  * Diagnostics with no range at all (`range: null`, e.g. "rerun needed") are dropped here; they

@@ -26,7 +26,7 @@ describe("formatLatex", () => {
 
   it("leaves verbatim/lstlisting/minted body content completely untouched, even if it looks misindented", () => {
     const source = "\\begin{verbatim}\nint main() {\n    return 0;\n}\n\\end{verbatim}\n";
-    // The body must survive byte-for-byte -- only the \begin/\end lines are subject to normal formatting.
+    // The body must survive byte-for-byte - only the \begin/\end lines are subject to normal formatting.
     expect(formatLatex(source)).toBe(source);
   });
 

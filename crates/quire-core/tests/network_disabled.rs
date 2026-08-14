@@ -17,7 +17,7 @@ fn describe(result: &OpenResult<InputHandle>) -> &'static str {
 
 fn set_network_cut(cut: bool) {
     if cut {
-        // Nothing listens here -- any real connection attempt fails immediately.
+        // Nothing listens here - any real connection attempt fails immediately.
         std::env::set_var("HTTPS_PROXY", "http://127.0.0.1:1");
         std::env::set_var("https_proxy", "http://127.0.0.1:1");
     } else {
@@ -34,7 +34,7 @@ fn core_bundle_dir() -> PathBuf {
 fn bundle_and_cache_tiers_resolve_files_with_network_disabled() {
     assert!(
         core_bundle_dir().join("SHA256SUM").is_file(),
-        "bundles/core/SHA256SUM missing -- run `cargo run -p quire-core --example build_core_bundle` first"
+        "bundles/core/SHA256SUM missing - run `cargo run -p quire-core --example build_core_bundle` first"
     );
 
     let mut status = NoopStatusBackend::default();

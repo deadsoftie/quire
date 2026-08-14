@@ -25,10 +25,10 @@ interface SettingsDialogProps {
   customThemes: ThemeDefinition[];
   /** Opens the theme editor seeded from the currently active theme, saving as a brand-new custom theme. */
   onRequestNewTheme: () => void;
-  /** Opens the theme editor seeded from `theme` -- edits in place if it's already custom, otherwise duplicates it into a new one. */
+  /** Opens the theme editor seeded from `theme` - edits in place if it's already custom, otherwise duplicates it into a new one. */
   onRequestEditTheme: (theme: ThemeDefinition) => void;
   onDeleteTheme: (id: string) => void;
-  /** True while the theme editor is open on top of this dialog -- suppresses our own Escape handler so one press closes only the editor, not both. */
+  /** True while the theme editor is open on top of this dialog - suppresses our own Escape handler so one press closes only the editor, not both. */
   themeEditorOpen: boolean;
   pdfInverted: boolean;
   onTogglePdfInverted: (value: boolean) => void;

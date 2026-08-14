@@ -7,7 +7,7 @@ export interface FlatExplorerRow {
 
 /**
  * Depth-first in the same order the server already sorts (directories first, then alphabetical
- * within each group) -- skips a directory's children while its uri is in `collapsed`.
+ * within each group) - skips a directory's children while its uri is in `collapsed`.
  */
 export function flattenVisible(nodes: ExplorerNode[], collapsed: ReadonlySet<string>, depth = 0): FlatExplorerRow[] {
   const rows: FlatExplorerRow[] = [];
@@ -20,7 +20,7 @@ export function flattenVisible(nodes: ExplorerNode[], collapsed: ReadonlySet<str
   return rows;
 }
 
-// Binary/opaque formats likely to show up in a LaTeX project -- not exhaustive, just enough that
+// Binary/opaque formats likely to show up in a LaTeX project - not exhaustive, just enough that
 // clicking one does nothing instead of surfacing a raw "invalid UTF-8" read error. Easy to extend.
 const NON_TEXT_EXTENSIONS = new Set([
   "pdf",
@@ -51,12 +51,12 @@ export function isOpenableFile(name: string): boolean {
   return !NON_TEXT_EXTENSIONS.has(extensionOf(name));
 }
 
-/** `ExplorerNode` carries no parent reference -- derived from its own uri/name instead of a tree walk. */
+/** `ExplorerNode` carries no parent reference - derived from its own uri/name instead of a tree walk. */
 export function parentUriOf(node: ExplorerNode): string {
   return node.uri.slice(0, node.uri.length - node.name.length - 1);
 }
 
-/** Every `.tex` file anywhere in the tree, recursively -- populates the Export dialog's root picker. */
+/** Every `.tex` file anywhere in the tree, recursively - populates the Export dialog's root picker. */
 export function collectTexFiles(nodes: ExplorerNode[]): ExplorerNode[] {
   const result: ExplorerNode[] = [];
   for (const node of nodes) {

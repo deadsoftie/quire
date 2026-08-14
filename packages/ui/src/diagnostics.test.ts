@@ -55,7 +55,7 @@ describe("toEditorDiagnostics", () => {
   });
 
   it("attaches a renderMessage when a hint is present", () => {
-    // Not invoked here -- it calls document.createElement, and this suite runs without a DOM.
+    // Not invoked here - it calls document.createElement, and this suite runs without a DOM.
     const doc = docFor("x\n");
     const d = diagnostic({ hint: "Try this instead" });
     const [result] = toEditorDiagnostics([d], doc);

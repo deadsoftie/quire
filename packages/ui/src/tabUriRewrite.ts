@@ -1,4 +1,4 @@
-/** Minimal shape shared with App.tsx's own OpenTab -- kept generic so this stays independently testable. */
+/** Minimal shape shared with App.tsx's own OpenTab - kept generic so this stays independently testable. */
 export interface UriKeyed {
   uri: string;
 }

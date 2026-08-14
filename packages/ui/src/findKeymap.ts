@@ -6,7 +6,7 @@ import { keymap } from "@codemirror/view";
 // Mod-f/Mod-Alt-f open FindWidget directly rather than just swallowing the key: a plain `run: () => true`
 // (no-op besides marking handled) still calls preventDefault, which also suppresses the native Electron
 // menu accelerator for the same key when the editor has focus, so relying on that round trip alone
-// left ⌘F dead while typing -- this makes the keymap itself the trigger for that case.
+// left ⌘F dead while typing - this makes the keymap itself the trigger for that case.
 export function neutralizeDefaultSearchKeymap(onOpen: (withReplace: boolean) => void): Extension {
   return Prec.highest(
     keymap.of([

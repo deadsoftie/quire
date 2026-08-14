@@ -45,7 +45,7 @@ export interface CoreApi {
   readFile(uri: DocUri): Promise<string>;
   writeFile(uri: DocUri, text: string): Promise<void>;
 
-  /** Every file/folder under the project directory, nested -- unlike `OpenProjectResponse.files`, not scoped to the LaTeX dependency graph. */
+  /** Every file/folder under the project directory, nested - unlike `OpenProjectResponse.files`, not scoped to the LaTeX dependency graph. */
   listProjectTree(projectId: ProjectId): Promise<ExplorerNode[]>;
   createFile(projectId: ProjectId, parentUri: DocUri, name: string): Promise<EntryResponse>;
   createDirectory(projectId: ProjectId, parentUri: DocUri, name: string): Promise<EntryResponse>;

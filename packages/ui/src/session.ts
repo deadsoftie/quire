@@ -4,13 +4,13 @@ import type { PanelKind } from "./panels/types";
 const PANEL_KINDS: PanelKind[] = ["file-tree", "search", "outline", "problems", "packages", "snippets"];
 
 export interface SessionState {
-  /** `null` means no project is open (the empty/Welcome state) -- there's nothing to reopen. */
+  /** `null` means no project is open (the empty/Welcome state) - there's nothing to reopen. */
   projectPath: string | null;
   /** Every tab that was open, in order. `[]` means nothing to restore. */
   openTabs: string[];
   /** Which of `openTabs` was active; not trusted blindly on restore since the file may be missing or moved. */
   activeUri: string | null;
-  /** The user's "target this file" choice, if any; not pre-validated on restore -- a stale target (deleted/moved) is silently ignored by compile()'s own fallback instead. */
+  /** The user's "target this file" choice, if any; not pre-validated on restore - a stale target (deleted/moved) is silently ignored by compile()'s own fallback instead. */
   targetRoot: string | null;
   sidebarSection: PanelKind | null;
   sidebarWidth: number;
@@ -19,14 +19,14 @@ export interface SessionState {
   typewriterMode: boolean;
   proseMode: boolean;
   wordWrap: boolean;
-  /** A built-in or custom theme id; not validated here since custom themes load from a separate file -- resolveTheme() falls back safely if it's unknown. */
+  /** A built-in or custom theme id; not validated here since custom themes load from a separate file - resolveTheme() falls back safely if it's unknown. */
   themeId: string;
   pdfInverted: boolean;
   /** Only ever honored when a real system TeX install is actually detected at runtime. */
   useSystemTex: boolean;
   /** CM6 selection head for whichever tab was active when this was saved; other reopened tabs start at their own beginning. */
   cursor: number | null;
-  /** The editor's own scroll position, in pixels, for that same active tab. Deliberately not the PDF preview's -- that regenerates from a fresh compile every launch anyway. */
+  /** The editor's own scroll position, in pixels, for that same active tab. Deliberately not the PDF preview's - that regenerates from a fresh compile every launch anyway. */
   scrollTop: number | null;
 }
 

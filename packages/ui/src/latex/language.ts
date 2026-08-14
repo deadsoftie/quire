@@ -8,7 +8,7 @@ export const MATH_DELIMITED_NODE_NAMES = ["InlineMath", "DisplayMathDollar", "Di
 const highlighting = styleTags({
   Comment: t.lineComment,
   Command: t.macroName,
-  // A variant of macroName -- same family as a bare command, but reads visually distinct for \textbf/\emph/etc.
+  // A variant of macroName - same family as a bare command, but reads visually distinct for \textbf/\emph/etc.
   TextCommand: t.special(t.macroName),
   SectionCommand: t.heading,
   RefCommand: t.link,

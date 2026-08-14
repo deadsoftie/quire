@@ -21,7 +21,7 @@ pub struct CtanCommand {
 
 fn database() -> HashMap<String, Vec<RawCommand>> {
     serde_json::from_str(CTAN_COMMANDS_JSON)
-        .expect("data/ctan-commands.json must be valid JSON matching RawCommand's shape -- a build-time asset, not user input, so a parse failure here is a bug in the file itself")
+        .expect("data/ctan-commands.json must be valid JSON matching RawCommand's shape - a build-time asset, not user input, so a parse failure here is a bug in the file itself")
 }
 
 pub fn commands_for_packages<'a>(packages: impl Iterator<Item = &'a str>) -> Vec<CtanCommand> {
@@ -42,7 +42,7 @@ mod tests {
         let db = database();
         assert!(db.contains_key("tikz"), "tikz must be in the bundled database: {:?}", db.keys().collect::<Vec<_>>());
         for (package, commands) in &db {
-            assert!(!commands.is_empty(), "{package} has no commands -- an empty package entry is pointless");
+            assert!(!commands.is_empty(), "{package} has no commands - an empty package entry is pointless");
             for cmd in commands {
                 assert!(!cmd.name.is_empty(), "{package} has a command with an empty name");
                 assert!(!cmd.name.starts_with('\\'), "{package}'s {:?} should not include the leading backslash", cmd.name);

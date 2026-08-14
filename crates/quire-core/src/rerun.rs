@@ -119,7 +119,7 @@ fn run_tex_pass(
         .keep_intermediates(true)
         .keep_logs(false)
         .print_stdout(false)
-        // PassSetting::Tex never converts XDV->PDF regardless of output_format -- see convert_xdv_to_pdf.
+        // PassSetting::Tex never converts XDV->PDF regardless of output_format - see convert_xdv_to_pdf.
         .output_format(OutputFormat::Xdv)
         .pass(PassSetting::Tex);
 
@@ -174,13 +174,13 @@ struct XdvipdfmxIo {
     mem: MemoryIo,
     bundle: Box<dyn Bundle>,
     // Fallback for fonts XeTeX's own layout stage resolved via the OS's native font lookup
-    // (Core Text/fontconfig) entirely outside Tectonic's bundle system -- xdvipdfmx needs the
+    // (Core Text/fontconfig) entirely outside Tectonic's bundle system - xdvipdfmx needs the
     // real bytes to embed them, and only ever requests an absolute path here, never a
     // bundle-relative package name. Unrestricted (no root, absolute paths allowed): this is a
     // local editor compiling the user's own trusted source against their own filesystem.
     disk: FilesystemIo,
     // build_dir-rooted, for local project graphics (a pasted screenshot, any \includegraphics
-    // pointing at a project-relative file) -- `disk` above is absolute-only by construction
+    // pointing at a project-relative file) - `disk` above is absolute-only by construction
     // (its own doc comment: font paths only), so it could never resolve a relative name like
     // "figures/foo.png" against build_dir; it silently fell through to the OS root instead.
     project: FilesystemIo,

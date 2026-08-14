@@ -12,7 +12,7 @@ describe("fuzzyScore", () => {
   });
 
   it("rejects out-of-order matches (subsequence, not anagram)", () => {
-    // "tcejorP" reversed -- every letter is present, but not in order.
+    // "tcejorP" reversed - every letter is present, but not in order.
     expect(fuzzyScore("tp", "Open")).toBeNull();
   });
 

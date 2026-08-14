@@ -166,7 +166,7 @@ fn detect_explicit(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Opt
     }
 }
 
-/// Excludes `subfiles`-classed files -- each subfiles chapter has its own `\documentclass` too, which would otherwise make such a project always look ambiguous.
+/// Excludes `subfiles`-classed files - each subfiles chapter has its own `\documentclass` too, which would otherwise make such a project always look ambiguous.
 fn files_with_real_documentclass(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Vec<PathBuf> {
     tex_files
         .iter()
@@ -231,7 +231,7 @@ mod tests {
         fs::write(dir.join("main.tex"), "\\documentclass{article}\n\\begin{document}x\\end{document}").unwrap();
         std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
 
-        // Must terminate at all -- a symlink cycle used to stack-overflow this walk.
+        // Must terminate at all - a symlink cycle used to stack-overflow this walk.
         let files = find_all_tex_files(&dir);
         assert_eq!(files, vec![dir.join("main.tex")]);
 

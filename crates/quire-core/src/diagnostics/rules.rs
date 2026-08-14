@@ -233,7 +233,7 @@ fn simple_rules() -> Vec<Rule> {
             severity: Severity::Warning,
             pattern: Regex::new(r"LaTeX Warning: There were undefined references\.").unwrap(),
             message: |_| "Cross-references need another pass".to_string(),
-            hint: "Usually self-resolving -- suppress unless it persists",
+            hint: "Usually self-resolving - suppress unless it persists",
             location: Location::None,
         },
     ]
@@ -265,7 +265,7 @@ fn undefined_command_rule(log: &str) -> Vec<Hit> {
         .collect()
 }
 
-/// `\s+` everywhere a space would be -- Tectonic hard-wraps long package names onto their own line.
+/// `\s+` everywhere a space would be - Tectonic hard-wraps long package names onto their own line.
 const MISSING_FILE_PATTERN: &str = r"LaTeX Error:\s+File\s+`([^']+)'\s+not\s+found";
 
 /// Bare names (no extension) of every missing `.sty`/`.cls` mentioned in `log`.

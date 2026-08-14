@@ -20,7 +20,7 @@ impl FileWatcher {
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             let Ok(event) = res else { return };
-            // A read, not a write -- not a change worth recompiling over.
+            // A read, not a write - not a change worth recompiling over.
             if matches!(event.kind, EventKind::Access(_)) {
                 return;
             }
@@ -40,7 +40,7 @@ impl FileWatcher {
                 match raw_rx.recv_timeout(debounce) {
                     Ok(path) => {
                         pending.insert(path);
-                        // Resets the quiet-period wait on every event -- debounce, not a fixed-rate batcher.
+                        // Resets the quiet-period wait on every event - debounce, not a fixed-rate batcher.
                         while let Ok(p) = raw_rx.try_recv() {
                             pending.insert(p);
                         }

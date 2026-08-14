@@ -7,7 +7,7 @@ export interface Keybinding {
 export interface Command {
   id: string;
   title: string;
-  /** Display-only hint, e.g. "⌘O" -- `keybinding` wires the actual key. */
+  /** Display-only hint, e.g. "⌘O" - `keybinding` wires the actual key. */
   shortcut?: string;
   keybinding?: Keybinding;
   run: () => void;

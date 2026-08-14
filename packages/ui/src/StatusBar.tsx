@@ -14,7 +14,7 @@ export interface CursorPositionStore {
 interface StatusBarProps {
   problemCount: number;
   cursorPosition: CursorPositionStore;
-  /** `null` when no project is open -- the dot only renders on a real `false`. */
+  /** `null` when no project is open - the dot only renders on a real `false`. */
   engineAvailable: boolean | null;
   /** Plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
   bundleVersionNotice: string | null;

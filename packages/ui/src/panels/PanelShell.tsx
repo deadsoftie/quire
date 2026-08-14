@@ -3,9 +3,9 @@ import "./PanelShell.css";
 
 interface PanelShellProps {
   title: string;
-  /** A permanent descriptor, shown whether or not there's content -- not an empty-state message. */
+  /** A permanent descriptor, shown whether or not there's content - not an empty-state message. */
   caption?: string;
-  /** Rendered top-right of the header, alongside the title -- e.g. Explorer's "+ New File" button. */
+  /** Rendered top-right of the header, alongside the title - e.g. Explorer's "+ New File" button. */
   action?: ReactNode;
   children: ReactNode;
 }

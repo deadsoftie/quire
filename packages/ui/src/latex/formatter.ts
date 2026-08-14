@@ -9,7 +9,7 @@ interface EnvSpan {
   endLine: number;
 }
 
-// Line-based, not a full tree re-serialization -- every line's content is left exactly as written; only indentation and blank-line context change.
+// Line-based, not a full tree re-serialization - every line's content is left exactly as written; only indentation and blank-line context change.
 export function formatLatex(source: string): string {
   // Split on "\n" only, not /\r?\n/, so this Text's offsets exactly match the raw `source` string the parser sees.
   const doc = Text.of(source.split("\n"));

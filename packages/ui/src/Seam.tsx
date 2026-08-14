@@ -8,7 +8,7 @@ const MIN_PANE_PX = 200;
 // Matches --s-2 (packages/design/src/tokens.css); `frac` is a fraction of the width remaining after this fixed column, not the full width.
 const SEAM_WIDTH_PX = 8;
 
-// Pure so it's testable without a DOM -- rectLeft/rectWidth are just getBoundingClientRect()'s fields.
+// Pure so it's testable without a DOM - rectLeft/rectWidth are just getBoundingClientRect()'s fields.
 export function computeSplitFraction(clientX: number, rectLeft: number, rectWidth: number): number | null {
   const usableWidth = rectWidth - SEAM_WIDTH_PX;
   if (rectWidth === 0 || usableWidth <= 0) return null;
@@ -61,7 +61,7 @@ export function Seam({ state, containerRef, onChange, onReset }: SeamProps) {
       <div className="seam__line" />
       {/* A wider, absolutely-positioned hit area, deliberately separate from .seam itself: .seam
           is a real grid item and must stay exactly SEAM_WIDTH_PX wide to match the grid's own
-          fixed track, or the two overflow their column into a neighboring pane -- confirmed to
+          fixed track, or the two overflow their column into a neighboring pane - confirmed to
           visually misplace the line itself, not just the click target. hit-target's min-width
           only inflates *this* absolutely-positioned element, which doesn't participate in the
           grid's own sizing. */}

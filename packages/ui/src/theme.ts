@@ -53,7 +53,7 @@ function parseColors(raw: unknown): ThemeColors | null {
   return colors;
 }
 
-/** Rejects malformed entries individually rather than the whole file -- same defensive posture as session.ts's normalizeSession. */
+/** Rejects malformed entries individually rather than the whole file - same defensive posture as session.ts's normalizeSession. */
 export function normalizeCustomThemes(raw: unknown): ThemeDefinition[] {
   if (!Array.isArray(raw)) return [];
   const result: ThemeDefinition[] = [];
@@ -70,7 +70,7 @@ export function normalizeCustomThemes(raw: unknown): ThemeDefinition[] {
   return result;
 }
 
-/** The editor's working draft, shared between the "New"/"Edit" flow and file import/export -- no
+/** The editor's working draft, shared between the "New"/"Edit" flow and file import/export - no
  * `id`/`source` since those are assigned locally on Save regardless of where the colors came from. */
 export interface PortableTheme {
   name: string;

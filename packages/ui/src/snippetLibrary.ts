@@ -16,7 +16,7 @@ export interface SnippetEntry {
   label: string;
   description: string;
   tags: string[];
-  /** CM6 tabstop syntax, e.g. "${1:foo}" -- same dialect as snippets.ts's inline completions. */
+  /** CM6 tabstop syntax, e.g. "${1:foo}" - same dialect as snippets.ts's inline completions. */
   template: string;
   /** Shown on the card, and also drives Editor.tsx's insertSnippetTemplate: it patches the preamble
    * (\usepackage, amsthm's \newtheorem, or a \documentclass switch for beamer) with this if missing. */
@@ -25,11 +25,11 @@ export interface SnippetEntry {
 
 const LIBRARY = rawLibrary as SnippetEntry[];
 
-/** Custom MIME type used for the SnippetsPanel drag payload -- deliberately not text/plain, so a stray
+/** Custom MIME type used for the SnippetsPanel drag payload - deliberately not text/plain, so a stray
  * text drop from elsewhere (or dragging a card out to another app) can't be misread as a snippet id. */
 export const SNIPPET_DRAG_MIME = "text/x-quire-snippet";
 
-// Declaration order in the JSON, not alphabetical -- keeps related entries (e.g. theorem/lemma/definition) grouped as authored.
+// Declaration order in the JSON, not alphabetical - keeps related entries (e.g. theorem/lemma/definition) grouped as authored.
 const CATEGORY_ORDER: SnippetCategory[] = [
   "structure",
   "math",
@@ -69,7 +69,7 @@ export function snippetById(id: string): SnippetEntry | undefined {
   return LIBRARY.find((s) => s.id === id);
 }
 
-// Case-insensitive substring match against label/description/tags -- same rigor as PackagesPanel's own client-side filter.
+// Case-insensitive substring match against label/description/tags - same rigor as PackagesPanel's own client-side filter.
 export function searchSnippets(query: string): SnippetEntry[] {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) return LIBRARY;

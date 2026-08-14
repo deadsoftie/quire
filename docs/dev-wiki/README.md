@@ -29,11 +29,11 @@ Three tiers, two processes:
                                           └──────────────────────────────────┘
 ```
 
-- **`quire-core`** holds every real behavior and no server-side state at all —
+- **`quire-core`** holds every real behavior and no server-side state at all -
   `ProjectId` *is* the project's root directory path, so every call re-derives whatever
   it needs from that path. See [Compile pipeline](compile-pipeline.md) and
   [Indexing & completion](indexing-and-completion.md).
-- **`quire-sidecar`** is a thin JSON-RPC dispatcher over `quire-core`'s handlers —
+- **`quire-sidecar`** is a thin JSON-RPC dispatcher over `quire-core`'s handlers -
   line-delimited JSON on stdin/stdout, one request per line. A *new process per call*,
   not a long-lived server: see [The desktop shell](desktop-shell.md).
 - **`apps/desktop`** is the Electron shell: native menus/dialogs/session persistence in
@@ -58,15 +58,11 @@ Three tiers, two processes:
 
 ## Source-of-truth policy
 
-This wiki narrates *how the pieces fit together and why* — it doesn't fork anything
+This wiki narrates *how the pieces fit together and why* - it doesn't fork anything
 that's already exhaustively and authoritatively documented elsewhere. For exact,
 current specifics, the real sources of truth are:
 
-- **`docs/CONTRACT.md`** — the RPC contract, type by type, plus every "what's real vs.
+- **`docs/CONTRACT.md`** - the RPC contract, type by type, plus every "what's real vs.
   stubbed" and "things worth knowing before building against this" note.
-- **`QUIRE_SPEC.md`** — the original design spec: goals, non-goals, phased milestones,
-  the design language (§7).
-- **`M4_TASKS.md`** — per-task implementation notes for the current milestone, each with
-  a "Done" writeup explaining what was actually built and why, once a task lands.
 
-If something here disagrees with one of those, they win — update this wiki, not them.
+If something here disagrees with that, it wins - update this wiki, not it.

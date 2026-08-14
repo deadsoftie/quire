@@ -11,7 +11,7 @@ interface TabBarProps {
   tabs: TabBarTab[];
   activeUri: string | null;
   onActivate: (uri: string) => void;
-  /** Discards the buffer -- called directly for a clean tab, or after "Discard" on a dirty one. */
+  /** Discards the buffer - called directly for a clean tab, or after "Discard" on a dirty one. */
   onClose: (uri: string) => void;
   onSaveAndClose: (uri: string) => void;
 }

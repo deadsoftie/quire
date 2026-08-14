@@ -20,7 +20,7 @@ bundles/          LaTeX package bundle manifest + generator (see bundles/README.
 
 - [Rust](https://rustup.rs/) (stable toolchain, installed via `rustup`)
 - [Node.js](https://nodejs.org/) (LTS) and [pnpm](https://pnpm.io/installation)
-- A C/C++ toolchain (Xcode Command Line Tools on macOS, `build-essential` on Linux) —
+- A C/C++ toolchain (Xcode Command Line Tools on macOS, `build-essential` on Linux) -
   the Rust core depends on [Tectonic](https://github.com/tectonic-typesetting/tectonic),
   which builds several vendored C/C++ libraries from source. If `cargo build` fails on
   a missing system library, check Tectonic's own

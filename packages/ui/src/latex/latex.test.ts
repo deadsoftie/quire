@@ -123,7 +123,7 @@ describe("LaTeX grammar", () => {
 
     expect(nodesOf(tree, source, "SectionCommand").map((n) => n.text)).toEqual(["\\section"]);
     expect(nodesOf(tree, source, "RefCommand").map((n) => n.text)).toEqual(["\\ref", "\\cite"]);
-    // An unrecognized command still falls back to plain Command -- specialization doesn't swallow it.
+    // An unrecognized command still falls back to plain Command - specialization doesn't swallow it.
     expect(nodesOf(tree, source, "Command").map((n) => n.text)).toEqual(["\\foobarbaz"]);
   });
 

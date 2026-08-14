@@ -41,7 +41,7 @@ export function isTexFile(uri: string): boolean {
   return /\.tex$/i.test(uri);
 }
 
-// Environments amsthm doesn't define on its own -- these three entries each need a \newtheorem
+// Environments amsthm doesn't define on its own - these three entries each need a \newtheorem
 // declaration alongside \usepackage{amsthm}, keyed by snippet id since it's per-environment, not per-package.
 const AMSTHM_DECLARATIONS: Record<string, string> = {
   theorem: "\\newtheorem{theorem}{Theorem}",
@@ -65,7 +65,7 @@ function hasUsepackage(preamble: string, pkg: string): boolean {
 
 // Computes the preamble edit needed to make a snippet's `requiresPackage` card hint actually true --
 // a missing \usepackage line, amsthm's \newtheorem declaration, or (for the 3 beamer entries) switching
-// \documentclass to beamer -- or null if the document already satisfies it. Returns an offset range
+// \documentclass to beamer - or null if the document already satisfies it. Returns an offset range
 // rather than applying anything, so the caller can fold it into the same insertion flow.
 export function preambleFix(docText: string, entry: SnippetEntry): { from: number; to: number; insert: string } | null {
   const pkg = entry.requiresPackage;
@@ -89,7 +89,7 @@ export function preambleFix(docText: string, entry: SnippetEntry): { from: numbe
   return { from: insertAt, to: insertAt, insert: `${lines.join("\n")}\n` };
 }
 
-// Shared by the SnippetsPanel drop handler and its click/keyboard insertSnippet() path -- one insertion
+// Shared by the SnippetsPanel drop handler and its click/keyboard insertSnippet() path - one insertion
 // mechanism, not two. Routes through CM6's own snippet() apply function (line 161's `apply` field uses
 // the same one) so ${1:tabstop} fields get real Tab-cycling, not a flat text insert. When the entry needs
 // a package/class the document doesn't have yet, patches the preamble first as its own dispatch (so it's
@@ -118,7 +118,7 @@ function underline(): string {
   return `url('data:image/svg+xml,${encodeURIComponent(svg)}')`;
 }
 
-// No `{ dark }` flag here -- CodeMirror's darkTheme facet is `true` if *any* installed theme()
+// No `{ dark }` flag here - CodeMirror's darkTheme facet is `true` if *any* installed theme()
 // extension declares it, with no way for a later `false` to override it. The actual flag lives
 // solely in the appearanceCompartment below, reconfigured per the active theme's appearance.
 const baseEditorTheme = EditorView.theme(
@@ -192,7 +192,7 @@ const baseEditorTheme = EditorView.theme(
     ".cm-lintPoint-error:after": { borderBottomColor: "var(--proof-red)" },
     ".cm-lintPoint-warning:after": { borderBottomColor: "var(--proof-amber)" },
     ".cm-lintPoint-info:after": { borderBottomColor: "var(--type-lo)" },
-    // A quiet dot, not the library's default triangle/square/circle mix -- matches ProblemsPanel's restraint.
+    // A quiet dot, not the library's default triangle/square/circle mix - matches ProblemsPanel's restraint.
     ".cm-lint-marker": {
       width: "0.5em",
       height: "0.5em",
@@ -258,18 +258,18 @@ interface EditorProps {
   onChange: (text: string) => void;
   // line/column here are 1-based (StatusBar's convention), distinct from the wire's 0-based UTF-16 columns.
   onCursorActivity?: (cursor: number, scrollTop: number, line: number, column: number) => void;
-  // Already filtered to this file's own uri -- Editor doesn't know about other open tabs.
+  // Already filtered to this file's own uri - Editor doesn't know about other open tabs.
   diagnostics?: Diagnostic[];
-  /** ⌘F/⌥⌘F while the editor has focus -- see findKeymap.ts for why this can't just rely on the native menu accelerator. */
+  /** ⌘F/⌥⌘F while the editor has focus - see findKeymap.ts for why this can't just rely on the native menu accelerator. */
   onFindShortcut?: (withReplace: boolean) => void;
 }
 
 export interface EditorHandle {
-  /** Replaces the whole document, e.g. for format-on-save -- a no-op if `newText` matches the current content. */
+  /** Replaces the whole document, e.g. for format-on-save - a no-op if `newText` matches the current content. */
   replaceContent(newText: string): void;
   /** Moves the cursor to a 0-based line/column (clamped to the document), scrolls it into view, and focuses the editor. */
   revealPosition(line: number, column: number): void;
-  /** SnippetsPanel's click/keyboard insert path -- inserts the named catalog entry at the current selection. */
+  /** SnippetsPanel's click/keyboard insert path - inserts the named catalog entry at the current selection. */
   insertSnippet(id: string): void;
   /** Escape hatch for FindWidget to drive @codemirror/search's own functions directly against the live view. */
   getView(): EditorView | null;
@@ -303,7 +303,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const onFindShortcutRef = useRef(onFindShortcut);
   onFindShortcutRef.current = onFindShortcut;
 
-  // Shared by the manual "Format Document" command and the format-on-save imperative handle -- one dispatch helper, two entry points.
+  // Shared by the manual "Format Document" command and the format-on-save imperative handle - one dispatch helper, two entry points.
   function applyFormatted(newText?: string) {
     const view = viewRef.current;
     if (!view) return;
@@ -323,7 +323,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     view.focus();
   }
 
-  // The click/keyboard path for SnippetsPanel -- inserts at the current selection and focuses the
+  // The click/keyboard path for SnippetsPanel - inserts at the current selection and focuses the
   // editor, sharing insertSnippetTemplate with the drop handler below rather than growing a second
   // insertion mechanism. Silently does nothing for an unknown id (e.g. a stale drag payload).
   function insertSnippet(id: string) {
@@ -381,7 +381,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         baseEditorTheme,
         ...(tex ? [latex(), mathHighlightExtension(), environmentSync()] : []),
         // basicSetup only splices searchKeymap's bindings into its own keymap, not the search() extension
-        // itself -- this installs the state field FindWidget drives, without ever mounting CM6's own panel.
+        // itself - this installs the state field FindWidget drives, without ever mounting CM6's own panel.
         search(),
         neutralizeDefaultSearchKeymap((withReplace) => onFindShortcutRef.current?.(withReplace)),
         linter(null),
@@ -417,7 +417,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             const file = item.getAsFile();
             if (!file) return true;
 
-            // Captured now, not re-read once the async write resolves -- the cursor may have moved by then.
+            // Captured now, not re-read once the async write resolves - the cursor may have moved by then.
             const { from, to } = editorView.state.selection.main;
             const extension = extensionForMimeType(item.type);
 
@@ -428,7 +428,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
                 editorView.dispatch({ changes: { from, to, insert: `\\includegraphics[width=0.8\\linewidth]{${relativePath}}` } });
               })
               .catch(() => {
-                // Best-effort: swallow a failed write -- nothing inserted rather than a broken image reference.
+                // Best-effort: swallow a failed write - nothing inserted rather than a broken image reference.
               });
 
             return true;

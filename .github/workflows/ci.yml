@@ -12,11 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: rg -i texlab (excluding QUIRE_SPEC.md)
+      - name: rg -i texlab
         run: |
-          if rg -il texlab --glob '!QUIRE_SPEC.md' .; then
+          if rg -il texlab .; then
             echo
-            echo "texlab must not be referenced outside QUIRE_SPEC.md -- see the files listed above."
+            echo "texlab must not be referenced - see the files listed above."
             exit 1
           fi
           echo "No stray texlab references."

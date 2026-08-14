@@ -66,7 +66,7 @@ describe("mathHighlightSpans", () => {
     expect(mathHighlightSpans(stateWithLatex(doc))).toEqual([]);
   });
 
-  it("only looks within the given from/to range -- the real plugin's own viewport-scoping", () => {
+  it("only looks within the given from/to range - the real plugin's own viewport-scoping", () => {
     const doc = "$a$ middle text here $b$";
     const state = stateWithLatex(doc);
     const secondDollarStart = doc.lastIndexOf("$b$");

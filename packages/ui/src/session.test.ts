@@ -34,7 +34,7 @@ describe("normalizeSession theme migration", () => {
     expect(normalizeSession({ theme: "light" }, FALLBACK).themeId).toBe(DEFAULT_LIGHT_THEME_ID);
   });
 
-  it("keeps a themeId even if it doesn't (yet) resolve to a known theme -- custom themes load from a separate file that may not have finished loading, so resolution is deferred to resolveTheme()", () => {
+  it("keeps a themeId even if it doesn't (yet) resolve to a known theme - custom themes load from a separate file that may not have finished loading, so resolution is deferred to resolveTheme()", () => {
     expect(normalizeSession({ themeId: "custom-not-loaded-yet" }, FALLBACK).themeId).toBe("custom-not-loaded-yet");
   });
 
@@ -53,7 +53,7 @@ describe("normalizeSession targetRoot", () => {
     expect(normalizeSession({ targetRoot: "/p/chapters/intro.tex" }, FALLBACK).targetRoot).toBe("/p/chapters/intro.tex");
   });
 
-  it("falls back to null when absent, same as activeUri's own handling -- not pre-validated here", () => {
+  it("falls back to null when absent, same as activeUri's own handling - not pre-validated here", () => {
     expect(normalizeSession({}, FALLBACK).targetRoot).toBeNull();
   });
 });

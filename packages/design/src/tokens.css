@@ -40,11 +40,11 @@
   --nonrepro: #8fc7e8;
   --nonrepro-dim: #8fc7e833;
 
-  /* Darker than dark mode's #e5534b/#d9a03c -- those drop under WCAG AA's 4.5:1 against these lighter surfaces. */
+  /* Darker than dark mode's #e5534b/#d9a03c - those drop under WCAG AA's 4.5:1 against these lighter surfaces. */
   --proof-red: #dc2920;
   --proof-amber: #966a1d;
 
-  /* Same reasoning as proof-red/amber above -- light mode gets its own darker, more saturated set for WCAG AA. */
+  /* Same reasoning as proof-red/amber above - light mode gets its own darker, more saturated set for WCAG AA. */
   --ink-green: #4c9a46;
   --ink-gold: #a6821f;
   --ink-orange: #a15f1f;

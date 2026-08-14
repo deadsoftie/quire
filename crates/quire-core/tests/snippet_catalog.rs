@@ -1,4 +1,4 @@
-//! Proves every entry in the SnippetsPanel catalog is real, compilable LaTeX -- catches a typo or
+//! Proves every entry in the SnippetsPanel catalog is real, compilable LaTeX - catches a typo or
 //! unbalanced brace the same way task 4.8 caught a real bug in the acmart template, before it ever
 //! reaches a user dragging the card into their own document.
 
@@ -50,7 +50,7 @@ fn wrapped_source(entry: &SnippetEntry) -> String {
 
     match entry.requires_package.as_deref() {
         None | Some("beamer") => {}
-        // amsthm doesn't predefine theorem/lemma/definition environments on its own -- each has to be
+        // amsthm doesn't predefine theorem/lemma/definition environments on its own - each has to be
         // declared with \newtheorem, same as any real document using it would.
         Some("amsthm") => {
             preamble.push_str(
@@ -61,7 +61,7 @@ fn wrapped_source(entry: &SnippetEntry) -> String {
     }
 
     // A snippet on its own (e.g. an \author block with no \maketitle) can leave the document with
-    // zero shipped pages -- real documents always have surrounding content forcing real output;
+    // zero shipped pages - real documents always have surrounding content forcing real output;
     // this filler line stands in for that so the test measures the snippet, not an artifact of
     // testing it in isolation. Skipped for beamer: loose text outside a \begin{frame} block isn't
     // valid there, and every beamer entry already provides its own frame (real output) anyway.
@@ -102,7 +102,7 @@ fn png_chunk(chunk_type: &[u8; 4], data: &[u8]) -> Vec<u8> {
     chunk
 }
 
-/// A hand-built 1x1 grayscale PNG -- no image-encoding crate exists in this dependency tree, and every
+/// A hand-built 1x1 grayscale PNG - no image-encoding crate exists in this dependency tree, and every
 /// byte here (CRC32, Adler32, zlib stored block) is computed, not copied from memory, so it's guaranteed
 /// spec-valid rather than hoping a remembered magic byte sequence happens to be right.
 fn tiny_png() -> Vec<u8> {
@@ -126,7 +126,7 @@ fn tiny_png() -> Vec<u8> {
     png
 }
 
-/// figure/subfigures/wrapfigure reference a placeholder path via \includegraphics -- a real file has to
+/// figure/subfigures/wrapfigure reference a placeholder path via \includegraphics - a real file has to
 /// exist for those three to compile past that line, the same constraint any real document has.
 fn write_placeholder_images(build_dir: &Path, body: &str) {
     let re = Regex::new(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}").unwrap();
@@ -140,7 +140,7 @@ fn write_placeholder_images(build_dir: &Path, body: &str) {
 fn every_snippet_compiles_clean() {
     assert!(
         PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../bundles/core/SHA256SUM")).is_file(),
-        "bundles/core/SHA256SUM missing -- run `cargo run -p quire-core --example build_core_bundle` first"
+        "bundles/core/SHA256SUM missing - run `cargo run -p quire-core --example build_core_bundle` first"
     );
 
     let entries = catalog();

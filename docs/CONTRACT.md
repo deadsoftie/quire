@@ -1,7 +1,7 @@
-# Quire Core API Contract — v1 (frozen)
+# Quire Core API Contract - v1 (frozen)
 
 Frozen after the initial contract design phase. Changing it means changing two
-platforms — Rust and TypeScript both consume it — so changes are proposed and agreed
+platforms - Rust and TypeScript both consume it - so changes are proposed and agreed
 on explicitly, never made silently.
 
 **Tag:** `contract-v1`, on commit `f73e04e` ("CoreAPI contract").
@@ -16,39 +16,39 @@ retrofitted after:
   `PackageSource`, `InstallPackageRequest`, `RemovePackageRequest`) were added to
   `CoreApi`. The original contract's `prefetchPackages`/`bundleStatus` had no method
   that returned package *names* or removed one, and the Packages panel genuinely needs
-  both — there was no way to build it inside the existing shape.
+  both - there was no way to build it inside the existing shape.
 - **Bundle version notice.** `OpenProjectResponse.bundleVersionNotice: string | null`
   was added since nothing in the original shape could carry a quiet, plain-English
   notice back to the UI at project-open time. `openProject`'s own method signature is
   unchanged (still `Promise<OpenProjectResponse>`), so unlike the package-manager
   methods above, this needed no further wiring in `packages/client`, `quire-sidecar`,
-  or the Electron IPC bridge — only the underlying response shape widened.
+  or the Electron IPC bridge - only the underlying response shape widened.
 - **System TeX engine selection.** `CompileRequest.engine: "tectonic" | "system"` and a
   new `detectSystemTex()` method (plus `SystemTexEngine`, `DetectSystemTexResponse`)
   were added. `quire-core` holds no server-side state, so which engine a given compile
   should use has to travel with the request itself rather than living behind a
   settings flag the core would have to track.
 - **`FileNodeKind::Bib`.** A `.bib` file was already mirrored into the compile shadow
-  dir (see "Things worth knowing" below) but had no wire representation — invisible to
+  dir (see "Things worth knowing" below) but had no wire representation - invisible to
   `OpenProjectResponse.files`, so nothing client-side could show or iterate it. The new
-  variant makes it a real, visible entry (rendered inert in the Explorer — no
-  bib-syntax editor support exists yet — but included in anything that iterates
+  variant makes it a real, visible entry (rendered inert in the Explorer - no
+  bib-syntax editor support exists yet - but included in anything that iterates
   `project.files`, like the export feature's source bundle).
 - **File explorer expansion.** `FileNode`/`OpenProjectResponse.files` stayed exactly
-  what it's always been (the LaTeX-graph-reachable subset compile/export depend on) —
+  what it's always been (the LaTeX-graph-reachable subset compile/export depend on) -
   the original contract had no way to express "every file and folder on disk," so this
   added a parallel, separate surface instead of repurposing that one:
   `listProjectTree(projectId)` returning `ExplorerNode[]` (a real, nested directory
   listing, `project::build_explorer_tree`'s own domain type mapped to the wire shape in
   `handlers::explorer_node_from`, same layering `FileKind`/`FileNode` already established
   for the LaTeX graph), plus `createFile`/`createDirectory`/`renameEntry`/`moveEntry`/
-  `copyEntry` (all five reuse the same `ensure_within_project` containment check —
+  `copyEntry` (all five reuse the same `ensure_within_project` containment check -
   the RPC-arrival equivalent of `project::resolve_within`'s existing escape check for
-  parsed LaTeX references — and `sanitize_entry_name` against a typed name smuggling a
+  parsed LaTeX references - and `sanitize_entry_name` against a typed name smuggling a
   path separator or `..`). Deleting a file/folder is deliberately **not** one of these
   five: it's OS-trash-only (`shell.trashItem`, `apps/desktop`), entirely outside
   `CoreApi`, following the exact "OS-integration bytes never cross into CoreApi"
-  precedent `pasteImage` (task 4.7) already set — desktop trash has no cross-platform
+  precedent `pasteImage` (task 4.7) already set - desktop trash has no cross-platform
   equivalent (D5: iPad forbids the native APIs this would need), and nothing else in
   this feature calls for a permanent-delete RPC that a trash-only UI would never use.
 - **Root targeting.** `CompileRequest.targetRoot: DocUri | null` and
@@ -59,11 +59,11 @@ retrofitted after:
   remembered server-side; `root` is always populated (root resolution happens before
   any `CompileResponse` is constructed, including the early `engine-missing` return)
   so the client can know the real current root without duplicating detection logic.
-  A valid `targetRoot` is a full override, not a hint blended into detection — an
+  A valid `targetRoot` is a full override, not a hint blended into detection - an
   invalid one (deleted, moved, outside the project) is silently ignored in favor of
-  normal detection rather than failing the compile. `setRoot(projectId, uri)` — part
+  normal detection rather than failing the compile. `setRoot(projectId, uri)` - part
   of the original frozen contract but dormant until now (its own doc comment always
-  said "just validates uri so the caller can trust what it's about to remember") —
+  said "just validates uri so the caller can trust what it's about to remember") -
   gained real containment (`ensure_within_project`, reused from the file-explorer
   work) and `.tex`-extension checks, giving the client a fast, clearly-attributed
   failure before ever calling `compile()` with a bad target.
@@ -89,7 +89,7 @@ TypeScript bindings are *generated* from those exact types via `ts-rs`
 packages/client/src/contract.ts
 ```
 
-**Never hand-edit `contract.ts`.** It's regenerated output — the file itself even says
+**Never hand-edit `contract.ts`.** It's regenerated output - the file itself even says
 so at the top (`// This file was generated by ts-rs ... Do not edit this file
 manually.`). If a type needs to change, change the Rust struct/enum in `rpc/mod.rs` and
 re-run the tests; that's the only place a real contract change originates from.
@@ -101,17 +101,17 @@ through them) is hand-written, in:
 packages/client/src/CoreApi.ts
 ```
 
-This one genuinely has to be hand-written — Rust has no directly derivable equivalent,
+This one genuinely has to be hand-written - Rust has no directly derivable equivalent,
 since `quire-sidecar`'s dispatch is string-keyed JSON-RPC (`match req.method.as_str() {
 "openProject" => ..., ... }`), not a Rust trait object. `CoreApi.ts`'s method
 signatures match the contract exactly, including *which* methods take a single request
 object versus positional primitive arguments (e.g. `setRoot(projectId, uri)`, not
-`setRoot(r: SetRootRequest)`) — only the wire protocol underneath uses request objects
+`setRoot(r: SetRootRequest)`) - only the wire protocol underneath uses request objects
 uniformly for every method; the public interface doesn't.
 
 `quire-core/src/rpc/handlers.rs` holds the actual logic behind every method that has
 real logic. `quire-sidecar` is a thin dispatcher over it (deserialize params into the
-typed request struct, call the handler, serialize the result) — see that crate's
+typed request struct, call the handler, serialize the result) - see that crate's
 `main.rs`. This means a future alternate transport (e.g. a mobile FFI binding) would
 call the *same* handler functions through a different transport, not a
 reimplementation.
@@ -120,38 +120,38 @@ reimplementation.
 
 The contract specifies the full v1 surface, including methods and event variants for
 features that didn't exist yet when it was written. Those are still part of the
-*frozen shape* — the wire contract doesn't change when a feature lands later, only the
-handler behind it does — but not every method does real work yet. Building against
+*frozen shape* - the wire contract doesn't change when a feature lands later, only the
+handler behind it does - but not every method does real work yet. Building against
 this today:
 
 | Method / event | Status |
 |---|---|
-| `openProject`, `setRoot`, `closeProject` | Real. `openProject`'s `bundleVersionNotice` is also real (see "Extensions since the v1 freeze" above): `crate::bundle::record_version_pin()` compares `.quire/project.json`'s pinned `bundleVersion` (sibling to the compile shadow dir at `.quire/build/`, so already excluded from the file watcher and file tree) against `crate::bundle::digest_hex()`'s current one, returns a plain-English notice on a real mismatch, and re-pins to the current version either way — so the same notice never repeats on the next open. `null` covers both "versions match" and "nothing was pinned yet" (first-ever open). Deliberately *not* also re-pinned on `writeFile` (the bundle can't change mid-process, and `WriteFileRequest` carries no project context to do so without another contract field). `setRoot` (see "Extensions" above) validates containment inside the project directory and a `.tex` extension, rejecting anything else before the client ever commits to it as a `compile()` `targetRoot` |
-| `compile` | Real — mirrors the whole project's file graph into the shadow dir per call, honors dirty buffers per-file. `CompileRequest.engine` (see "Extensions" above) selects Tectonic (default) or a detected system install; both paths produce the same `CompileOutput`/`CompileError` shape (`crates/quire-core/src/lib.rs`), so nothing downstream — diagnostics translation, missing-package detection, page hashing — needs to know or care which engine ran. See the `engine-missing` row below. `CompileRequest.targetRoot` (see "Extensions" above), when it resolves to a real in-project `.tex` file, is used directly as root instead of running `project::detect_root_with_dirty` at all; an unresolvable target (deleted, moved, outside the project) is silently ignored, falling through to normal detection exactly as if no target had been sent. `CompileResponse.root` reports whichever file actually won either way, on every branch including the early `engine-missing` return |
-| `detectSystemTex` | **Real** (see "Extensions" above). `crate::system_tex::detect()` tries `xelatex --version` then `pdflatex --version` — a successful spawn and exit *is* "a real, working install," identical logic for TeX Live and MiKTeX since `Command` resolves via `PATH`/`PATHEXT` the same way on every OS. Drives the Settings dialog's toggle (`packages/ui/src/SettingsDialog.tsx`), which only enables the checkbox when `available` is `true` |
-| `cancelCompile` | Real, but lives entirely in `packages/client` (transport layer), not `quire-core` — see below |
-| `complete` | **Real** — `quire-core`'s own index (`crates/quire-core/src/index/`), no longer backed by an external LSP tool. Covers: `\ref`/`\eqref`/`\autoref` label completion; `\cite{` citation completion; bare-command macro completion (`\newcommand`/`\def`/`\DeclareMathOperator`, arity-driven tabstops); `\input`/`\include`/`\includegraphics` file-path completion (filtered to `.tex` vs. `project::GRAPHIC_EXTENSIONS`); bare-command CTAN package completion (merged into the same response as macros, ranked below them via `sortPriority`); and bare-command math symbol completion (`crate::index::symbols`, merged one tier below package commands as the global fallback, never scoped by `\usepackage` since these are core LaTeX/amsmath). Path candidates come from a filesystem walk of the project directory (symlink-safe, `SKIP_NAMES`-aware), not the compile-side `FileGraph` — that only knows about references already written, not files available to reference. `.bib` files are discovered the same way `\bibliography`/`\addbibresource` are resolved for the compile-side `FileGraph` (see "Things worth knowing" below) — this index parses them independently rather than sharing that resolution, since the two serve different purposes (citation-completion detail vs. file mirroring) and each keeps its own text scan tailored to its need. The CTAN database (`crates/quire-core/data/ctan-commands.json`, embedded via `include_str!`) is a hand-curated starter set, not a CTAN scrape — see `data/README.md` for why and how to extend it. The symbol database (`crates/quire-core/data/symbols.json`) is likewise hand-curated; `CompletionItem.symbolPreview` carries the KaTeX-ready TeX source, rendered client-side by `packages/ui/src/symbolPreview.ts` in CM6's completion-info popup. **Snippets (`fig`/`tab`/`eq`/`itm`/`sec`/`beg`) are real but deliberately never touch this handler at all** — a fixed, hand-curated abbreviation set with no per-project data to look up, so they live entirely client-side as a second CM6 completion source (`packages/ui/src/snippets.ts`), not a new `CompletionKind`/index extraction source; `CompletionRequest`/`complete()` are untouched by them |
+| `openProject`, `setRoot`, `closeProject` | Real. `openProject`'s `bundleVersionNotice` is also real (see "Extensions since the v1 freeze" above): `crate::bundle::record_version_pin()` compares `.quire/project.json`'s pinned `bundleVersion` (sibling to the compile shadow dir at `.quire/build/`, so already excluded from the file watcher and file tree) against `crate::bundle::digest_hex()`'s current one, returns a plain-English notice on a real mismatch, and re-pins to the current version either way - so the same notice never repeats on the next open. `null` covers both "versions match" and "nothing was pinned yet" (first-ever open). Deliberately *not* also re-pinned on `writeFile` (the bundle can't change mid-process, and `WriteFileRequest` carries no project context to do so without another contract field). `setRoot` (see "Extensions" above) validates containment inside the project directory and a `.tex` extension, rejecting anything else before the client ever commits to it as a `compile()` `targetRoot` |
+| `compile` | Real - mirrors the whole project's file graph into the shadow dir per call, honors dirty buffers per-file. `CompileRequest.engine` (see "Extensions" above) selects Tectonic (default) or a detected system install; both paths produce the same `CompileOutput`/`CompileError` shape (`crates/quire-core/src/lib.rs`), so nothing downstream - diagnostics translation, missing-package detection, page hashing - needs to know or care which engine ran. See the `engine-missing` row below. `CompileRequest.targetRoot` (see "Extensions" above), when it resolves to a real in-project `.tex` file, is used directly as root instead of running `project::detect_root_with_dirty` at all; an unresolvable target (deleted, moved, outside the project) is silently ignored, falling through to normal detection exactly as if no target had been sent. `CompileResponse.root` reports whichever file actually won either way, on every branch including the early `engine-missing` return |
+| `detectSystemTex` | **Real** (see "Extensions" above). `crate::system_tex::detect()` tries `xelatex --version` then `pdflatex --version` - a successful spawn and exit *is* "a real, working install," identical logic for TeX Live and MiKTeX since `Command` resolves via `PATH`/`PATHEXT` the same way on every OS. Drives the Settings dialog's toggle (`packages/ui/src/SettingsDialog.tsx`), which only enables the checkbox when `available` is `true` |
+| `cancelCompile` | Real, but lives entirely in `packages/client` (transport layer), not `quire-core` - see below |
+| `complete` | **Real** - `quire-core`'s own index (`crates/quire-core/src/index/`), no longer backed by an external LSP tool. Covers: `\ref`/`\eqref`/`\autoref` label completion; `\cite{` citation completion; bare-command macro completion (`\newcommand`/`\def`/`\DeclareMathOperator`, arity-driven tabstops); `\input`/`\include`/`\includegraphics` file-path completion (filtered to `.tex` vs. `project::GRAPHIC_EXTENSIONS`); bare-command CTAN package completion (merged into the same response as macros, ranked below them via `sortPriority`); and bare-command math symbol completion (`crate::index::symbols`, merged one tier below package commands as the global fallback, never scoped by `\usepackage` since these are core LaTeX/amsmath). Path candidates come from a filesystem walk of the project directory (symlink-safe, `SKIP_NAMES`-aware), not the compile-side `FileGraph` - that only knows about references already written, not files available to reference. `.bib` files are discovered the same way `\bibliography`/`\addbibresource` are resolved for the compile-side `FileGraph` (see "Things worth knowing" below) - this index parses them independently rather than sharing that resolution, since the two serve different purposes (citation-completion detail vs. file mirroring) and each keeps its own text scan tailored to its need. The CTAN database (`crates/quire-core/data/ctan-commands.json`, embedded via `include_str!`) is a hand-curated starter set, not a CTAN scrape - see `data/README.md` for why and how to extend it. The symbol database (`crates/quire-core/data/symbols.json`) is likewise hand-curated; `CompletionItem.symbolPreview` carries the KaTeX-ready TeX source, rendered client-side by `packages/ui/src/symbolPreview.ts` in CM6's completion-info popup. **Snippets (`fig`/`tab`/`eq`/`itm`/`sec`/`beg`) are real but deliberately never touch this handler at all** - a fixed, hand-curated abbreviation set with no per-project data to look up, so they live entirely client-side as a second CM6 completion source (`packages/ui/src/snippets.ts`), not a new `CompletionKind`/index extraction source; `CompletionRequest`/`complete()` are untouched by them |
 | `readFile`, `writeFile` | Real |
-| `listProjectTree` | **Real** (see "Extensions since the v1 freeze" above). `project::build_explorer_tree` walks the whole project directory (`SKIP_NAMES`-excluded, symlink-cycle-safe via the same canonicalize+visited-set pattern `root.rs`/`index/mod.rs`'s existing walks use), directories first then alphabetical within each group. Drives the Explorer panel's tree — unlike `OpenProjectResponse.files`, not scoped to what's `\input`/`\include`/`\includegraphics`/`\bibliography`-reachable |
-| `createFile` / `createDirectory` / `renameEntry` / `moveEntry` / `copyEntry` | **Real** (see "Extensions since the v1 freeze" above). All five validate containment inside the project directory (`ensure_within_project`) and, where a name is typed rather than an existing path, reject a `..`/separator escape attempt (`sanitize_entry_name`) before touching disk. `renameEntry`/`moveEntry` are both a bare `fs::rename` (a rename is just a same-parent move); `copyEntry` recurses for a directory, `fs::copy`s a single file. None of the five overwrites an existing entry silently — an existing target at the destination is a rejected request, not a clobber. No delete method exists here on purpose — see the "Extensions" entry above |
-| `outline` | **Real.** Section structure (`\part`..`\subsubsection`) plus `\label` sites, built from the same pass over the file. Reads from disk — `OutlineRequest` carries no dirty-buffer text, so it reflects the last saved content, not unsaved editor state |
-| `prefetchPackages` | **Real.** Scans every `\usepackage`/`\RequirePackage`/`\documentclass` across the project (`crate::index::ProjectIndex`), diffs the resulting `{name}.sty`/`{name}.cls` candidates against bundle + cache (`crate::bundle::missing_from_cache` — checked with the network tier forced cache-only, so the diff step itself never fetches), then fetches whatever's missing in parallel (`std::thread::scope`, one thread per missing file). `failed` reports package/class names; `fetched` reports `FetchedPackage { name, bytes }` — `bytes` is the real downloaded size (read off the fetched handle, since nothing in Tectonic's bundle API exposes size ahead of a fetch), which is what the missing-package card shows next to each install. Called two ways: right after `openProject` succeeds and awaited before the first `compile` call on every project open (keeps that first compile from stalling mid-flight on a serial fetch), and again on demand from the missing-package card's Install button and its offline auto-retry-on-reconnect — both call sites reuse this one handler rather than growing a second install path |
-| `bundleStatus` | **Real.** `version` is the actual active Tectonic bundle digest — `crate::bundle::resolve_bundle()` is a real three-tier chain: curated `bundles/core/` (built by `cargo run -p quire-core --example build_core_bundle` from `bundles/manifest.json`) → Tectonic's own local disk cache → network, for whatever core doesn't carry; the reported digest is always core's own when `bundles/core/` exists, since that's what defines this compile's identity, not an amalgam with whatever the fallback tiers also happened to serve. See `bundles/README.md`. `offlinePackages` is `crate::bundle::core_packages().len() + cached_packages().len()`; `cacheBytes` is `crate::bundle::cache_size_bytes()` — every byte under the cache tier's own on-disk directory, not just the `.sty`/`.cls` subset `listInstalledPackages` shows |
-| `listInstalledPackages` / `installPackage` / `removePackage` | **Real** (see "Extensions since the v1 freeze" above). `crate::bundle::core_packages()` reads `bundles/manifest.json`'s curated `documentClasses`/`packages` arrays (not a raw walk of `bundles/core/`'s flat files, most of which are internal transitive deps like `amsbsy.sty` nobody ever typed); `cached_packages()` walks the cache tier's real on-disk directory (`{name}.sty`/`.cls` files, real sizes via `fs::metadata`) — located via `tectonic_io_base::app_dirs::get_user_cache_dir("bundles")`, the exact function Tectonic's own `BundleCache` uses internally, joined with `data/{network-bundle-digest}` (the network tier's own digest, deliberately *not* `resolve_bundle()`'s, which reports core's own). `installPackage` is a thin wrapper over `prefetchPackages`'s own `bundle::fetch` (tries `.sty` then `.cls`) — no second fetch path. `removePackage` deletes the matching cached file directly; removing an uncached or core-only name is success, not an error, matching `fetch`'s own "already satisfied" precedent. Drives `packages/ui/src/panels/PackagesPanel.tsx` behind the `panel.packages` command |
-| `CompileResponse.diagnostics` | **Real.** `crates/quire-core/src/diagnostics/` parses the engine's own log text (not just the single top-level error message) into structured `Diagnostic`s: a regex-based translation table (`diagnostics/rules.rs`, two dozen-plus codes, all verified against real Tectonic output, not guessed) covers both fatal `!`-errors (fed from `CompileError.log` on the failure path) and non-fatal warnings that still appear on a successful compile (overfull boxes, undefined citations/references, "rerun needed" — fed from `CompileOutput.log`, which `rerun.rs`'s `run_tex_pass` always returns, not just on failure). `diagnostics/file_tracker.rs` walks the log's `(filename ...)` push/pop nesting to attribute each diagnostic to a real file `uri`, mapping the engine's fixed `texput.tex` input name back to the project's actual root document. Suppression is real too: overfull boxes under 5pt never surface, and "rerun needed" is only reported from the *last* tex pass's log, so it naturally disappears once a later rerun actually resolves it. A log the translator recognizes nothing in still falls back to one raw, untranslated `Diagnostic` rather than silence. Its missing-file pattern (`diagnostics/rules.rs`'s `MISSING_FILE_PATTERN`) matches across Tectonic's own hard-wrapped log lines (`\s+` between tokens, not literal spaces) — a long package/class name routinely pushes " not found" onto its own line |
+| `listProjectTree` | **Real** (see "Extensions since the v1 freeze" above). `project::build_explorer_tree` walks the whole project directory (`SKIP_NAMES`-excluded, symlink-cycle-safe via the same canonicalize+visited-set pattern `root.rs`/`index/mod.rs`'s existing walks use), directories first then alphabetical within each group. Drives the Explorer panel's tree - unlike `OpenProjectResponse.files`, not scoped to what's `\input`/`\include`/`\includegraphics`/`\bibliography`-reachable |
+| `createFile` / `createDirectory` / `renameEntry` / `moveEntry` / `copyEntry` | **Real** (see "Extensions since the v1 freeze" above). All five validate containment inside the project directory (`ensure_within_project`) and, where a name is typed rather than an existing path, reject a `..`/separator escape attempt (`sanitize_entry_name`) before touching disk. `renameEntry`/`moveEntry` are both a bare `fs::rename` (a rename is just a same-parent move); `copyEntry` recurses for a directory, `fs::copy`s a single file. None of the five overwrites an existing entry silently - an existing target at the destination is a rejected request, not a clobber. No delete method exists here on purpose - see the "Extensions" entry above |
+| `outline` | **Real.** Section structure (`\part`..`\subsubsection`) plus `\label` sites, built from the same pass over the file. Reads from disk - `OutlineRequest` carries no dirty-buffer text, so it reflects the last saved content, not unsaved editor state |
+| `prefetchPackages` | **Real.** Scans every `\usepackage`/`\RequirePackage`/`\documentclass` across the project (`crate::index::ProjectIndex`), diffs the resulting `{name}.sty`/`{name}.cls` candidates against bundle + cache (`crate::bundle::missing_from_cache` - checked with the network tier forced cache-only, so the diff step itself never fetches), then fetches whatever's missing in parallel (`std::thread::scope`, one thread per missing file). `failed` reports package/class names; `fetched` reports `FetchedPackage { name, bytes }` - `bytes` is the real downloaded size (read off the fetched handle, since nothing in Tectonic's bundle API exposes size ahead of a fetch), which is what the missing-package card shows next to each install. Called two ways: right after `openProject` succeeds and awaited before the first `compile` call on every project open (keeps that first compile from stalling mid-flight on a serial fetch), and again on demand from the missing-package card's Install button and its offline auto-retry-on-reconnect - both call sites reuse this one handler rather than growing a second install path |
+| `bundleStatus` | **Real.** `version` is the actual active Tectonic bundle digest - `crate::bundle::resolve_bundle()` is a real three-tier chain: curated `bundles/core/` (built by `cargo run -p quire-core --example build_core_bundle` from `bundles/manifest.json`) → Tectonic's own local disk cache → network, for whatever core doesn't carry; the reported digest is always core's own when `bundles/core/` exists, since that's what defines this compile's identity, not an amalgam with whatever the fallback tiers also happened to serve. See `bundles/README.md`. `offlinePackages` is `crate::bundle::core_packages().len() + cached_packages().len()`; `cacheBytes` is `crate::bundle::cache_size_bytes()` - every byte under the cache tier's own on-disk directory, not just the `.sty`/`.cls` subset `listInstalledPackages` shows |
+| `listInstalledPackages` / `installPackage` / `removePackage` | **Real** (see "Extensions since the v1 freeze" above). `crate::bundle::core_packages()` reads `bundles/manifest.json`'s curated `documentClasses`/`packages` arrays (not a raw walk of `bundles/core/`'s flat files, most of which are internal transitive deps like `amsbsy.sty` nobody ever typed); `cached_packages()` walks the cache tier's real on-disk directory (`{name}.sty`/`.cls` files, real sizes via `fs::metadata`) - located via `tectonic_io_base::app_dirs::get_user_cache_dir("bundles")`, the exact function Tectonic's own `BundleCache` uses internally, joined with `data/{network-bundle-digest}` (the network tier's own digest, deliberately *not* `resolve_bundle()`'s, which reports core's own). `installPackage` is a thin wrapper over `prefetchPackages`'s own `bundle::fetch` (tries `.sty` then `.cls`) - no second fetch path. `removePackage` deletes the matching cached file directly; removing an uncached or core-only name is success, not an error, matching `fetch`'s own "already satisfied" precedent. Drives `packages/ui/src/panels/PackagesPanel.tsx` behind the `panel.packages` command |
+| `CompileResponse.diagnostics` | **Real.** `crates/quire-core/src/diagnostics/` parses the engine's own log text (not just the single top-level error message) into structured `Diagnostic`s: a regex-based translation table (`diagnostics/rules.rs`, two dozen-plus codes, all verified against real Tectonic output, not guessed) covers both fatal `!`-errors (fed from `CompileError.log` on the failure path) and non-fatal warnings that still appear on a successful compile (overfull boxes, undefined citations/references, "rerun needed" - fed from `CompileOutput.log`, which `rerun.rs`'s `run_tex_pass` always returns, not just on failure). `diagnostics/file_tracker.rs` walks the log's `(filename ...)` push/pop nesting to attribute each diagnostic to a real file `uri`, mapping the engine's fixed `texput.tex` input name back to the project's actual root document. Suppression is real too: overfull boxes under 5pt never surface, and "rerun needed" is only reported from the *last* tex pass's log, so it naturally disappears once a later rerun actually resolves it. A log the translator recognizes nothing in still falls back to one raw, untranslated `Diagnostic` rather than silence. Its missing-file pattern (`diagnostics/rules.rs`'s `MISSING_FILE_PATTERN`) matches across Tectonic's own hard-wrapped log lines (`\s+` between tokens, not literal spaces) - a long package/class name routinely pushes " not found" onto its own line |
 | `CompileResponse.status` value `"packages-missing"` | **Real.** `crate::diagnostics::missing_packages()` re-reads the same failed compile's log for every missing `.sty`/`.cls` name and populates `CompileResponse.missing_packages` with the bare names; `handlers::compile` reports this status instead of `"errors"` whenever that list is non-empty, even if the log also contains other errors past the point compilation gave up. Drives `packages/ui/src/MissingPackagesCard.tsx`, shown over the preview pane instead of the error box |
-| `CompileResponse.status` value `"engine-missing"` | **Real.** Produced when `CompileRequest.engine` is `"system"` and `system_tex::detect()` finds nothing at compile time — re-detected fresh on every call rather than trusting a stale client-side toggle (`quire-core` holds no server-side state; this is also the only way to notice an install vanishing mid-session). Comes with one real `Diagnostic` (plain-English message + a hint pointing at Settings/reinstalling), not an empty list — the generic `else` branch in `packages/ui/src/App.tsx`'s `runCompile` already renders whatever's in `diagnostics[0]`, so no new UI branch was needed for this status specifically |
+| `CompileResponse.status` value `"engine-missing"` | **Real.** Produced when `CompileRequest.engine` is `"system"` and `system_tex::detect()` finds nothing at compile time - re-detected fresh on every call rather than trusting a stale client-side toggle (`quire-core` holds no server-side state; this is also the only way to notice an install vanishing mid-session). Comes with one real `Diagnostic` (plain-English message + a hint pointing at Settings/reinstalling), not an empty list - the generic `else` branch in `packages/ui/src/App.tsx`'s `runCompile` already renders whatever's in `diagnostics[0]`, so no new UI branch was needed for this status specifically |
 | `CompileResponse.status` value `"cancelled"` | **Never produced.** Cancellation short-circuits before a response is built (see below) |
 | `CoreEvent::CompileStarted`, `CompileFinished` | Real |
 | `CoreEvent::CompileProgress` | **Never emitted.** No phase/pass instrumentation exists inside the compile pipeline to source `typeset`/`bib`/`rerun` progress from |
-| `CoreEvent::IndexUpdated`, `BundleFetch` | **Never emitted** — nothing to update/fetch yet |
+| `CoreEvent::IndexUpdated`, `BundleFetch` | **Never emitted** - nothing to update/fetch yet |
 | `Diagnostic` | **Real**, populated by `CompileResponse.diagnostics` above. Both the editor's inline gutter/hover UI and the Problems panel render this same shape |
 
 ## Things worth knowing before building against this
 
 - **`ProjectId` is the project's root directory's absolute path, not an
   opaque session handle.** `quire-core` holds no server-side project
-  registry — every compile is a fresh OS process, so nothing could persist
+  registry - every compile is a fresh OS process, so nothing could persist
   session state across calls even if it tried to. Every handler that needs
   "the project" re-derives what it needs (re-running root detection is
   cheap) from that path directly. `DocUri` is likewise just an absolute
@@ -159,17 +159,17 @@ this today:
 - **`cancelCompile` has no handler in `quire-core` at all.**
   `quire-sidecar` is one blocking process per compile with no in-process
   handle or side channel to cancel through (Tectonic exposes none, and
-  the process is busy synchronously compiling anyway) — cancellation is
+  the process is busy synchronously compiling anyway) - cancellation is
   real because `packages/client`'s `StdioTransport` kills the OS process
   directly. (`complete` *did* stay backed by a separate GPL-3.0 LSP tool
   for the same reason for a while, but has a real `quire-core` handler
-  now — see the table above.)
+  now - see the table above.)
 - **Bibliography files flow through the compile pipeline's own
   `FileGraph`, not just the completion index.** `project::IncludeCommand`
   has a `Bibliography` variant (matching `\bibliography`'s
   comma-separated list and `\addbibresource`'s single resource) so
   `build_file_graph` resolves and mirrors `.bib` files into the shadow
-  dir the same way it already did for graphics — a real project with a
+  dir the same way it already did for graphics - a real project with a
   bibliography can cite successfully through the actual app, with the
   BibTeX-rerun logic in `rerun.rs` actually reachable. See "Extensions
   since the v1 freeze" above for the matching `FileNodeKind::Bib`
@@ -186,12 +186,12 @@ this today:
   to correlate against, rather than two silently-disagreeing ones.
 - **SyncTeX (`forwardSync`/`inverseSync`) is absent, not stubbed.** It was
   prototyped early on, then cut from v1 scope entirely before the
-  contract froze — the contract as it stands today never mentions it, so
+  contract froze - the contract as it stands today never mentions it, so
   there's nothing to stub.
 
 ## Changing the contract after this freeze
 
-Don't, without raising it explicitly first — this applies to the person
+Don't, without raising it explicitly first - this applies to the person
 *and* to an agent working from this doc. If a change is genuinely needed:
 
 1. Change the type(s) in `crates/quire-core/src/rpc/mod.rs`.

@@ -21,7 +21,7 @@ describe("rewriteTabUris", () => {
   });
 
   it("does not false-positive-match a sibling with a shared prefix", () => {
-    // "/p/chapter" must not match "/p/chapters/intro.tex" -- the "/" boundary check is load-bearing.
+    // "/p/chapter" must not match "/p/chapters/intro.tex" - the "/" boundary check is load-bearing.
     const tabs = [{ uri: "/p/chapters/intro.tex" }];
     const result = rewriteTabUris(tabs, "/p/chapter", "/p/renamed", null);
     expect(result.tabs).toEqual([{ uri: "/p/chapters/intro.tex" }]);
@@ -49,7 +49,7 @@ describe("rewriteSingleUri", () => {
   });
 
   it("does not false-positive-match a sibling with a shared prefix", () => {
-    // Same "/" boundary check rewriteTabUris itself relies on -- exercised here directly since a
+    // Same "/" boundary check rewriteTabUris itself relies on - exercised here directly since a
     // root target is a single uri, not a tab list, and deserves its own proof independent of that.
     expect(rewriteSingleUri("/p/chapters/intro.tex", "/p/chapter", "/p/renamed")).toBeNull();
   });

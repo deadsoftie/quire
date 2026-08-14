@@ -170,7 +170,7 @@ pub struct CompileResponse {
     pub missing_packages: Vec<String>,
     /// The active Tectonic bundle's digest, hex-formatted. Real today; the curated versioned bundle *strategy* doesn't exist yet.
     pub bundle_version: String,
-    /// Whichever file this compile actually used as root -- the request's `targetRoot` when it
+    /// Whichever file this compile actually used as root - the request's `targetRoot` when it
     /// resolved, otherwise whatever automatic detection picked. Always populated; root resolution
     /// happens before any response (including `EngineMissing`) is constructed.
     pub root: DocUri,
@@ -387,7 +387,7 @@ pub enum PackageSource {
     Cache,
 }
 
-/// `bytes` is `None` for `Core` entries -- a fixed app asset, not a meaningful per-package number.
+/// `bytes` is `None` for `Core` entries - a fixed app asset, not a meaningful per-package number.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = CONTRACT_TS)]
@@ -432,7 +432,7 @@ pub struct WriteFileRequest {
 //
 // Deliberately separate from `FileNode` above: `FileNode` is (and must stay) the flat,
 // LaTeX-graph-reachable list `compile`/export already depend on, not a directory listing.
-// `ExplorerNode` is the opposite -- every file and folder on disk, nested, for the file
+// `ExplorerNode` is the opposite - every file and folder on disk, nested, for the file
 // tree panel.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -546,7 +546,7 @@ pub struct SearchMatch {
 #[ts(export, export_to = CONTRACT_TS)]
 pub struct SearchProjectResponse {
     pub matches: Vec<SearchMatch>,
-    /// True when the match count hit the internal cap -- the list isn't exhaustive.
+    /// True when the match count hit the internal cap - the list isn't exhaustive.
     pub truncated: bool,
 }
 

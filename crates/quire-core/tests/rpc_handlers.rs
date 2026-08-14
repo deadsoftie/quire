@@ -125,7 +125,7 @@ fn open_project_pins_the_bundle_version_and_notices_only_on_a_real_mismatch() {
     let third = open_project(&OpenProjectRequest { path: project_dir.display().to_string() }).unwrap();
     assert!(third.bundle_version_notice.is_some(), "a real mismatch should produce a notice");
 
-    // The mismatch notice also re-pins to the current version -- it must not repeat on the very next open.
+    // The mismatch notice also re-pins to the current version - it must not repeat on the very next open.
     let fourth = open_project(&OpenProjectRequest { path: project_dir.display().to_string() }).unwrap();
     assert!(fourth.bundle_version_notice.is_none(), "{:?}", fourth.bundle_version_notice);
 
@@ -171,7 +171,7 @@ fn compile_reports_packages_missing_with_the_real_package_name() {
     assert_eq!(resp.missing_packages, vec!["this-package-definitely-does-not-exist-anywhere"]);
     assert!(resp.pdf_path.is_none());
 
-    // Never a raw, untranslated "File `...' not found" -- must be the plain-English diagnostic.
+    // Never a raw, untranslated "File `...' not found" - must be the plain-English diagnostic.
     let diagnostic = &resp.diagnostics[0];
     assert_eq!(diagnostic.code.as_deref(), Some("missing-package"));
     assert!(diagnostic.message.contains("this-package-definitely-does-not-exist-anywhere"));
@@ -276,14 +276,14 @@ fn compile_falls_back_to_the_first_candidate_when_root_is_ambiguous() {
     .expect("compile should fall back to a best-guess root instead of erroring");
 
     assert_eq!(resp.status, CompileStatus::Ok, "{:?}", resp.diagnostics);
-    // fileA.tex/fileB.tex sort alphabetically first -- CompileResponse.root now makes this a real,
+    // fileA.tex/fileB.tex sort alphabetically first - CompileResponse.root now makes this a real,
     // checkable assertion instead of just "compiled something."
     assert!(resp.root.ends_with("fileA.tex"), "{}", resp.root);
 
     fs::remove_dir_all(&project_dir).ok();
 }
 
-/// A `targetRoot` is a full override, not a tie-breaker blended into detection -- targeting
+/// A `targetRoot` is a full override, not a tie-breaker blended into detection - targeting
 /// fileB.tex here must win over the alphabetical-first fallback the untargeted test above proves.
 #[test]
 fn compile_honors_a_valid_target_root_over_automatic_detection() {
@@ -306,7 +306,7 @@ fn compile_honors_a_valid_target_root_over_automatic_detection() {
 }
 
 /// A stale/invalid target (deleted, or pointing outside the project) never fails the whole
-/// compile -- it's silently ignored and detection runs exactly as if no target had been set.
+/// compile - it's silently ignored and detection runs exactly as if no target had been set.
 #[test]
 fn compile_falls_back_to_detection_when_target_root_does_not_exist() {
     let project_dir = fresh_project_copy("compile_multi_file", "compile-target-missing");
@@ -619,7 +619,7 @@ fn replace_in_project_skips_files_with_zero_matches() {
     let project_dir = fresh_project_copy("compile_multi_file", "replace-skip-zero");
     let project_id = project_dir.display().to_string();
 
-    // "Intro content" (not just "Intro") -- main.tex's own \input{chapters/intro} also literally
+    // "Intro content" (not just "Intro") - main.tex's own \input{chapters/intro} also literally
     // contains "intro", which a case-insensitive query for the bare word would otherwise also match.
     let resp =
         replace_in_project(&replace_request(&project_id, "Intro content", "Chapter content")).expect("replace should succeed");

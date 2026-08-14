@@ -74,7 +74,7 @@ const SAVE_SESSION_DEBOUNCE_MS = 500;
 
 const DEBOUNCE_MS = 500;
 
-// Duplicated literal (not imported) -- mirrors @quire/client's SIDECAR_CALL_CANCELLED, avoiding CJS/ESM resolution issues across the Electron IPC boundary.
+// Duplicated literal (not imported) - mirrors @quire/client's SIDECAR_CALL_CANCELLED, avoiding CJS/ESM resolution issues across the Electron IPC boundary.
 const SIDECAR_CALL_CANCELLED = "sidecar call cancelled";
 
 // A Project only exists after a real openProject() call, so both fields below are always real, never placeholders.
@@ -138,7 +138,7 @@ function AppShell() {
   const [project, setProject] = useState<Project | null>(null);
   const [explorerTree, setExplorerTree] = useState<ExplorerNode[]>([]);
   // targetRoot is the user's sticky "target this file" choice (Explorer icon/context menu, Export
-  // dialog); currentRoot is whichever file the last compile actually used -- the target when it
+  // dialog); currentRoot is whichever file the last compile actually used - the target when it
   // resolved, otherwise whatever automatic detection picked. Two different things: targetRoot can
   // point at something stale (deleted/moved) that compile() silently ignored.
   const [targetRoot, setTargetRoot] = useState<string | null>(null);
@@ -222,7 +222,7 @@ function AppShell() {
 
   // Swallows SIDECAR_CALL_CANCELLED (a superseded compile's rejection, not a real error); returns the response for callers that need it.
   // targetRootOverride lets a caller supply the root for this one call directly instead of reading
-  // the targetRoot state -- retargetRoot needs this: setTargetRoot() doesn't take effect in this
+  // the targetRoot state - retargetRoot needs this: setTargetRoot() doesn't take effect in this
   // same closure until the next render, so a plain runCompile() called right after it would still
   // send the *previous* target for this one "recompile immediately" call.
   const runCompile = useCallback(
@@ -239,7 +239,7 @@ function AppShell() {
           targetRoot: targetRootOverride !== undefined ? targetRootOverride : targetRoot,
         });
         setDiagnostics(result.diagnostics);
-        // Populated on every status, including failures -- the real current root regardless of
+        // Populated on every status, including failures - the real current root regardless of
         // whether this particular compile succeeded.
         setCurrentRoot(result.root);
         if (result.status === "ok" && result.pdfPath) {
@@ -250,7 +250,7 @@ function AppShell() {
           setMissingPackages(null);
           setCompileVersion((v) => v + 1);
         } else if (result.status === "packages-missing") {
-          // Not a raw error -- keep whatever PDF is already showing; the card owns this state, not the error box.
+          // Not a raw error - keep whatever PDF is already showing; the card owns this state, not the error box.
           setError(null);
           setMissingPackages(result.missingPackages);
           setPackageInstallState("idle");
@@ -274,7 +274,7 @@ function AppShell() {
   // Entry point for "targeting": the Explorer's target icon/context menu (RT.4) and the Export
   // dialog's root picker (RT.5) both call this rather than setting targetRoot directly, so a
   // stale/invalid choice is rejected with a clear, specific error before it ever reaches compile()
-  // -- setRoot's own containment + .tex-extension checks (RT.1) are what actually reject it.
+  // - setRoot's own containment + .tex-extension checks (RT.1) are what actually reject it.
   // uri === null clears the target, returning to automatic detection.
   const retargetRoot = useCallback(
     async (uri: string | null) => {
@@ -295,7 +295,7 @@ function AppShell() {
   );
 
   // Best-effort: a prefetch failure just means the first compile falls back to fetching on demand, never blocking the open.
-  // targetRootOverride: same reasoning as runCompile's own -- both call sites below reset/restore
+  // targetRootOverride: same reasoning as runCompile's own - both call sites below reset/restore
   // targetRoot state in the same tick they call this, and that state won't be visible via the
   // targetRoot closure until the next render, so the very first compile after opening a project
   // needs the value passed explicitly rather than read back out of state.
@@ -472,7 +472,7 @@ function AppShell() {
       const next = customThemes.filter((t) => t.id !== id);
       setCustomThemes(next);
       window.quireDesktop.saveThemes(next);
-      // Falls back to the matching-appearance Quire default rather than always "dark" -- deleting
+      // Falls back to the matching-appearance Quire default rather than always "dark" - deleting
       // an active light theme shouldn't silently flip you into a dark one.
       if (themeId === id) setThemeId(deleted?.appearance === "light" ? DEFAULT_LIGHT_THEME_ID : DEFAULT_DARK_THEME_ID);
     },
@@ -487,7 +487,7 @@ function AppShell() {
     if (pending.uri === activeUri) editorRef.current?.revealPosition(pending.line, pending.column);
   }, [activeUri]);
 
-  // Closing the last tab is allowed -- the project stays open with zero tabs, same as "Close All Files".
+  // Closing the last tab is allowed - the project stays open with zero tabs, same as "Close All Files".
   const closeTab = useCallback((uri: string) => {
     const current = tabsRef.current;
     const idx = current.findIndex((t) => t.uri === uri);
@@ -512,7 +512,7 @@ function AppShell() {
         const next = tabsRef.current.slice();
         next[idx] = { ...tab, text: formatted };
         tabsRef.current = next;
-        // Also sync the live view when this is the mounted tab -- initialDoc only re-seeds on remount.
+        // Also sync the live view when this is the mounted tab - initialDoc only re-seeds on remount.
         if (uri === activeUri) editorRef.current?.replaceContent(formatted);
       }
       const current = tabsRef.current[idx];
@@ -579,7 +579,7 @@ function AppShell() {
     setActiveUri(activeUri);
   }, []);
 
-  // Shared by "Open Folder…" and "New Project…" -- once scaffolded, opening it is identical to any other real folder.
+  // Shared by "Open Folder…" and "New Project…" - once scaffolded, opening it is identical to any other real folder.
   const openProjectAtPath = useCallback(
     async (path: string) => {
       try {
@@ -610,7 +610,7 @@ function AppShell() {
     await openProjectAtPath(path);
   }, [openProjectAtPath]);
 
-  // Shared by the file.new command and the Save As command's native-dialog flow -- the Explorer
+  // Shared by the file.new command and the Save As command's native-dialog flow - the Explorer
   // sidebar's own New File/New Folder buttons use the tree's inline creation instead (see
   // fileTreeRef below), but ⌘N keeps this native picker since it has no tree-focus context to
   // create into.
@@ -622,7 +622,7 @@ function AppShell() {
   }, [project, openTab]);
 
   // Whole-directory listing for the Explorer, distinct from `project.files` (the LaTeX-graph
-  // subset compile/export use) -- re-fetched wholesale rather than patched incrementally, since a
+  // subset compile/export use) - re-fetched wholesale rather than patched incrementally, since a
   // fresh walk is cheap and this sidesteps ever having to reconcile a partial client-side edit.
   const refreshExplorerTree = useCallback(async () => {
     const proj = projectRef.current;
@@ -633,7 +633,7 @@ function AppShell() {
     try {
       setExplorerTree(await window.quire.listProjectTree(proj.projectId));
     } catch {
-      // Transient failure -- leave whatever tree was already showing rather than blanking the Explorer.
+      // Transient failure - leave whatever tree was already showing rather than blanking the Explorer.
     }
   }, []);
 
@@ -671,7 +671,7 @@ function AppShell() {
   );
 
   // Rewrites any open tab's uri in place (itself, or nested under a renamed directory) rather than
-  // closing and reopening -- that would silently discard unsaved edits and cursor/scroll position.
+  // closing and reopening - that would silently discard unsaved edits and cursor/scroll position.
   // Shared with moveExplorerEntry below: a move is the same kind of uri change as a rename.
   const renameExplorerEntry = useCallback(
     async (uri: string, newName: string): Promise<string | null> => {
@@ -688,14 +688,14 @@ function AppShell() {
       tabsRef.current = nextTabs;
       setTabs(nextTabs);
       if (nextActiveUri) setActiveUri(nextActiveUri);
-      // The target follows a rename exactly like an open tab already does above -- same rewrite,
+      // The target follows a rename exactly like an open tab already does above - same rewrite,
       // just applied to a single uri instead of a tab list.
       if (targetRoot) {
         const rewrittenTarget = rewriteSingleUri(targetRoot, uri, renamed.uri);
         if (rewrittenTarget) setTargetRoot(rewrittenTarget);
       }
       await refreshExplorerTree();
-      // The renamed path could be the root document or something another file \input{}s -- the
+      // The renamed path could be the root document or something another file \input{}s - the
       // preview would otherwise keep showing a now-stale compile until the next edit or the
       // watcher's own debounced files-changed catches up. Every other explicit on-disk mutation in
       // this file (save, open, project-wide replace) already recompiles immediately for the same reason.
@@ -725,12 +725,12 @@ function AppShell() {
         if (rewrittenTarget) setTargetRoot(rewrittenTarget);
       }
       await refreshExplorerTree();
-      runCompile("edit"); // see renameExplorerEntry -- a move changes paths the same way a rename does
+      runCompile("edit"); // see renameExplorerEntry - a move changes paths the same way a rename does
     },
     [activeUri, targetRoot, refreshExplorerTree, runCompile],
   );
 
-  // Unlike rename/move, the source is untouched -- no open-tab uri ever needs rewriting here.
+  // Unlike rename/move, the source is untouched - no open-tab uri ever needs rewriting here.
   const copyExplorerEntry = useCallback(
     async (uri: string, destParentUri: string) => {
       const proj = projectRef.current;
@@ -753,7 +753,7 @@ function AppShell() {
     }
   }, []);
 
-  // OS-trash delete (recoverable), entirely outside CoreApi -- no quire-core involvement at all.
+  // OS-trash delete (recoverable), entirely outside CoreApi - no quire-core involvement at all.
   // Reuses confirmAndSaveDirtyTabs's own one-dialog-for-N-files shape rather than one confirm per tab.
   const trashExplorerEntry = useCallback(
     async (uri: string) => {
@@ -781,13 +781,13 @@ function AppShell() {
       if (activeUri && affectedUris.has(activeUri)) {
         setActiveUri(remaining.length > 0 ? remaining[remaining.length - 1].uri : null);
       }
-      // The target itself, or its containing directory, just left -- fall back to automatic
+      // The target itself, or its containing directory, just left - fall back to automatic
       // detection rather than keeping a target that no longer resolves to anything.
       if (targetRoot && (targetRoot === uri || targetRoot.startsWith(uri + "/"))) {
         setTargetRoot(null);
       }
       await refreshExplorerTree();
-      runCompile("edit"); // see renameExplorerEntry -- trashing the root or an \input{}-ed file needs a fresh compile too
+      runCompile("edit"); // see renameExplorerEntry - trashing the root or an \input{}-ed file needs a fresh compile too
     },
     [activeUri, targetRoot, saveTab, refreshExplorerTree, runCompile],
   );
@@ -800,7 +800,7 @@ function AppShell() {
       const result = await runCompile("manual");
       if (!result || result.status !== "ok" || !result.pdfPath) {
         const diagnostic = result?.diagnostics[0];
-        setExportError(diagnostic?.rawMessage || diagnostic?.message || "Compile failed -- fix the errors and try again.");
+        setExportError(diagnostic?.rawMessage || diagnostic?.message || "Compile failed - fix the errors and try again.");
         setExportBusy(false);
         return;
       }
@@ -894,7 +894,7 @@ function AppShell() {
           };
           setBundleVersionNotice(opened.bundleVersionNotice);
 
-          // A missing file is skipped, not fatal -- restore whatever's still there instead of falling back to the empty state.
+          // A missing file is skipped, not fatal - restore whatever's still there instead of falling back to the empty state.
           const wantedUris = session.openTabs.length > 0 ? session.openTabs : [opened.root];
           const loadedTabs: OpenTab[] = [];
           for (const uri of wantedUris) {
@@ -927,18 +927,18 @@ function AppShell() {
           initializedRef.current = true;
           return;
         } catch {
-          // Path moved/deleted/otherwise unreadable -- fall through to the empty state below, same as a fresh launch.
+          // Path moved/deleted/otherwise unreadable - fall through to the empty state below, same as a fresh launch.
         }
       }
 
-      // No restorable session, or it didn't pan out -- state stays empty; WelcomeScreen offers Open/New instead.
+      // No restorable session, or it didn't pan out - state stays empty; WelcomeScreen offers Open/New instead.
       initializedRef.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    // Skipped while the theme editor is open -- it drives applyTheme directly for live preview,
+    // Skipped while the theme editor is open - it drives applyTheme directly for live preview,
     // and this effect re-running (e.g. because a Save just changed customThemes) would stomp that.
     if (themeEditor) return;
     applyTheme(resolveTheme(themeId, customThemes));
@@ -1008,7 +1008,7 @@ function AppShell() {
         if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
         setSeamState("compiling");
       } else if (event.kind === "compile-finished") {
-        // packages-missing reads as "idle," not "error" -- the card owns that messaging, not a red seam flash.
+        // packages-missing reads as "idle," not "error" - the card owns that messaging, not a red seam flash.
         if (event.result.status === "ok" || event.result.status === "packages-missing") {
           if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
           setSeamState("idle");
@@ -1019,7 +1019,7 @@ function AppShell() {
       } else if (event.kind === "files-changed") {
         if (projectRef.current && event.projectId === projectRef.current.projectId) {
           runCompile("edit");
-          // External change (git checkout, a script writing output, ...) -- the Explorer has no
+          // External change (git checkout, a script writing output, ...) - the Explorer has no
           // other way to notice a file appearing/disappearing/moving outside the app's own
           // create/rename/move/copy/trash paths, which already refresh it themselves.
           refreshExplorerTree();
@@ -1107,7 +1107,7 @@ function AppShell() {
     id: "file.save",
     title: "Save",
     shortcut: "⌘S",
-    // No keybinding -- see project.open's comment above; the File menu's ⌘S accelerator covers it.
+    // No keybinding - see project.open's comment above; the File menu's ⌘S accelerator covers it.
     run: () => {
       if (activeUri) saveTab(activeUri);
     },
@@ -1124,7 +1124,7 @@ function AppShell() {
       const idx = tabsRef.current.findIndex((t) => t.uri === activeUri);
       if (idx === -1) return;
       const tab = tabsRef.current[idx];
-      // No live-view push needed here -- the tab's `uri` change below forces an <Editor> remount.
+      // No live-view push needed here - the tab's `uri` change below forces an <Editor> remount.
       const formatted = formatLatex(tab.text);
       await window.quire.writeFile(path, formatted);
       const next = tabsRef.current.slice();

@@ -1,4 +1,4 @@
-// Uses .bbl mtime as the observable signal for "did BibTeX actually run" -- compile_latex_in_dir doesn't surface that as structured output.
+// Uses .bbl mtime as the observable signal for "did BibTeX actually run" - compile_latex_in_dir doesn't surface that as structured output.
 
 use std::fs;
 use std::path::Path;

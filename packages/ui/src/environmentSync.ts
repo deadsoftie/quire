@@ -26,7 +26,7 @@ function mirrorEdit(tr: Transaction): ChangeSpec | null {
   if (!envNode) return null;
   const pair = envNode.getChildren(node.type.id);
   if (pair.length !== 2) return null;
-  // Lezer hands out fresh SyntaxNode wrappers per call, so `pair[0] === node` is unreliable -- compare by position.
+  // Lezer hands out fresh SyntaxNode wrappers per call, so `pair[0] === node` is unreliable - compare by position.
   const sibling = pair[0].from === node.from ? pair[1] : pair[0];
   if (sibling.from === node.from) return null;
 

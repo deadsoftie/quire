@@ -152,7 +152,7 @@ fn discover() -> BTreeSet<String> {
     Rc::try_unwrap(seen).expect("no other references left").into_inner()
 }
 
-/// `DirBundle` is flat, so every discovered name collapses to its basename -- a real collision would surface here.
+/// `DirBundle` is flat, so every discovered name collapses to its basename - a real collision would surface here.
 fn assemble(discovered: &BTreeSet<String>, core_dir: &Path) {
     let mut by_basename: HashMap<String, String> = HashMap::new();
     for name in discovered {

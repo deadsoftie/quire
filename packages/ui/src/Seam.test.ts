@@ -3,7 +3,7 @@ import { computeSplitFraction } from "./Seam";
 
 describe("computeSplitFraction", () => {
   it("puts the boundary exactly where the cursor is, accounting for the seam's own width", () => {
-    // 1000px container, usable width 992px (minus the 8px seam) -- the fraction is (300-4)/992, not the seam-ignoring 300/1000.
+    // 1000px container, usable width 992px (minus the 8px seam) - the fraction is (300-4)/992, not the seam-ignoring 300/1000.
     const fraction = computeSplitFraction(300, 0, 1000)!;
     expect(fraction).toBeCloseTo((300 - 4) / 992, 5);
     expect(fraction).not.toBeCloseTo(300 / 1000, 4);

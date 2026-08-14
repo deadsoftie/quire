@@ -8,7 +8,7 @@ function slugify(name: string): string {
 }
 
 interface ThemeEditorDialogProps {
-  /** Theme the editor is seeded from -- a built-in or another custom theme when creating new, or the theme itself when editing in place. */
+  /** Theme the editor is seeded from - a built-in or another custom theme when creating new, or the theme itself when editing in place. */
   base: ThemeDefinition;
   /** Set when editing an existing custom theme in place (Save overwrites it); `null` when duplicating into a brand-new custom theme. */
   editingId: string | null;
@@ -59,7 +59,7 @@ export function ThemeEditorDialog({ base, editingId, onSave, onCancel, onPreview
 
   useEffect(() => {
     onPreview({ id: editingId ?? "preview", name, appearance, source: "custom", colors });
-    // Live preview only -- onPreview (applyTheme) is a stable module-level function, not app state.
+    // Live preview only - onPreview (applyTheme) is a stable module-level function, not app state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appearance, colors]);
 
@@ -89,7 +89,7 @@ export function ThemeEditorDialog({ base, editingId, onSave, onCancel, onPreview
 
   async function handleImport() {
     const raw = await window.quireDesktop.importTheme();
-    if (raw === null) return; // cancelled -- not an error, say nothing
+    if (raw === null) return; // cancelled - not an error, say nothing
     const portable = parsePortableTheme(raw);
     if (!portable) {
       setImportError("That file isn't a valid Quire theme.");

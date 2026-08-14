@@ -1,6 +1,6 @@
 import { extensionOf } from "./panels/explorerTree";
 
-// A dedicated MIME type, not "text/plain" -- same reasoning as snippetLibrary.ts's own
+// A dedicated MIME type, not "text/plain" - same reasoning as snippetLibrary.ts's own
 // SNIPPET_DRAG_MIME, so a stray drag from elsewhere can't be misread as a file uri or vice versa.
 export const FILE_DRAG_MIME = "application/x-quire-file-uri";
 
@@ -21,7 +21,7 @@ function stripExtension(relativePath: string, extension: string): string {
 
 /**
  * What to insert when a file dragged from the Explorer is dropped into the editor, keyed off its
- * extension -- the contextually-right LaTeX reference where one exists, otherwise the bare
+ * extension - the contextually-right LaTeX reference where one exists, otherwise the bare
  * relative path as plain text (better than nothing for a file type this has no special case for).
  */
 export function insertionForDraggedFile(relativePath: string, documentText: string): string {
@@ -32,7 +32,7 @@ export function insertionForDraggedFile(relativePath: string, documentText: stri
   }
 
   if (ext === "bib") {
-    // A document already citing a bibliography gets the bare path -- inserting a second
+    // A document already citing a bibliography gets the bare path - inserting a second
     // \bibliography{} would either be ignored or conflict, and reliably detecting "the right
     // place to add another resource" isn't worth the machinery for this one case.
     const alreadyHasBibliography = /\\(bibliography|addbibresource)\{/.test(documentText);

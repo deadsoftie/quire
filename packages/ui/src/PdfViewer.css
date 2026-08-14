@@ -12,7 +12,7 @@
 .pdf-viewer__page {
   position: relative;
   margin: 0 auto var(--s-2);
-  /* The paper is the only white surface in the app -- stays dark until its canvas paints. */
+  /* The paper is the only white surface in the app - stays dark until its canvas paints. */
   background: var(--ink-800);
 }
 

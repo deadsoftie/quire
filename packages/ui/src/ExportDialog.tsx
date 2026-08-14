@@ -4,11 +4,11 @@ import "./ExportDialog.css";
 interface ExportDialogProps {
   onExport: (includeSource: boolean) => void;
   onClose: () => void;
-  /** Set while a forced recompile / the actual export write is in flight -- disables the button, not the checkbox. */
+  /** Set while a forced recompile / the actual export write is in flight - disables the button, not the checkbox. */
   busy: boolean;
   /** Set if the forced recompile failed; shown in place of the usual footer note. */
   error: string | null;
-  /** The real current root (whichever file the last compile actually used) -- `null` before any compile has run yet. */
+  /** The real current root (whichever file the last compile actually used) - `null` before any compile has run yet. */
   rootUri: string | null;
   /** Every `.tex` file in the project, for the root picker. */
   texFiles: { uri: string; label: string }[];

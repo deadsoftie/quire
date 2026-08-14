@@ -82,7 +82,7 @@ fn run_pass(engine: Engine, root_relative: &Path, build_dir: &Path) -> Result<St
 
     wait_with_timeout(child, PASS_TIMEOUT)?;
 
-    // Read the log regardless of exit code -- a recoverable LaTeX error doesn't abort nonstopmode.
+    // Read the log regardless of exit code - a recoverable LaTeX error doesn't abort nonstopmode.
     Ok(fs::read_to_string(build_dir.join("texput.log")).unwrap_or_default())
 }
 

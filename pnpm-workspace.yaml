@@ -3,13 +3,13 @@ packages:
   - "packages/*"
 allowBuilds:
   electron: true
-  # Windows installer tooling, a transitive dep of electron-builder -- irrelevant to our mac+linux-only
-  # scope (SHIPPING_PLAN.md/ELECTRON_BUILDER_PLAN.md both defer Windows explicitly), so its native
-  # build script is denied rather than run unreviewed.
+  # Windows installer tooling, a transitive dep of electron-builder - irrelevant to our mac+linux-only
+  # scope (Windows support is explicitly deferred), so its native build script is denied rather
+  # than run unreviewed.
   electron-winstaller: false
   esbuild: true
 # @codemirror/language@6.12.4 pins @codemirror/view@6.43.6 specifically, while every other
-# CodeMirror package (and packages/ui itself) resolves ^6.43.7 -- two separate module instances of
+# CodeMirror package (and packages/ui itself) resolves ^6.43.7 - two separate module instances of
 # @codemirror/view meant a ViewPlugin built by @codemirror/language's copy (the syntax highlighter)
 # was never recognized as a real extension by an EditorView built from the other copy, so
 # highlighting silently never reached the DOM despite computing correctly in isolation.

@@ -29,7 +29,7 @@ fn wrap(body: &str) -> String {
     format!("\\documentclass{{article}}\n\\begin{{document}}\n{body}\n\\end{{document}}\n")
 }
 
-/// Compiles `body` as the root document's dirty-buffer content -- no fixture per test case needed.
+/// Compiles `body` as the root document's dirty-buffer content - no fixture per test case needed.
 fn diagnostics_for(name: &str, body: &str) -> Vec<Diagnostic> {
     let project_dir = fresh_project_copy(name);
     let project_id = project_dir.display().to_string();

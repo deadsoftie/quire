@@ -9,7 +9,7 @@ use tectonic_bundles::{dir::DirBundle, Bundle};
 
 use crate::CompileError;
 
-/// Resolved relative to this crate's manifest dir by default (dev builds, `cargo test`) -- that's a
+/// Resolved relative to this crate's manifest dir by default (dev builds, `cargo test`) - that's a
 /// *compile-time* macro, so it bakes the build machine's own source path into the release binary,
 /// which is wrong for a binary run anywhere else. A packaged app sets QUIRE_BUNDLE_ROOT (see
 /// apps/desktop/src/main.js) to override with wherever the packager laid `bundles/` out as an

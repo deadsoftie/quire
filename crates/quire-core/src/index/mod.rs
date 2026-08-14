@@ -26,9 +26,9 @@ pub struct CitationEntry {
 pub struct MacroDef {
     /// Without the leading backslash, matching [`LabelDef::name`]/[`CitationEntry::key`]'s convention.
     pub name: String,
-    /// How many required `{}` arguments -- what turns into `insert`'s `${1:...}` tabstops.
+    /// How many required `{}` arguments - what turns into `insert`'s `${1:...}` tabstops.
     pub arity: u32,
-    /// Not used for `insert` (arity-driven, not body-driven) -- just a readable `detail` for the popup.
+    /// Not used for `insert` (arity-driven, not body-driven) - just a readable `detail` for the popup.
     pub body: String,
 }
 
@@ -90,7 +90,7 @@ impl ProjectIndex {
         let mut macros: Vec<MacroDef> = macros.into_values().collect();
         macros.sort_by(|a, b| a.name.cmp(&b.name));
 
-        // Filesystem walk, not FileGraph -- offers files not yet \input/\includegraphics'd, which FileGraph can't provide.
+        // Filesystem walk, not FileGraph - offers files not yet \input/\includegraphics'd, which FileGraph can't provide.
         let (tex_paths, graphic_paths) = find_path_candidates(base_dir);
 
         ProjectIndex { files, citations, macros, packages, document_classes, tex_paths, graphic_paths }
@@ -216,7 +216,7 @@ fn scan_into(stripped: &str, entries: &mut Vec<RawEntry>) {
         } else {
             let title = strip_label_commands(raw_arg).trim().to_string();
             entries.push(RawEntry { kind, text: title, position });
-            i = after + 1; // into the argument, not past it -- see doc comment above
+            i = after + 1; // into the argument, not past it - see doc comment above
         }
     }
 }
@@ -243,7 +243,7 @@ fn matching_brace(s: &str, open_byte: usize) -> Option<usize> {
     None
 }
 
-/// Only `\label` is stripped; other markup is left as-is -- rendering LaTeX to plain text is out of scope.
+/// Only `\label` is stripped; other markup is left as-is - rendering LaTeX to plain text is out of scope.
 fn strip_label_commands(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut spans = Vec::new();
@@ -403,7 +403,7 @@ fn parse_bib_body(body: &str) -> Option<BibEntry> {
     Some(BibEntry { key, author, title, year })
 }
 
-/// Splits on `sep` only at brace/quote depth 0 -- a bib value routinely contains a raw comma itself.
+/// Splits on `sep` only at brace/quote depth 0 - a bib value routinely contains a raw comma itself.
 fn split_top_level(body: &str, sep: char) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0i32;
@@ -438,7 +438,7 @@ fn find_top_level_eq(field: &str) -> Option<usize> {
     None
 }
 
-/// Also strips remaining brace characters -- BibTeX's case-protection braces are a typesetting artifact.
+/// Also strips remaining brace characters - BibTeX's case-protection braces are a typesetting artifact.
 fn unwrap_bib_value(raw: &str) -> String {
     let trimmed = raw.trim();
     let unwrapped = trimmed
@@ -481,7 +481,7 @@ fn classify_macro_command(rest: &str) -> Option<(&'static str, usize)> {
     COMMANDS.iter().find(|(name, _)| rest.starts_with(name)).map(|(name, tag)| (*tag, name.len()))
 }
 
-/// An entry that doesn't parse as one of these three shapes is dropped -- a wrong arity is worse than a missing completion.
+/// An entry that doesn't parse as one of these three shapes is dropped - a wrong arity is worse than a missing completion.
 fn find_macros(stripped: &str) -> Vec<MacroDef> {
     let mut macros = Vec::new();
     let bytes = stripped.as_bytes();
@@ -605,12 +605,12 @@ fn parse_def(stripped: &str, after: usize) -> Option<(MacroDef, usize)> {
                 let digit_pos = cursor + 1;
                 let n = bytes.get(digit_pos).filter(|b| b.is_ascii_digit()).map(|b| (b - b'0') as u32)?;
                 if n != arity + 1 {
-                    return None; // out-of-order/skipped parameter numbering -- not the common case
+                    return None; // out-of-order/skipped parameter numbering - not the common case
                 }
                 arity = n;
                 cursor = digit_pos + 1;
             }
-            _ => return None, // a literal delimiter token in the parameter text -- unsupported, see doc comment
+            _ => return None, // a literal delimiter token in the parameter text - unsupported, see doc comment
         }
     }
 
@@ -710,7 +710,7 @@ fn walk_project_files(
     }
 }
 
-/// Every `.tex`/`.bib` file under `project_dir`, absolute paths, same skip-list as `find_path_candidates` -- used by project-wide search/replace only.
+/// Every `.tex`/`.bib` file under `project_dir`, absolute paths, same skip-list as `find_path_candidates` - used by project-wide search/replace only.
 pub(crate) fn all_searchable_files(project_dir: &Path) -> Vec<PathBuf> {
     let mut visited = HashSet::new();
     let mut files = Vec::new();
@@ -779,7 +779,7 @@ fn byte_offset_of(text: &str, position: &Position) -> usize {
     text.len()
 }
 
-/// A `\label` never opens a nesting level -- it attaches as a leaf under the innermost-open heading.
+/// A `\label` never opens a nesting level - it attaches as a leaf under the innermost-open heading.
 fn build_outline(entries: Vec<RawEntry>) -> Vec<OutlineNode> {
     let mut stack: Vec<OutlineNode> = Vec::new();
     let mut top: Vec<OutlineNode> = Vec::new();
@@ -818,7 +818,7 @@ fn attach(stack: &mut [OutlineNode], top: &mut Vec<OutlineNode>, node: OutlineNo
     }
 }
 
-/// Scans backward tracking brace depth, stopping at the first line break -- a command argument here never spans lines.
+/// Scans backward tracking brace depth, stopping at the first line break - a command argument here never spans lines.
 fn enclosing_command(text: &str, position: &Position) -> Option<String> {
     let cursor = byte_offset_of(text, position).min(text.len());
     let before = &text[..cursor];
@@ -876,7 +876,7 @@ pub fn is_ref_completion_context(text: &str, position: &Position) -> bool {
     matches!(enclosing_command(text, position).as_deref(), Some("ref") | Some("eqref") | Some("autoref"))
 }
 
-/// Just `\cite` -- natbib/biblatex variants aren't offered since this pipeline only supports classic BibTeX.
+/// Just `\cite` - natbib/biblatex variants aren't offered since this pipeline only supports classic BibTeX.
 pub fn is_cite_completion_context(text: &str, position: &Position) -> bool {
     enclosing_command(text, position).as_deref() == Some("cite")
 }
@@ -1004,7 +1004,7 @@ mod tests {
         for cmd in ["\\cite{", "\\cite{knuth"] {
             assert!(is_cite_completion_context(cmd, &end_position(cmd)), "{cmd:?} should be a cite context");
         }
-        // natbib/biblatex variants deliberately not recognized -- see is_cite_completion_context's doc comment.
+        // natbib/biblatex variants deliberately not recognized - see is_cite_completion_context's doc comment.
         for text in ["\\ref{", "\\citep{", "\\citet{", "\\parencite{", "no braces at all"] {
             assert!(!is_cite_completion_context(text, &end_position(text)), "{text:?} should not be a cite context");
         }

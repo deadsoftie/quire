@@ -7,3 +7,4 @@ pnpm-debug.log*
 *.tsbuildinfo
 /sample-project/
 /bundles/core/
+scripts/.mac-signing.env

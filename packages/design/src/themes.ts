@@ -1,5 +1,5 @@
-// `paper` (the PDF surface) is deliberately excluded -- it's fixed white in every theme, never
-// themeable (see QUIRE_SPEC.md: "The PDF stays white in both [modes]"). `-Dim` variants
+// `paper` (the PDF surface) is deliberately excluded - it's fixed white in every theme, never
+// themeable ("The PDF stays white in both [modes]" is a locked decision). `-Dim` variants
 // (nonreproDim, inkCyanDim) aren't stored either; callers derive them as `${hex}33`.
 export interface ThemeColors {
   ink900: string;
@@ -101,7 +101,7 @@ export const builtinThemes: ThemeDefinition[] = [
     proofAmber: "#fabd2f",
     inkGreen: "#b8bb26",
     inkGold: "#fabd2f",
-    // Gruvbox's own orange is already the accent (nonrepro) -- borrows its blue here so
+    // Gruvbox's own orange is already the accent (nonrepro) - borrows its blue here so
     // section headings stay visually distinct from `\textbf`/`\foo` commands.
     inkOrange: "#83a598",
     inkPurple: "#d3869b",

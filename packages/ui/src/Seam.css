@@ -1,6 +1,6 @@
 .seam {
   position: relative;
-  /* Higher than either pane (both un-stacked, so 0) -- without this, a subpixel rounding overlap
+  /* Higher than either pane (both un-stacked, so 0) - without this, a subpixel rounding overlap
   at the shared grid-track edge lets whichever pane paints later in DOM order (the preview) cover
   part of the seam's own line, most visible once it turns into a gradient during compiling. */
   z-index: 1;

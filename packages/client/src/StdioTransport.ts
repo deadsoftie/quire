@@ -167,7 +167,7 @@ export class StdioTransport implements CoreApi {
     return () => this.listeners.delete(handler);
   }
 
-  /** Not part of {@link CoreApi} -- called from `apps/desktop`'s `will-quit` handler. */
+  /** Not part of {@link CoreApi} - called from `apps/desktop`'s `will-quit` handler. */
   stop() {
     this.currentCompile?.call.kill();
     this.currentCompile = null;
