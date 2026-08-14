@@ -6,7 +6,8 @@ on:
     tags: ["v*"]
   pull_request:
 
-  # Flip to "false" to disable every job below
+# Flip to "false" to disable every job below
+env:
   CI_ENABLED: "false"
 
 jobs:
