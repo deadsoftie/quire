@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@quire/client": "workspace:*",
-    "archiver": "^8.0.0"
+    "archiver": "^8.0.0",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -21,25 +22,55 @@
   },
   "build": {
     "appId": "com.deadsoftie.quire",
-    "files": ["src/**/*", "assets/**/*", "package.json", "!**/*.test.js"],
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "!**/*.test.js"
+    ],
     "extraResources": [
-      { "from": "../../target/release/quire-sidecar", "to": "quire-sidecar" },
-      { "from": "../../bundles/core", "to": "bundles/core" },
-      { "from": "../../bundles/manifest.json", "to": "bundles/manifest.json" },
-      { "from": "../../templates", "to": "templates", "filter": ["*.tex"] },
-      { "from": "../../packages/ui/dist", "to": "ui" }
+      {
+        "from": "../../target/release/quire-sidecar",
+        "to": "quire-sidecar"
+      },
+      {
+        "from": "../../bundles/core",
+        "to": "bundles/core"
+      },
+      {
+        "from": "../../bundles/manifest.json",
+        "to": "bundles/manifest.json"
+      },
+      {
+        "from": "../../templates",
+        "to": "templates",
+        "filter": [
+          "*.tex"
+        ]
+      },
+      {
+        "from": "../../packages/ui/dist",
+        "to": "ui"
+      }
     ],
     "icon": "assets/icon.png",
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.productivity",
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
-      "binaries": ["Contents/Resources/quire-sidecar"]
+      "binaries": [
+        "Contents/Resources/quire-sidecar"
+      ]
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Office"
     },
     "publish": {

@@ -50,6 +50,8 @@ declare global {
       confirmDiscard: (message: string) => Promise<"save" | "discard" | "cancel">;
       /** Keeps the native View menu's checkboxes in sync with renderer state - see App.tsx's reportViewState effect. */
       reportViewState: (state: ViewMenuState) => Promise<void>;
+      /** Quits and relaunches into the already-downloaded update. */
+      installUpdate: () => Promise<void>;
       /** CoreApi.readFile is text-only; this reads a compiled PDF's bytes. */
       readPdfFile: (path: string) => Promise<Uint8Array>;
       /** Writes a pasted image's bytes into `<projectDir>/figures/` (created if needed); returns the project-relative path. */
@@ -66,6 +68,8 @@ declare global {
       importTheme: () => Promise<string | null>;
       /** Native menu items dispatch by command id through this channel. Returns an unsubscribe function. */
       onMenuCommand: (handler: (id: string) => void) => () => void;
+      /** Fires once a background-downloaded update is ready to install. Returns an unsubscribe function. */
+      onUpdateReady: (handler: () => void) => () => void;
     };
   }
 }

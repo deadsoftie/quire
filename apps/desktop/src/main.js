@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron")
 const fs = require("node:fs");
 const path = require("node:path");
 const { StdioTransport, setSidecarPath } = require("@quire/client");
+const { autoUpdater } = require("electron-updater");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 const isMac = process.platform === "darwin";
@@ -359,6 +360,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:reportViewState", (_event, state) => updateViewMenuChecks(state));
 
+  ipcMain.handle("desktop:installUpdate", () => autoUpdater.quitAndInstall());
+
   ipcMain.handle("desktop:readPdfFile", (_event, pdfPath) => new Uint8Array(fs.readFileSync(pdfPath)));
 
   // Writes a pasted image's raw bytes into <projectDir>/figures/; returns the project-relative path for \includegraphics.
@@ -428,6 +431,20 @@ app.whenReady().then(() => {
 
   Menu.setApplicationMenu(buildMenu());
   createWindow();
+
+  // Dev builds have no publish feed to check against and would just error - only run in a packaged app.
+  if (app.isPackaged) {
+    autoUpdater.on("update-downloaded", () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update:ready");
+      }
+    });
+    autoUpdater.on("error", (err) => {
+      console.error("Auto-update check failed:", err);
+    });
+    // checkForUpdates() rather than checkForUpdatesAndNotify() - the update surfaces inside StatusBar, not a native OS dialog.
+    autoUpdater.checkForUpdates();
+  }
 });
 
 app.on("window-all-closed", () => {
