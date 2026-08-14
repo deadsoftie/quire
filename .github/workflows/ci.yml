@@ -6,15 +6,22 @@ on:
     tags: ["v*"]
   pull_request:
 
-# Flip to "false" to disable every job below
-env:
-  CI_ENABLED: "true"
-
 jobs:
+  gate:
+    name: CI toggle
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      # Flip to "false" to disable every job below - env isn't valid in job-level `if:`, so this output is.
+      - id: check
+        run: echo "enabled=true" >> "$GITHUB_OUTPUT"
+
   test:
     name: Test (cargo + vitest)
+    needs: [gate]
     runs-on: ubuntu-latest
-    if: env.CI_ENABLED == 'true'
+    if: needs.gate.outputs.enabled == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -70,8 +77,8 @@ jobs:
 
   build:
     name: Build + publish (${{ matrix.target }})
-    needs: [test]
-    if: env.CI_ENABLED == 'true' && startsWith(github.ref, 'refs/tags/v')
+    needs: [gate, test]
+    if: needs.gate.outputs.enabled == 'true' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     strategy:
