@@ -155,6 +155,8 @@ function AppShell() {
   const [packagesCacheBytes, setPackagesCacheBytes] = useState(0);
   const [packagesRefreshToken, setPackagesRefreshToken] = useState(0);
   const [bundleVersionNotice, setBundleVersionNotice] = useState<string | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
+  const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState(false);
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
@@ -1003,6 +1005,10 @@ function AppShell() {
   }, [sidebarSection, focusMode, typewriterMode, proseMode, wordWrap, themeId, customThemes, pdfInverted]);
 
   useEffect(() => {
+    return window.quireDesktop.onUpdateReady(() => setUpdateReady(true));
+  }, []);
+
+  useEffect(() => {
     return window.quire.onEvent((event: CoreEvent) => {
       if (event.kind === "compile-started") {
         if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
@@ -1472,6 +1478,9 @@ function AppShell() {
         engineAvailable={project?.engineAvailable ?? null}
         bundleVersionNotice={bundleVersionNotice}
         onDismissBundleVersionNotice={() => setBundleVersionNotice(null)}
+        updateReady={updateReady && !updateNoticeDismissed}
+        onInstallUpdate={() => window.quireDesktop.installUpdate()}
+        onDismissUpdateNotice={() => setUpdateNoticeDismissed(true)}
       />
     </div>
   );

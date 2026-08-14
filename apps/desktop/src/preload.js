@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("quireDesktop", {
   revealInFileManager: invoke("desktop:revealInFileManager"),
   confirmDiscard: invoke("desktop:confirmDiscard"),
   reportViewState: invoke("desktop:reportViewState"),
+  installUpdate: invoke("desktop:installUpdate"),
   readPdfFile: invoke("desktop:readPdfFile"),
   pasteImage: invoke("desktop:pasteImage"),
   loadSession: invoke("desktop:loadSession"),
@@ -58,5 +59,11 @@ contextBridge.exposeInMainWorld("quireDesktop", {
     const listener = (_event, id) => handler(id);
     ipcRenderer.on("menu:command", listener);
     return () => ipcRenderer.removeListener("menu:command", listener);
+  },
+  // Fires once an update has finished downloading in the background and is ready to install. Returns an unsubscribe function.
+  onUpdateReady: (handler) => {
+    const listener = () => handler();
+    ipcRenderer.on("update:ready", listener);
+    return () => ipcRenderer.removeListener("update:ready", listener);
   },
 });

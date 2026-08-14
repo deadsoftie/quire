@@ -19,6 +19,10 @@ interface StatusBarProps {
   /** Plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
   bundleVersionNotice: string | null;
   onDismissBundleVersionNotice: () => void;
+  /** True once a background-downloaded update is ready to install. */
+  updateReady: boolean;
+  onInstallUpdate: () => void;
+  onDismissUpdateNotice: () => void;
 }
 
 export function StatusBar({
@@ -27,6 +31,9 @@ export function StatusBar({
   engineAvailable,
   bundleVersionNotice,
   onDismissBundleVersionNotice,
+  updateReady,
+  onInstallUpdate,
+  onDismissUpdateNotice,
 }: StatusBarProps) {
   const position = useSyncExternalStore(cursorPosition.subscribe, cursorPosition.getSnapshot);
 
@@ -45,6 +52,22 @@ export function StatusBar({
               type="button"
               className="status-bar__dismiss"
               onClick={onDismissBundleVersionNotice}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </span>
+        )}
+        {updateReady && (
+          <span className="status-bar__item status-bar__item--notice">
+            Update ready to install
+            <button type="button" className="status-bar__action" onClick={onInstallUpdate}>
+              Restart to update
+            </button>
+            <button
+              type="button"
+              className="status-bar__dismiss"
+              onClick={onDismissUpdateNotice}
               aria-label="Dismiss"
             >
               ×
