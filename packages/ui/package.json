@@ -23,6 +23,7 @@
     "@lezer/lr": "^1.4.10",
     "@quire/client": "workspace:*",
     "@quire/design": "workspace:*",
+    "@sentry/electron": "^7.16.0",
     "codemirror": "^6.0.1",
     "katex": "^0.18.1",
     "lucide-react": "^1.28.0",

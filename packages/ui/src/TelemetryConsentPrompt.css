@@ -1,0 +1,50 @@
+.telemetry-consent-prompt {
+  position: absolute;
+  bottom: var(--s-3);
+  right: var(--s-3);
+  z-index: 1;
+  max-width: min(90%, 360px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: var(--ink-800);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.telemetry-consent-prompt__message {
+  margin: 0;
+  color: var(--type-hi);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+}
+
+.telemetry-consent-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.telemetry-consent-prompt__decline {
+  padding: var(--s-1) var(--s-3);
+  border: var(--seam) solid var(--ink-600);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--type-mid);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.telemetry-consent-prompt__grant {
+  padding: var(--s-1) var(--s-3);
+  border: none;
+  border-radius: var(--radius);
+  background: var(--nonrepro);
+  color: var(--ink-900);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}

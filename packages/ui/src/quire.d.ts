@@ -2,6 +2,7 @@
 import type { CoreApi } from "@quire/client";
 import type { SessionState } from "./session";
 import type { ThemeDefinition } from "./theme";
+import type { TelemetryConsent } from "./telemetryConsent";
 
 // Keys matter exactly to apps/desktop/src/main.js's VIEW_MENU_CHECK_IDS - deliberate duplication across the Electron boundary.
 interface ViewMenuState {
@@ -70,6 +71,11 @@ declare global {
       onMenuCommand: (handler: (id: string) => void) => () => void;
       /** Fires once a background-downloaded update is ready to install. Returns an unsubscribe function. */
       onUpdateReady: (handler: () => void) => () => void;
+      /** Raw/unvalidated - always run through normalizeTelemetryConsent before use. `{}` if there's no consent file yet (or it's unreadable). */
+      loadTelemetryConsent: () => Promise<unknown>;
+      saveTelemetryConsent: (consent: TelemetryConsent) => Promise<void>;
+      /** True if main.js already decided (at startup, from real granted consent) to initialize Sentry for this launch. */
+      sentryEnabled: boolean;
     };
   }
 }
