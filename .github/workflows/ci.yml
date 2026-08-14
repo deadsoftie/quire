@@ -8,7 +8,7 @@ on:
 
 # Flip to "false" to disable every job below
 env:
-  CI_ENABLED: "false"
+  CI_ENABLED: "true"
 
 jobs:
   test:
