@@ -30,5 +30,6 @@ if [ "${1-}" = "--" ]; then
 fi
 
 cargo build --release --workspace
+pnpm --filter @quire/client build
 pnpm --filter @quire/ui build
 pnpm --filter @quire/desktop exec electron-builder "$@"
