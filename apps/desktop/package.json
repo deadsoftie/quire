@@ -4,6 +4,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "A local-first LaTeX editor",
+  "homepage": "https://github.com/deadsoftie/quire",
   "author": "deadsoftie <rahulnair1229@gmail.com>",
   "license": "MIT",
   "main": "src/main.js",
@@ -23,6 +24,8 @@
   },
   "build": {
     "appId": "com.deadsoftie.quire",
+    "executableName": "quire",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "files": [
       "src/**/*",
       "assets/**/*",
