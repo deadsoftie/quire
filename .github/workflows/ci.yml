@@ -28,6 +28,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Tectonic's bridge crates (fontconfig, freetype2, graphite2, harfbuzz, icu, png) link system libs, not vendored ones.
+      - name: Install Tectonic system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libgraphite2-dev libharfbuzz-dev libicu-dev libpng-dev libssl-dev zlib1g-dev pkg-config
+
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -88,6 +94,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Tectonic system dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libgraphite2-dev libharfbuzz-dev libicu-dev libpng-dev libssl-dev zlib1g-dev pkg-config
 
       - uses: pnpm/action-setup@v4
         with:
