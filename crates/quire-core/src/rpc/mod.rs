@@ -56,6 +56,8 @@ pub enum FileNodeKind {
     Tex,
     Graphic,
     Bib,
+    Class,
+    Package,
 }
 
 /// Flat list from [`crate::project::FileGraph`] (the LaTeX dependency graph), not a directory walk.
@@ -217,15 +219,36 @@ pub enum CompilePhase {
 
 /// Emitted via `onEvent`. `IndexUpdated`/`BundleFetch` are never emitted yet.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 #[ts(export, export_to = CONTRACT_TS)]
 pub enum CoreEvent {
-    CompileStarted { compile_id: String },
-    CompileProgress { compile_id: String, phase: CompilePhase, pass: u32 },
-    CompileFinished { result: CompileResponse },
-    FilesChanged { project_id: ProjectId, uris: Vec<DocUri> },
-    IndexUpdated { project_id: ProjectId },
-    BundleFetch { package: String, bytes: u32, done: bool },
+    CompileStarted {
+        compile_id: String,
+    },
+    CompileProgress {
+        compile_id: String,
+        phase: CompilePhase,
+        pass: u32,
+    },
+    CompileFinished {
+        result: CompileResponse,
+    },
+    FilesChanged {
+        project_id: ProjectId,
+        uris: Vec<DocUri>,
+    },
+    IndexUpdated {
+        project_id: ProjectId,
+    },
+    BundleFetch {
+        package: String,
+        bytes: u32,
+        done: bool,
+    },
 }
 
 // ---------- Completion ----------

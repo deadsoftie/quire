@@ -1,5 +1,3 @@
-//! No `cancel_compile`: the caller kills the OS process instead. No project registry either - `ProjectId` is just the project's root directory path.
-
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, fs};
@@ -15,7 +13,6 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     let project_dir = Path::new(&req.path);
     let detection = project::detect_root(project_dir);
 
-    // `root: DocUri` isn't optional, so an ambiguous result still needs a best guess - the first sorted candidate; `candidates` carries the full list for the UI to prompt with.
     let root = detection
         .root
         .clone()
@@ -31,21 +28,30 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
         .iter()
         .map(|f| FileNode {
             uri: f.path.display().to_string(),
-            name: f.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            name: f
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
             kind: match f.kind {
                 FileKind::Tex => FileNodeKind::Tex,
                 FileKind::Graphic => FileNodeKind::Graphic,
                 FileKind::Bib => FileNodeKind::Bib,
+                FileKind::Class => FileNodeKind::Class,
+                FileKind::Package => FileNodeKind::Package,
             },
         })
         .collect();
 
     Ok(OpenProjectResponse {
-        // The project's root *directory*, not the detected root *document* (that's `root` below).
         project_id: req.path.clone(),
         root: root.display().to_string(),
         root_confidence: detection.confidence.into(),
-        candidates: detection.candidates.iter().map(|p| p.display().to_string()).collect(),
+        candidates: detection
+            .candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect(),
         files,
         // Tectonic is embedded, so an engine always exists; per-compile network/package issues surface through compile()'s own errors instead.
         engine_available: true,
@@ -53,55 +59,62 @@ pub fn open_project(req: &OpenProjectRequest) -> Result<OpenProjectResponse, Com
     })
 }
 
-/// No server-side state to update - just validates `uri` so the caller can trust what it's about
-/// to remember (as a compile-time `targetRoot`, in practice - see `compile`'s own re-validation
-/// of that field, which never trusts this call happened first).
 pub fn set_root(req: &SetRootRequest) -> Result<(), CompileError> {
     let project_dir = Path::new(&req.project_id);
     let target = Path::new(&req.uri);
     ensure_within_project(project_dir, target)?;
-    if !target.extension().is_some_and(|e| e.eq_ignore_ascii_case("tex")) {
-        return Err(CompileError { message: format!("{} is not a .tex file", req.uri), log: None });
+    if !target
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("tex"))
+    {
+        return Err(CompileError {
+            message: format!("{} is not a .tex file", req.uri),
+            log: None,
+        });
     }
     if !target.is_file() {
-        return Err(CompileError { message: format!("{} is not a file", req.uri), log: None });
+        return Err(CompileError {
+            message: format!("{} is not a file", req.uri),
+            log: None,
+        });
     }
     Ok(())
 }
 
-/// No-op - no server-side resource is tied to a project to release.
 pub fn close_project(_req: &CloseProjectRequest) -> Result<(), CompileError> {
     Ok(())
 }
 
-/// A LaTeX failure is a normal `status: "errors"` result; `Err` is reserved for an unserviceable request.
 pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     let start = Instant::now();
     let project_dir = PathBuf::from(&req.project_id);
     let shadow_dir = project_dir.join(".quire").join("build");
 
-    let dirty: HashMap<PathBuf, &str> =
-        req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
+    let dirty: HashMap<PathBuf, &str> = req
+        .dirty_buffers
+        .iter()
+        .map(|b| (PathBuf::from(&b.uri), b.text.as_str()))
+        .collect();
 
-    // Client-chosen root override ("targeting"): a full override, not a hint blended into
-    // detection, and independently re-validated here rather than trusted from an earlier
-    // setRoot() call (core holds no state; the file could have moved/vanished since). An
-    // override that no longer resolves silently falls through to normal detection below rather
-    // than failing the whole compile over a stale client-side value.
-    let target = req.target_root.as_deref().map(PathBuf::from).filter(|candidate| {
-        candidate.is_file() && ensure_within_project(&project_dir, candidate).is_ok()
-    });
+    let target = req
+        .target_root
+        .as_deref()
+        .map(PathBuf::from)
+        .filter(|candidate| {
+            candidate.is_file() && ensure_within_project(&project_dir, candidate).is_ok()
+        });
 
     let root = match target {
         Some(root) => root,
         None => {
-            // Detection must see unsaved buffers, or a just-created empty file can't be the root until saved.
             let detection = project::detect_root_with_dirty(&project_dir, &dirty);
-            // Mirrors open_project's own fallback: a best guess beats refusing to compile at all.
-            detection.root.or_else(|| detection.candidates.first().cloned()).ok_or_else(|| CompileError {
-                message: "no .tex file found in this project".to_string(),
-                log: None,
-            })?
+            detection
+                .root
+                .or_else(|| detection.candidates.first().cloned())
+                .ok_or_else(|| CompileError {
+                    message: "no .tex file found in this project".to_string(),
+                    log: None,
+                })?
         }
     };
 
@@ -125,7 +138,6 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
         write_into_shadow(&project_dir, &shadow_dir, &file.path, content.as_bytes())?;
     }
 
-    // Non-Tex files never come from dirty buffers - copy the real bytes into the shadow dir.
     for file in graph.files.iter().filter(|f| f.kind != FileKind::Tex) {
         let bytes = fs::read(&file.path).unwrap_or_default();
         write_into_shadow(&project_dir, &shadow_dir, &file.path, &bytes)?;
@@ -146,8 +158,9 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
         CompileEngine::System => {
             let root_relative = root.strip_prefix(&project_dir).unwrap_or(&root);
             match crate::system_tex::detect() {
-                Some((engine, _version)) => crate::system_tex::compile(engine, root_relative, &shadow_dir),
-                // Re-detected here, not trusted from an earlier detectSystemTex() call, since core holds no state.
+                Some((engine, _version)) => {
+                    crate::system_tex::compile(engine, root_relative, &shadow_dir)
+                }
                 None => {
                     return Ok(CompileResponse {
                         compile_id,
@@ -191,7 +204,11 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             root: root_uri.clone(),
         },
         Err(e) => {
-            let missing_packages = e.log.as_deref().map(crate::diagnostics::missing_packages).unwrap_or_default();
+            let missing_packages = e
+                .log
+                .as_deref()
+                .map(crate::diagnostics::missing_packages)
+                .unwrap_or_default();
             let translated = e
                 .log
                 .as_deref()
@@ -211,8 +228,11 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
             } else {
                 translated
             };
-            // A missing package takes priority over generic errors - it's the one failure mode with a real fix path.
-            let status = if missing_packages.is_empty() { CompileStatus::Errors } else { CompileStatus::PackagesMissing };
+            let status = if missing_packages.is_empty() {
+                CompileStatus::Errors
+            } else {
+                CompileStatus::PackagesMissing
+            };
             CompileResponse {
                 compile_id,
                 status,
@@ -231,20 +251,30 @@ pub fn compile(req: &CompileRequest) -> Result<CompileResponse, CompileError> {
     Ok(response)
 }
 
-/// Last line of defense: `resolve_within` already confines references, but any escape here is refused, never followed.
 fn write_into_shadow(
     project_dir: &Path,
     shadow_dir: &Path,
     real_path: &Path,
     content: &[u8],
 ) -> Result<(), CompileError> {
-    let relative = real_path.strip_prefix(project_dir).map_err(|_| CompileError {
-        message: format!("refusing to mirror {}: outside the project directory", real_path.display()),
-        log: None,
-    })?;
-    if relative.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    let relative = real_path
+        .strip_prefix(project_dir)
+        .map_err(|_| CompileError {
+            message: format!(
+                "refusing to mirror {}: outside the project directory",
+                real_path.display()
+            ),
+            log: None,
+        })?;
+    if relative
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return Err(CompileError {
-            message: format!("refusing to mirror {}: escapes the project directory", real_path.display()),
+            message: format!(
+                "refusing to mirror {}: escapes the project directory",
+                real_path.display()
+            ),
             log: None,
         });
     }
@@ -257,12 +287,13 @@ fn write_into_shadow(
 }
 
 fn generate_compile_id() -> String {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     format!("{}-{}", std::process::id(), nanos)
 }
 
-
-/// Reads from disk - `OutlineRequest` carries no dirty-buffer text, so this reflects last-saved content only.
 pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     let project_dir = Path::new(&req.project_id);
     let Some(root) = resolve_root_for_uri(project_dir, &req.uri) else {
@@ -273,10 +304,6 @@ pub fn outline(req: &OutlineRequest) -> Vec<OutlineNode> {
     index.outline_for(Path::new(&req.uri))
 }
 
-/// Root detection is project-wide, so a workspace holding several independent standalone
-/// documents (no `\input`/`\include` chain between them) comes back `Ambiguous` for all of
-/// them. When that happens, fall back to treating the requested file as its own root if it's
-/// one of the candidates, so an unambiguous document isn't starved by unrelated siblings.
 fn resolve_root_for_uri(project_dir: &Path, uri: &str) -> Option<PathBuf> {
     let detection = project::detect_root(project_dir);
     detection.root.or_else(|| {
@@ -285,7 +312,6 @@ fn resolve_root_for_uri(project_dir: &Path, uri: &str) -> Option<PathBuf> {
     })
 }
 
-/// Checked before touching disk: no reason to rebuild the index for a keystroke none of these triggers recognize.
 pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     let is_ref = crate::index::is_ref_completion_context(&req.text, &req.position);
     let is_cite = crate::index::is_cite_completion_context(&req.text, &req.position);
@@ -316,7 +342,6 @@ pub fn complete(req: &CompletionRequest) -> Vec<CompletionItem> {
     }
 }
 
-// Project-local symbols outrank package commands, which outrank the global math-symbol fallback.
 const PROJECT_LOCAL_PRIORITY: i32 = 0;
 const PACKAGE_PRIORITY: i32 = 10;
 const SYMBOL_PRIORITY: i32 = 20;
@@ -355,7 +380,6 @@ fn citation_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionIte
     items
 }
 
-/// Inserts the full path with extension, unambiguous even when two candidates share a basename.
 fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = paths
         .map(|p| CompletionItem {
@@ -372,7 +396,6 @@ fn path_completions<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<CompletionI
     items
 }
 
-/// `label`/`insert` omit the leading backslash - the client's trigger replaces starting right after it.
 fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = index
         .macros()
@@ -380,8 +403,11 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
             label: m.name.clone(),
             kind: CompletionKind::Macro,
             insert: insert_with_tabstops(&m.name, m.arity),
-            // The raw substitution body - there's nothing else to show for a "readable" detail here.
-            detail: if m.body.is_empty() { None } else { Some(m.body.clone()) },
+            detail: if m.body.is_empty() {
+                None
+            } else {
+                Some(m.body.clone())
+            },
             documentation: None,
             symbol_preview: None,
             sort_priority: PROJECT_LOCAL_PRIORITY,
@@ -389,33 +415,39 @@ fn command_completions(index: &crate::index::ProjectIndex) -> Vec<CompletionItem
         .collect();
 
     let packages: Vec<&str> = index.packages().collect();
-    items.extend(crate::index::ctan::commands_for_packages(packages.into_iter()).into_iter().map(|c| CompletionItem {
-        label: c.name.clone(),
-        kind: CompletionKind::Command,
-        insert: insert_with_tabstops(&c.name, c.arity),
-        detail: c.detail,
-        documentation: None,
-        symbol_preview: None,
-        sort_priority: PACKAGE_PRIORITY,
-    }));
+    items.extend(
+        crate::index::ctan::commands_for_packages(packages.into_iter())
+            .into_iter()
+            .map(|c| CompletionItem {
+                label: c.name.clone(),
+                kind: CompletionKind::Command,
+                insert: insert_with_tabstops(&c.name, c.arity),
+                detail: c.detail,
+                documentation: None,
+                symbol_preview: None,
+                sort_priority: PACKAGE_PRIORITY,
+            }),
+    );
 
-    // Never scoped by `\usepackage` - these are the always-available fallback tier, unlike the package-gated block above.
-    items.extend(crate::index::symbols::all().into_iter().map(|s| CompletionItem {
-        label: s.name.clone(),
-        kind: CompletionKind::Symbol,
-        insert: s.name.clone(),
-        detail: Some(s.detail),
-        documentation: None,
-        // TeX source for client-side KaTeX rendering, so the backslash belongs here unlike insert/label.
-        symbol_preview: Some(format!("\\{}", s.name)),
-        sort_priority: SYMBOL_PRIORITY,
-    }));
+    items.extend(
+        crate::index::symbols::all()
+            .into_iter()
+            .map(|s| CompletionItem {
+                label: s.name.clone(),
+                kind: CompletionKind::Symbol,
+                insert: s.name.clone(),
+                detail: Some(s.detail),
+                documentation: None,
+                // TeX source for client-side KaTeX rendering, so the backslash belongs here unlike insert/label.
+                symbol_preview: Some(format!("\\{}", s.name)),
+                sort_priority: SYMBOL_PRIORITY,
+            }),
+    );
 
     items.sort_by(|a, b| a.label.cmp(&b.label));
     items
 }
 
-/// `\vect` (arity 1) becomes `vect{${1:arg1}}`; arity 0 is just the bare name with no braces.
 fn insert_with_tabstops(name: &str, arity: u32) -> String {
     let mut s = name.to_string();
     for n in 1..=arity {
@@ -426,16 +458,17 @@ fn insert_with_tabstops(name: &str, arity: u32) -> String {
     s
 }
 
-/// Scans every package/class the project uses and fetches whatever's missing in parallel, so the first compile never stalls on serial fetches.
 pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesResponse {
     let project_dir = Path::new(&req.project_id);
     let Some(root) = project::detect_root(project_dir).root else {
-        return PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() };
+        return PrefetchPackagesResponse {
+            fetched: Vec::new(),
+            failed: Vec::new(),
+        };
     };
     let graph = project::build_file_graph(&root);
     let index = crate::index::ProjectIndex::build(&graph);
 
-    // File -> the package/class name it stands for, so the response reports names, not raw filenames.
     let mut name_for_file: HashMap<String, String> = HashMap::new();
     for name in index.packages() {
         name_for_file.insert(format!("{name}.sty"), name.to_string());
@@ -447,7 +480,10 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
     let files: Vec<String> = name_for_file.keys().cloned().collect();
     let missing_files = crate::bundle::missing_from_cache(&files);
     if missing_files.is_empty() {
-        return PrefetchPackagesResponse { fetched: Vec::new(), failed: Vec::new() };
+        return PrefetchPackagesResponse {
+            fetched: Vec::new(),
+            failed: Vec::new(),
+        };
     }
 
     let outcomes: Vec<(String, Result<u64, CompileError>)> = std::thread::scope(|scope| {
@@ -475,7 +511,8 @@ pub fn prefetch_packages(req: &PrefetchPackagesRequest) -> PrefetchPackagesRespo
 }
 
 pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
-    let offline_packages = (crate::bundle::core_packages().len() + crate::bundle::cached_packages().len()) as u32;
+    let offline_packages =
+        (crate::bundle::core_packages().len() + crate::bundle::cached_packages().len()) as u32;
     Ok(BundleStatusResponse {
         version: crate::bundle::digest_hex()?,
         offline_packages,
@@ -483,32 +520,43 @@ pub fn bundle_status() -> Result<BundleStatusResponse, CompileError> {
     })
 }
 
-/// Checked fresh every call, never cached, so the Settings toggle is never offered for a fallback that doesn't actually work.
 pub fn detect_system_tex() -> DetectSystemTexResponse {
     match crate::system_tex::detect() {
-        Some((engine, version)) => {
-            DetectSystemTexResponse { available: true, engine: Some(engine.into()), version: Some(version) }
-        }
-        None => DetectSystemTexResponse { available: false, engine: None, version: None },
+        Some((engine, version)) => DetectSystemTexResponse {
+            available: true,
+            engine: Some(engine.into()),
+            version: Some(version),
+        },
+        None => DetectSystemTexResponse {
+            available: false,
+            engine: None,
+            version: None,
+        },
     }
 }
 
-/// The curated core bundle (never removable) merged with whatever the cache tier currently holds (removable), sorted by name.
 pub fn list_installed_packages() -> Vec<InstalledPackage> {
     let mut packages: Vec<InstalledPackage> = crate::bundle::core_packages()
         .into_iter()
-        .map(|name| InstalledPackage { name, bytes: None, source: PackageSource::Core })
+        .map(|name| InstalledPackage {
+            name,
+            bytes: None,
+            source: PackageSource::Core,
+        })
         .collect();
     packages.extend(
         crate::bundle::cached_packages()
             .into_iter()
-            .map(|(name, bytes)| InstalledPackage { name, bytes: Some(bytes), source: PackageSource::Cache }),
+            .map(|(name, bytes)| InstalledPackage {
+                name,
+                bytes: Some(bytes),
+                source: PackageSource::Cache,
+            }),
     );
     packages.sort_by(|a, b| a.name.cmp(&b.name));
     packages
 }
 
-/// Installs a package by name directly, not via a project scan - tries it as a package first, then as a document class.
 pub fn install_package(req: &InstallPackageRequest) -> Result<FetchedPackage, CompileError> {
     let name = req.name.clone();
     match crate::bundle::fetch(&format!("{name}.sty")) {
@@ -536,48 +584,64 @@ pub fn write_file(req: &WriteFileRequest) -> Result<(), CompileError> {
 fn explorer_node_from(entry: project::ExplorerEntry) -> ExplorerNode {
     ExplorerNode {
         uri: entry.path.display().to_string(),
-        name: entry.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        name: entry
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         kind: match entry.kind {
             project::ExplorerKind::File => ExplorerNodeKind::File,
             project::ExplorerKind::Directory => ExplorerNodeKind::Directory,
         },
-        children: entry.children.map(|c| c.into_iter().map(explorer_node_from).collect()),
+        children: entry
+            .children
+            .map(|c| c.into_iter().map(explorer_node_from).collect()),
     }
 }
 
 pub fn list_project_tree(req: &ListProjectTreeRequest) -> Vec<ExplorerNode> {
     let project_dir = Path::new(&req.project_id);
-    project::build_explorer_tree(project_dir).into_iter().map(explorer_node_from).collect()
+    project::build_explorer_tree(project_dir)
+        .into_iter()
+        .map(explorer_node_from)
+        .collect()
 }
 
-/// Rejects a typed name that could otherwise smuggle a path escape (`../x`, an embedded
-/// separator) past the containment check below, which only ever validates whole paths.
 fn sanitize_entry_name(name: &str) -> Result<&str, CompileError> {
     if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\\') {
-        return Err(CompileError { message: format!("\"{name}\" is not a valid file or folder name"), log: None });
+        return Err(CompileError {
+            message: format!("\"{name}\" is not a valid file or folder name"),
+            log: None,
+        });
     }
     Ok(name)
 }
 
-/// Same intent as `project::resolve_within` (used for parsed LaTeX references), applied to
-/// paths that arrive over RPC instead: canonicalize and require containment inside `project_dir`.
 fn ensure_within_project(project_dir: &Path, candidate: &Path) -> Result<(), CompileError> {
-    let base_real = project_dir
-        .canonicalize()
-        .map_err(|_| CompileError { message: "project directory not found".to_string(), log: None })?;
-    let real = candidate
-        .canonicalize()
-        .map_err(|_| CompileError { message: format!("{} not found", candidate.display()), log: None })?;
+    let base_real = project_dir.canonicalize().map_err(|_| CompileError {
+        message: "project directory not found".to_string(),
+        log: None,
+    })?;
+    let real = candidate.canonicalize().map_err(|_| CompileError {
+        message: format!("{} not found", candidate.display()),
+        log: None,
+    })?;
     if real.starts_with(&base_real) {
         Ok(())
     } else {
-        Err(CompileError { message: format!("{} is outside the project directory", candidate.display()), log: None })
+        Err(CompileError {
+            message: format!("{} is outside the project directory", candidate.display()),
+            log: None,
+        })
     }
 }
 
 fn ensure_absent(target: &Path) -> Result<(), CompileError> {
     if target.exists() {
-        Err(CompileError { message: format!("{} already exists", target.display()), log: None })
+        Err(CompileError {
+            message: format!("{} already exists", target.display()),
+            log: None,
+        })
     } else {
         Ok(())
     }
@@ -590,7 +654,9 @@ pub fn create_file(req: &CreateFileRequest) -> Result<EntryResponse, CompileErro
     let target = parent.join(sanitize_entry_name(&req.name)?);
     ensure_absent(&target)?;
     fs::write(&target, b"")?;
-    Ok(EntryResponse { uri: target.display().to_string() })
+    Ok(EntryResponse {
+        uri: target.display().to_string(),
+    })
 }
 
 pub fn create_directory(req: &CreateDirectoryRequest) -> Result<EntryResponse, CompileError> {
@@ -600,20 +666,25 @@ pub fn create_directory(req: &CreateDirectoryRequest) -> Result<EntryResponse, C
     let target = parent.join(sanitize_entry_name(&req.name)?);
     ensure_absent(&target)?;
     fs::create_dir(&target)?;
-    Ok(EntryResponse { uri: target.display().to_string() })
+    Ok(EntryResponse {
+        uri: target.display().to_string(),
+    })
 }
 
 pub fn rename_entry(req: &RenameEntryRequest) -> Result<EntryResponse, CompileError> {
     let project_dir = Path::new(&req.project_id);
     let source = Path::new(&req.uri);
     ensure_within_project(project_dir, source)?;
-    let parent = source
-        .parent()
-        .ok_or_else(|| CompileError { message: "cannot rename the project root".to_string(), log: None })?;
+    let parent = source.parent().ok_or_else(|| CompileError {
+        message: "cannot rename the project root".to_string(),
+        log: None,
+    })?;
     let target = parent.join(sanitize_entry_name(&req.new_name)?);
     ensure_absent(&target)?;
     fs::rename(source, &target)?;
-    Ok(EntryResponse { uri: target.display().to_string() })
+    Ok(EntryResponse {
+        uri: target.display().to_string(),
+    })
 }
 
 pub fn move_entry(req: &MoveEntryRequest) -> Result<EntryResponse, CompileError> {
@@ -622,13 +693,16 @@ pub fn move_entry(req: &MoveEntryRequest) -> Result<EntryResponse, CompileError>
     ensure_within_project(project_dir, source)?;
     let new_parent = Path::new(&req.new_parent_uri);
     ensure_within_project(project_dir, new_parent)?;
-    let name = source
-        .file_name()
-        .ok_or_else(|| CompileError { message: "cannot move the project root".to_string(), log: None })?;
+    let name = source.file_name().ok_or_else(|| CompileError {
+        message: "cannot move the project root".to_string(),
+        log: None,
+    })?;
     let target = new_parent.join(name);
     ensure_absent(&target)?;
     fs::rename(source, &target)?;
-    Ok(EntryResponse { uri: target.display().to_string() })
+    Ok(EntryResponse {
+        uri: target.display().to_string(),
+    })
 }
 
 pub fn copy_entry(req: &CopyEntryRequest) -> Result<EntryResponse, CompileError> {
@@ -641,7 +715,10 @@ pub fn copy_entry(req: &CopyEntryRequest) -> Result<EntryResponse, CompileError>
         Some(n) => sanitize_entry_name(n)?.to_string(),
         None => source
             .file_name()
-            .ok_or_else(|| CompileError { message: "cannot copy the project root".to_string(), log: None })?
+            .ok_or_else(|| CompileError {
+                message: "cannot copy the project root".to_string(),
+                log: None,
+            })?
             .to_string_lossy()
             .into_owned(),
     };
@@ -652,7 +729,9 @@ pub fn copy_entry(req: &CopyEntryRequest) -> Result<EntryResponse, CompileError>
     } else {
         fs::copy(source, &target)?;
     }
-    Ok(EntryResponse { uri: target.display().to_string() })
+    Ok(EntryResponse {
+        uri: target.display().to_string(),
+    })
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), CompileError> {
@@ -672,22 +751,47 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), CompileError> 
 
 const MAX_SEARCH_MATCHES: usize = 5000;
 
-/// Escapes/wraps a literal query into a regex when `regex` is false; a bad user-supplied regex surfaces as a normal RPC error.
-fn build_search_regex(query: &str, case_sensitive: bool, whole_word: bool, regex: bool) -> Result<Regex, CompileError> {
-    let core = if regex { query.to_string() } else { regex::escape(query) };
-    let bounded = if whole_word { format!(r"\b(?:{core})\b") } else { core };
-    let pattern = if case_sensitive { bounded } else { format!("(?i){bounded}") };
-    Regex::new(&pattern).map_err(|e| CompileError { message: format!("invalid search pattern: {e}"), log: None })
+fn build_search_regex(
+    query: &str,
+    case_sensitive: bool,
+    whole_word: bool,
+    regex: bool,
+) -> Result<Regex, CompileError> {
+    let core = if regex {
+        query.to_string()
+    } else {
+        regex::escape(query)
+    };
+    let bounded = if whole_word {
+        format!(r"\b(?:{core})\b")
+    } else {
+        core
+    };
+    let pattern = if case_sensitive {
+        bounded
+    } else {
+        format!("(?i){bounded}")
+    };
+    Regex::new(&pattern).map_err(|e| CompileError {
+        message: format!("invalid search pattern: {e}"),
+        log: None,
+    })
 }
 
 pub fn search_project(req: &SearchProjectRequest) -> Result<SearchProjectResponse, CompileError> {
     if req.query.is_empty() {
-        return Ok(SearchProjectResponse { matches: Vec::new(), truncated: false });
+        return Ok(SearchProjectResponse {
+            matches: Vec::new(),
+            truncated: false,
+        });
     }
 
     let project_dir = PathBuf::from(&req.project_id);
-    let dirty: HashMap<PathBuf, &str> =
-        req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
+    let dirty: HashMap<PathBuf, &str> = req
+        .dirty_buffers
+        .iter()
+        .map(|b| (PathBuf::from(&b.uri), b.text.as_str()))
+        .collect();
     let pattern = build_search_regex(&req.query, req.case_sensitive, req.whole_word, req.regex)?;
 
     let mut matches = Vec::new();
@@ -723,14 +827,19 @@ pub fn search_project(req: &SearchProjectRequest) -> Result<SearchProjectRespons
     Ok(SearchProjectResponse { matches, truncated })
 }
 
-pub fn replace_in_project(req: &ReplaceInProjectRequest) -> Result<ReplaceInProjectResponse, CompileError> {
+pub fn replace_in_project(
+    req: &ReplaceInProjectRequest,
+) -> Result<ReplaceInProjectResponse, CompileError> {
     if req.query.is_empty() {
         return Ok(ReplaceInProjectResponse { files: Vec::new() });
     }
 
     let project_dir = PathBuf::from(&req.project_id);
-    let dirty: HashMap<PathBuf, &str> =
-        req.dirty_buffers.iter().map(|b| (PathBuf::from(&b.uri), b.text.as_str())).collect();
+    let dirty: HashMap<PathBuf, &str> = req
+        .dirty_buffers
+        .iter()
+        .map(|b| (PathBuf::from(&b.uri), b.text.as_str()))
+        .collect();
     let pattern = build_search_regex(&req.query, req.case_sensitive, req.whole_word, req.regex)?;
 
     let mut files = Vec::new();
@@ -748,15 +857,22 @@ pub fn replace_in_project(req: &ReplaceInProjectRequest) -> Result<ReplaceInProj
             continue;
         }
 
-        // NoExpand for the literal case: $1-style expansion applies to the replacement text regardless of pattern.
         let new_text = if req.regex {
-            pattern.replace_all(&content, req.replacement.as_str()).into_owned()
+            pattern
+                .replace_all(&content, req.replacement.as_str())
+                .into_owned()
         } else {
-            pattern.replace_all(&content, regex::NoExpand(&req.replacement)).into_owned()
+            pattern
+                .replace_all(&content, regex::NoExpand(&req.replacement))
+                .into_owned()
         };
 
         fs::write(&path, &new_text)?;
-        files.push(ReplacedFile { uri: path.display().to_string(), replacements: replacements as u32, new_text });
+        files.push(ReplacedFile {
+            uri: path.display().to_string(),
+            replacements: replacements as u32,
+            new_text,
+        });
     }
 
     Ok(ReplaceInProjectResponse { files })
@@ -767,7 +883,8 @@ mod tests {
     use super::*;
 
     fn temp_project(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quire-handlers-{label}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("quire-handlers-{label}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -797,7 +914,11 @@ mod tests {
             name: "notes.md".to_string(),
         });
         assert!(result.is_err());
-        assert_eq!(fs::read_to_string(dir.join("notes.md")).unwrap(), "existing", "must not clobber the existing file");
+        assert_eq!(
+            fs::read_to_string(dir.join("notes.md")).unwrap(),
+            "existing",
+            "must not clobber the existing file"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -822,7 +943,10 @@ mod tests {
             parent_uri: outside.display().to_string(),
             name: "new-folder".to_string(),
         });
-        assert!(result.is_err(), "a parent outside the project directory must be rejected");
+        assert!(
+            result.is_err(),
+            "a parent outside the project directory must be rejected"
+        );
         fs::remove_dir_all(&dir).unwrap();
         fs::remove_dir_all(&outside).unwrap();
     }
@@ -854,7 +978,10 @@ mod tests {
             new_parent_uri: dir.join("chapters").display().to_string(),
         })
         .unwrap();
-        assert_eq!(resp.uri, dir.join("chapters").join("intro.tex").display().to_string());
+        assert_eq!(
+            resp.uri,
+            dir.join("chapters").join("intro.tex").display().to_string()
+        );
         assert!(!dir.join("intro.tex").exists());
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -872,8 +999,14 @@ mod tests {
         })
         .unwrap();
         assert_eq!(resp.uri, dir.join("figures-copy").display().to_string());
-        assert_eq!(fs::read_to_string(dir.join("figures-copy").join("plot.png")).unwrap(), "bytes");
-        assert!(dir.join("figures").join("plot.png").exists(), "the original must be untouched");
+        assert_eq!(
+            fs::read_to_string(dir.join("figures-copy").join("plot.png")).unwrap(),
+            "bytes"
+        );
+        assert!(
+            dir.join("figures").join("plot.png").exists(),
+            "the original must be untouched"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -882,7 +1015,9 @@ mod tests {
         let dir = temp_project("list-tree");
         fs::write(dir.join("main.tex"), "\\documentclass{article}").unwrap();
         fs::write(dir.join("notes.md"), "unreferenced").unwrap();
-        let tree = list_project_tree(&ListProjectTreeRequest { project_id: dir.display().to_string() });
+        let tree = list_project_tree(&ListProjectTreeRequest {
+            project_id: dir.display().to_string(),
+        });
         let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
         assert!(names.contains(&"notes.md"), "{names:?}");
         assert!(names.contains(&"main.tex"), "{names:?}");
@@ -891,31 +1026,61 @@ mod tests {
 
     #[test]
     fn insert_with_tabstops_produces_one_brace_group_per_arity() {
-        assert_eq!(insert_with_tabstops("greeting", 0), "greeting", "arity 0 must not add any braces at all");
+        assert_eq!(
+            insert_with_tabstops("greeting", 0),
+            "greeting",
+            "arity 0 must not add any braces at all"
+        );
         assert_eq!(insert_with_tabstops("vect", 1), "vect{${1:arg1}}");
-        assert_eq!(insert_with_tabstops("greet", 2), "greet{${1:arg1}}{${2:arg2}}", "each argument gets its own brace group, in order");
+        assert_eq!(
+            insert_with_tabstops("greet", 2),
+            "greet{${1:arg1}}{${2:arg2}}",
+            "each argument gets its own brace group, in order"
+        );
     }
 
     #[test]
     fn package_commands_rank_below_project_local_priority() {
         let items = crate::index::ctan::commands_for_packages(["tikz"].into_iter());
-        assert!(!items.is_empty(), "sanity check: tikz should have commands in the bundled database");
-        assert!(PACKAGE_PRIORITY > PROJECT_LOCAL_PRIORITY, "Section 9.4: package commands must rank below project-local symbols");
+        assert!(
+            !items.is_empty(),
+            "sanity check: tikz should have commands in the bundled database"
+        );
+        assert!(
+            PACKAGE_PRIORITY > PROJECT_LOCAL_PRIORITY,
+            "Section 9.4: package commands must rank below project-local symbols"
+        );
     }
 
     #[test]
     fn math_symbols_rank_below_package_commands() {
-        assert!(SYMBOL_PRIORITY > PACKAGE_PRIORITY, "Section 9.4: the global fallback tier must rank below package commands");
+        assert!(
+            SYMBOL_PRIORITY > PACKAGE_PRIORITY,
+            "Section 9.4: the global fallback tier must rank below package commands"
+        );
     }
 
     #[test]
     fn math_symbol_completion_item_carries_a_katex_ready_preview() {
-        let index = crate::index::ProjectIndex::build(&project::FileGraph { root: PathBuf::new(), files: Vec::new() });
+        let index = crate::index::ProjectIndex::build(&project::FileGraph {
+            root: PathBuf::new(),
+            files: Vec::new(),
+        });
         let items = command_completions(&index);
-        let alpha = items.iter().find(|i| i.label == "alpha").expect("\\alpha should be in the bundled symbol set");
+        let alpha = items
+            .iter()
+            .find(|i| i.label == "alpha")
+            .expect("\\alpha should be in the bundled symbol set");
         assert_eq!(alpha.kind, CompletionKind::Symbol);
-        assert_eq!(alpha.insert, "alpha", "insert omits the leading backslash, like macros/package commands");
-        assert_eq!(alpha.symbol_preview.as_deref(), Some("\\alpha"), "symbolPreview is real TeX source, backslash included, for KaTeX to render");
+        assert_eq!(
+            alpha.insert, "alpha",
+            "insert omits the leading backslash, like macros/package commands"
+        );
+        assert_eq!(
+            alpha.symbol_preview.as_deref(),
+            Some("\\alpha"),
+            "symbolPreview is real TeX source, backslash included, for KaTeX to render"
+        );
         assert_eq!(alpha.sort_priority, SYMBOL_PRIORITY);
     }
 }

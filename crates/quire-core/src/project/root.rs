@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use super::{parse_references, strip_comments, IncludeCommand, SKIP_NAMES};
 
-/// Prefers an unsaved editor buffer over disk, so a pasted-but-unsaved `\documentclass` is still seen.
 fn read_content(path: &Path, dirty: &HashMap<PathBuf, &str>) -> Option<String> {
     if let Some(text) = dirty.get(path) {
         return Some((*text).to_string());
@@ -31,8 +30,10 @@ pub fn detect_root(project_dir: &Path) -> RootDetectionResult {
     detect_root_with_dirty(project_dir, &HashMap::new())
 }
 
-/// Same as `detect_root`, but `dirty` (unsaved buffers, keyed by absolute path) wins over disk content.
-pub fn detect_root_with_dirty(project_dir: &Path, dirty: &HashMap<PathBuf, &str>) -> RootDetectionResult {
+pub fn detect_root_with_dirty(
+    project_dir: &Path,
+    dirty: &HashMap<PathBuf, &str>,
+) -> RootDetectionResult {
     let tex_files = find_all_tex_files(project_dir);
 
     if let Some(root) = detect_explicit(&tex_files, dirty) {
@@ -52,7 +53,6 @@ pub fn detect_root_with_dirty(project_dir: &Path, dirty: &HashMap<PathBuf, &str>
         };
     }
 
-    // Fallback: the file with the highest \input/\include/\subfile out-degree, not literally "most included" (that would tend to pick a shared preamble file).
     let search_scope: Vec<PathBuf> = if documentclass_files.is_empty() {
         tex_files.clone()
     } else {
@@ -102,7 +102,6 @@ fn find_all_tex_files(dir: &Path) -> Vec<PathBuf> {
     results
 }
 
-/// Tracks `visited` by canonicalized path to break a self-referential symlink cycle.
 fn find_all_tex_files_into(dir: &Path, visited: &mut HashSet<PathBuf>, results: &mut Vec<PathBuf>) {
     let Ok(real_dir) = dir.canonicalize() else {
         return;
@@ -128,12 +127,13 @@ fn find_all_tex_files_into(dir: &Path, visited: &mut HashSet<PathBuf>, results: 
     }
 }
 
-/// `% !TEX root = <path>` markers (TeXShop/TeXWorks convention); disagreeing markers fall through to inference rather than guessing.
 fn detect_explicit(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Option<PathBuf> {
     let mut resolved: HashSet<PathBuf> = HashSet::new();
 
     for file in tex_files {
-        let Some(content) = read_content(file, dirty) else { continue };
+        let Some(content) = read_content(file, dirty) else {
+            continue;
+        };
         for line in content.lines().take(20) {
             let trimmed = line.trim();
             let Some(rest) = trimmed
@@ -143,7 +143,9 @@ fn detect_explicit(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Opt
             else {
                 continue;
             };
-            let Some(value) = rest.trim_start().strip_prefix('=') else { continue };
+            let Some(value) = rest.trim_start().strip_prefix('=') else {
+                continue;
+            };
             let target_raw = value.trim();
             if target_raw.is_empty() {
                 continue;
@@ -166,8 +168,10 @@ fn detect_explicit(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Opt
     }
 }
 
-/// Excludes `subfiles`-classed files - each subfiles chapter has its own `\documentclass` too, which would otherwise make such a project always look ambiguous.
-fn files_with_real_documentclass(tex_files: &[PathBuf], dirty: &HashMap<PathBuf, &str>) -> Vec<PathBuf> {
+fn files_with_real_documentclass(
+    tex_files: &[PathBuf],
+    dirty: &HashMap<PathBuf, &str>,
+) -> Vec<PathBuf> {
     tex_files
         .iter()
         .filter(|f| {
@@ -195,18 +199,26 @@ pub(crate) fn documentclass_name(content: &str) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
-fn compute_out_degrees(files: &[PathBuf], project_dir: &Path, dirty: &HashMap<PathBuf, &str>) -> HashMap<PathBuf, usize> {
+fn compute_out_degrees(
+    files: &[PathBuf],
+    project_dir: &Path,
+    dirty: &HashMap<PathBuf, &str>,
+) -> HashMap<PathBuf, usize> {
     let mut degrees = HashMap::new();
     for file in files {
         let Some(content) = read_content(file, dirty) else {
             degrees.insert(file.clone(), 0);
             continue;
         };
-        let refs = parse_references(&content, project_dir);
-        // Neither a graphic nor a bibliography counts as a candidate sub-document.
+        let refs = parse_references(&content, project_dir, &[]);
         let distinct: HashSet<PathBuf> = refs
             .into_iter()
-            .filter(|r| r.command != IncludeCommand::IncludeGraphics && r.command != IncludeCommand::Bibliography)
+            .filter(|r| {
+                r.command != IncludeCommand::IncludeGraphics
+                    && r.command != IncludeCommand::Bibliography
+                    && r.command != IncludeCommand::DocumentClass
+                    && r.command != IncludeCommand::Package
+            })
             .filter_map(|r| r.resolved)
             .collect();
         degrees.insert(file.clone(), distinct.len());
@@ -219,19 +231,27 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> PathBuf {
-        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/root_detection")).join(name)
+        Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/root_detection"
+        ))
+        .join(name)
     }
 
     #[cfg(unix)]
     #[test]
     fn self_referential_symlink_does_not_recurse_forever() {
-        let dir = std::env::temp_dir().join(format!("quire-root-symlink-cycle-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("quire-root-symlink-cycle-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("main.tex"), "\\documentclass{article}\n\\begin{document}x\\end{document}").unwrap();
+        fs::write(
+            dir.join("main.tex"),
+            "\\documentclass{article}\n\\begin{document}x\\end{document}",
+        )
+        .unwrap();
         std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
 
-        // Must terminate at all - a symlink cycle used to stack-overflow this walk.
         let files = find_all_tex_files(&dir);
         assert_eq!(files, vec![dir.join("main.tex")]);
 
@@ -249,21 +269,30 @@ mod tests {
     fn single_real_documentclass_is_inferred() {
         let result = detect_root(&fixture("inferred_single"));
         assert_eq!(result.confidence, RootConfidence::Inferred);
-        assert_eq!(result.root, Some(fixture("inferred_single").join("main.tex")));
+        assert_eq!(
+            result.root,
+            Some(fixture("inferred_single").join("main.tex"))
+        );
     }
 
     #[test]
     fn subfiles_documentclass_is_excluded_from_the_single_check() {
         let result = detect_root(&fixture("inferred_subfiles"));
         assert_eq!(result.confidence, RootConfidence::Inferred);
-        assert_eq!(result.root, Some(fixture("inferred_subfiles").join("main.tex")));
+        assert_eq!(
+            result.root,
+            Some(fixture("inferred_subfiles").join("main.tex"))
+        );
     }
 
     #[test]
     fn falls_back_to_the_file_that_includes_the_most_others() {
         let result = detect_root(&fixture("inferred_graph"));
         assert_eq!(result.confidence, RootConfidence::Inferred);
-        assert_eq!(result.root, Some(fixture("inferred_graph").join("main.tex")));
+        assert_eq!(
+            result.root,
+            Some(fixture("inferred_graph").join("main.tex"))
+        );
     }
 
     #[test]
@@ -281,6 +310,9 @@ mod tests {
 
         let real_one_commented_alternate =
             strip_comments("\\documentclass{article}\n% \\documentclass{report}");
-        assert_eq!(documentclass_name(&real_one_commented_alternate), Some("article".to_string()));
+        assert_eq!(
+            documentclass_name(&real_one_commented_alternate),
+            Some("article".to_string())
+        );
     }
 }
