@@ -4,6 +4,9 @@ A local-first LaTeX editor: a Rust compile/index core (`quire-core`, exposed to 
 desktop shell over JSON-RPC via `quire-sidecar`) driving an Electron + React frontend
 (`apps/desktop`, `packages/ui`).
 
+Quire is open source, built as a tool for research and education - free to use, study,
+and modify for coursework, papers, and teaching material. See [License](#license) below.
+
 ## Repository layout
 
 ```
@@ -75,3 +78,9 @@ for the dev server before launching the window.
 cargo test --workspace
 pnpm --filter @quire/ui test
 ```
+
+## License
+
+MIT - see [LICENSE](./LICENSE). Tectonic (MIT), CodeMirror 6 (MIT), PDF.js (Apache 2.0),
+KaTeX (MIT), and Latin Modern fonts (GUST) are the project's main third-party
+dependencies; all are permissively licensed and compatible with shipping under MIT.

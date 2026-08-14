@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "description": "A local-first LaTeX editor",
   "author": "deadsoftie <rahulnair1229@gmail.com>",
+  "license": "MIT",
   "main": "src/main.js",
   "scripts": {
     "dev": "electron .",
