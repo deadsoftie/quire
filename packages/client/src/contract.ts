@@ -119,7 +119,7 @@ export type FetchedPackage = { name: string, bytes: bigint, };
  */
 export type FileNode = { uri: string, name: string, kind: FileNodeKind, };
 
-export type FileNodeKind = "tex" | "graphic" | "bib";
+export type FileNodeKind = "tex" | "graphic" | "bib" | "class" | "package";
 
 export type InstallPackageRequest = { name: string, };
 

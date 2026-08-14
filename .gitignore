@@ -8,3 +8,4 @@ pnpm-debug.log*
 /sample-project/
 /bundles/core/
 scripts/.mac-signing.env
+/crates/quire-core/tests/fixtures/perf_thesis/

@@ -2,7 +2,11 @@ use quire_core::project::{build_file_graph, FileKind, IncludeCommand};
 use std::path::Path;
 
 fn fixture_root() -> std::path::PathBuf {
-    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/project_graph")).join("main.tex")
+    Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/project_graph"
+    ))
+    .join("main.tex")
 }
 
 #[test]
@@ -27,7 +31,11 @@ fn resolves_a_real_multi_file_project_fully() {
         tex_paths.contains(&base_dir.join("chapters/nested.tex").as_path()),
         "chapters/nested.tex should be reachable transitively via intro.tex's \\subfile"
     );
-    assert_eq!(tex_paths.len(), 4, "no extra/duplicate tex nodes: {tex_paths:?}");
+    assert_eq!(
+        tex_paths.len(),
+        4,
+        "no extra/duplicate tex nodes: {tex_paths:?}"
+    );
 
     let graphic_paths: Vec<&Path> = graph
         .files
@@ -35,15 +43,26 @@ fn resolves_a_real_multi_file_project_fully() {
         .filter(|f| f.kind == FileKind::Graphic)
         .map(|f| f.path.as_path())
         .collect();
-    assert_eq!(graphic_paths, vec![base_dir.join("figures/plot.pdf").as_path()]);
+    assert_eq!(
+        graphic_paths,
+        vec![base_dir.join("figures/plot.pdf").as_path()]
+    );
 
     assert!(!tex_paths.contains(&base_dir.join("chapters/commented_out.tex").as_path()));
-    assert!(!tex_paths.contains(&base_dir.join("chapters/should_not_be_followed.tex").as_path()));
+    assert!(!tex_paths.contains(
+        &base_dir
+            .join("chapters/should_not_be_followed.tex")
+            .as_path()
+    ));
 
     let unresolved = graph.unresolved();
-    assert_eq!(unresolved.len(), 1, "{unresolved:?}");
-    assert_eq!(unresolved[0].command, IncludeCommand::IncludeGraphics);
-    assert_eq!(unresolved[0].raw_arg, "figures/missing");
+    assert_eq!(unresolved.len(), 2, "{unresolved:?}");
+    assert!(unresolved
+        .iter()
+        .any(|r| r.command == IncludeCommand::IncludeGraphics && r.raw_arg == "figures/missing"));
+    assert!(unresolved
+        .iter()
+        .any(|r| r.command == IncludeCommand::DocumentClass && r.raw_arg == "article"));
 }
 
 #[test]
@@ -57,6 +76,7 @@ fn main_tex_references_are_recorded_with_the_right_commands() {
     assert_eq!(
         commands,
         vec![
+            IncludeCommand::DocumentClass,
             IncludeCommand::Input,
             IncludeCommand::Include,
             IncludeCommand::IncludeGraphics,

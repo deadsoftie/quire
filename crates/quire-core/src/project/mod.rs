@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod root;
-pub use root::{detect_root, detect_root_with_dirty, RootConfidence, RootDetectionResult};
 pub(crate) use root::documentclass_name;
+pub use root::{detect_root, detect_root_with_dirty, RootConfidence, RootDetectionResult};
 
 mod watcher;
 pub use watcher::FileWatcher;
@@ -17,8 +17,9 @@ pub enum IncludeCommand {
     Include,
     IncludeGraphics,
     Subfile,
-    /// Covers both `\bibliography{...}` (comma-separated) and `\addbibresource{...}` (single).
     Bibliography,
+    DocumentClass,
+    Package,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,13 +27,14 @@ pub enum FileKind {
     Tex,
     Graphic,
     Bib,
+    Class,
+    Package,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {
     pub command: IncludeCommand,
     pub raw_arg: String,
-    /// `None` for a dangling reference - a real document state, not an error.
     pub resolved: Option<PathBuf>,
 }
 
@@ -40,7 +42,6 @@ pub struct Reference {
 pub struct FileNode {
     pub path: PathBuf,
     pub kind: FileKind,
-    /// Only populated for `Tex` nodes; graphics are graph leaves.
     pub references: Vec<Reference>,
 }
 
@@ -68,6 +69,7 @@ pub(crate) const GRAPHIC_EXTENSIONS: &[&str] = &["pdf", "png", "jpg", "jpeg", "e
 
 pub fn build_file_graph(root: &Path) -> FileGraph {
     let base_dir = root.parent().unwrap_or_else(|| Path::new("."));
+    let search_dirs = find_graphicspath_dirs(root, base_dir);
     let mut files = Vec::new();
     let mut visited = HashSet::new();
     let mut queue = vec![root.to_path_buf()];
@@ -78,7 +80,6 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         }
 
         let Ok(content) = fs::read_to_string(&path) else {
-            // Unreadable (e.g. root doesn't exist) - record it anyway, don't drop it silently.
             files.push(FileNode {
                 path,
                 kind: FileKind::Tex,
@@ -87,10 +88,13 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
             continue;
         };
 
-        let references = parse_references(&content, base_dir);
+        let references = parse_references(&content, base_dir, &search_dirs);
         for r in &references {
-            // Neither a graphic nor a .bib's internal syntax is itself LaTeX source to scan further.
-            if r.command != IncludeCommand::IncludeGraphics && r.command != IncludeCommand::Bibliography {
+            if r.command != IncludeCommand::IncludeGraphics
+                && r.command != IncludeCommand::Bibliography
+                && r.command != IncludeCommand::DocumentClass
+                && r.command != IncludeCommand::Package
+            {
                 if let Some(resolved) = &r.resolved {
                     queue.push(resolved.clone());
                 }
@@ -104,7 +108,12 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
         });
     }
 
-    let leaf_kinds = [(IncludeCommand::IncludeGraphics, FileKind::Graphic), (IncludeCommand::Bibliography, FileKind::Bib)];
+    let leaf_kinds = [
+        (IncludeCommand::IncludeGraphics, FileKind::Graphic),
+        (IncludeCommand::Bibliography, FileKind::Bib),
+        (IncludeCommand::DocumentClass, FileKind::Class),
+        (IncludeCommand::Package, FileKind::Package),
+    ];
     for (command, kind) in leaf_kinds {
         let paths: Vec<PathBuf> = files
             .iter()
@@ -114,7 +123,11 @@ pub fn build_file_graph(root: &Path) -> FileGraph {
             .collect();
         for path in paths {
             if visited.insert(path.clone()) {
-                files.push(FileNode { path, kind, references: Vec::new() });
+                files.push(FileNode {
+                    path,
+                    kind,
+                    references: Vec::new(),
+                });
             }
         }
     }
@@ -131,25 +144,18 @@ pub enum ExplorerKind {
     Directory,
 }
 
-/// A real filesystem entry, unlike `FileNode` above which only ever covers what `\input`/
-/// `\include`/`\includegraphics`/`\bibliography` actually reference.
 #[derive(Debug, Clone)]
 pub struct ExplorerEntry {
     pub path: PathBuf,
     pub kind: ExplorerKind,
-    /// `Some` (possibly empty) for a directory, `None` for a file.
     pub children: Option<Vec<ExplorerEntry>>,
 }
 
-/// Whole-directory walk, not the LaTeX dependency graph - every file/folder under `root`
-/// (`SKIP_NAMES` excluded), nested, directories first then alphabetical within each group.
 pub fn build_explorer_tree(root: &Path) -> Vec<ExplorerEntry> {
     let mut visited = HashSet::new();
     walk_explorer_dir(root, &mut visited).unwrap_or_default()
 }
 
-/// Symlink-cycle-safe via the same canonicalize + visited-set pattern `root.rs`'s tex-file
-/// walk and `index/mod.rs`'s two path-completion/search walks already use.
 fn walk_explorer_dir(dir: &Path, visited: &mut HashSet<PathBuf>) -> Option<Vec<ExplorerEntry>> {
     let real_dir = dir.canonicalize().ok()?;
     if !visited.insert(real_dir) {
@@ -167,9 +173,17 @@ fn walk_explorer_dir(dir: &Path, visited: &mut HashSet<PathBuf>) -> Option<Vec<E
             let path = entry.path();
             if path.is_dir() {
                 let children = walk_explorer_dir(&path, visited).unwrap_or_default();
-                Some(ExplorerEntry { path, kind: ExplorerKind::Directory, children: Some(children) })
+                Some(ExplorerEntry {
+                    path,
+                    kind: ExplorerKind::Directory,
+                    children: Some(children),
+                })
             } else {
-                Some(ExplorerEntry { path, kind: ExplorerKind::File, children: None })
+                Some(ExplorerEntry {
+                    path,
+                    kind: ExplorerKind::File,
+                    children: None,
+                })
             }
         })
         .collect();
@@ -178,8 +192,14 @@ fn walk_explorer_dir(dir: &Path, visited: &mut HashSet<PathBuf>) -> Option<Vec<E
         let a_is_dir = a.kind == ExplorerKind::Directory;
         let b_is_dir = b.kind == ExplorerKind::Directory;
         b_is_dir.cmp(&a_is_dir).then_with(|| {
-            a.path.file_name().map(|n| n.to_string_lossy().to_lowercase())
-                .cmp(&b.path.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+            a.path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .cmp(
+                    &b.path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_lowercase()),
+                )
         })
     });
 
@@ -193,7 +213,7 @@ pub(crate) fn strip_comments(content: &str) -> String {
         let mut cut = line.len();
         while let Some((i, c)) = chars.next() {
             if c == '\\' {
-                chars.next(); // skip the escaped character, e.g. `\%`
+                chars.next();
                 continue;
             }
             if c == '%' {
@@ -207,7 +227,11 @@ pub(crate) fn strip_comments(content: &str) -> String {
     out
 }
 
-fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
+fn parse_references(
+    content: &str,
+    base_dir: &Path,
+    graphics_search_dirs: &[String],
+) -> Vec<Reference> {
     let stripped = strip_comments(content);
     let mut refs = Vec::new();
     let bytes = stripped.as_bytes();
@@ -220,15 +244,38 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
         }
 
         let rest = &stripped[i..];
-        // is_multi_bib: \bibliography takes a comma-separated list, \addbibresource takes exactly one.
-        let (command, name_len, is_multi_bib) = match () {
-            _ if rest.starts_with("\\includegraphics") => (IncludeCommand::IncludeGraphics, "\\includegraphics".len(), false),
+        let (command, name_len, is_multi) = match () {
+            _ if rest.starts_with("\\includegraphics") => (
+                IncludeCommand::IncludeGraphics,
+                "\\includegraphics".len(),
+                false,
+            ),
             _ if rest.starts_with("\\input") => (IncludeCommand::Input, "\\input".len(), false),
-            _ if rest.starts_with("\\include") => (IncludeCommand::Include, "\\include".len(), false),
-            _ if rest.starts_with("\\subfile") => (IncludeCommand::Subfile, "\\subfile".len(), false),
-            // The following `{`-check rejects \bibliographystyle{...} false-matching this prefix.
-            _ if rest.starts_with("\\bibliography") => (IncludeCommand::Bibliography, "\\bibliography".len(), true),
-            _ if rest.starts_with("\\addbibresource") => (IncludeCommand::Bibliography, "\\addbibresource".len(), false),
+            _ if rest.starts_with("\\include") => {
+                (IncludeCommand::Include, "\\include".len(), false)
+            }
+            _ if rest.starts_with("\\subfile") => {
+                (IncludeCommand::Subfile, "\\subfile".len(), false)
+            }
+            _ if rest.starts_with("\\bibliography") => {
+                (IncludeCommand::Bibliography, "\\bibliography".len(), true)
+            }
+            _ if rest.starts_with("\\addbibresource") => (
+                IncludeCommand::Bibliography,
+                "\\addbibresource".len(),
+                false,
+            ),
+            _ if rest.starts_with("\\documentclass") => (
+                IncludeCommand::DocumentClass,
+                "\\documentclass".len(),
+                false,
+            ),
+            _ if rest.starts_with("\\usepackage") => {
+                (IncludeCommand::Package, "\\usepackage".len(), true)
+            }
+            _ if rest.starts_with("\\RequirePackage") => {
+                (IncludeCommand::Package, "\\RequirePackage".len(), true)
+            }
             _ => {
                 i += 1;
                 continue;
@@ -237,8 +284,10 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
 
         let mut after = &rest[name_len..];
 
-        // \includegraphics takes an optional [options] block first.
-        if command == IncludeCommand::IncludeGraphics {
+        if command == IncludeCommand::IncludeGraphics
+            || command == IncludeCommand::DocumentClass
+            || command == IncludeCommand::Package
+        {
             if let Some(stripped_after) = after.strip_prefix('[') {
                 if let Some(end) = stripped_after.find(']') {
                     after = &stripped_after[end + 1..];
@@ -256,22 +305,36 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
         };
         let raw_arg = after_brace[..end].trim().to_string();
 
-        if is_multi_bib {
-            // One Reference per name, matching every other command's one-Reference-per-target convention.
+        if is_multi {
             for name in raw_arg.split(',') {
                 let name = name.trim();
                 if name.is_empty() {
                     continue;
                 }
-                refs.push(Reference { command, raw_arg: name.to_string(), resolved: resolve_bib(name, base_dir) });
+                let resolved = match command {
+                    IncludeCommand::Package => resolve_package(name, base_dir),
+                    _ => resolve_bib(name, base_dir),
+                };
+                refs.push(Reference {
+                    command,
+                    raw_arg: name.to_string(),
+                    resolved,
+                });
             }
         } else {
             let resolved = match command {
-                IncludeCommand::IncludeGraphics => resolve_graphic(&raw_arg, base_dir),
+                IncludeCommand::IncludeGraphics => {
+                    resolve_graphic(&raw_arg, base_dir, graphics_search_dirs)
+                }
                 IncludeCommand::Bibliography => resolve_bib(&raw_arg, base_dir),
+                IncludeCommand::DocumentClass => resolve_class(&raw_arg, base_dir),
                 _ => resolve_tex(&raw_arg, base_dir),
             };
-            refs.push(Reference { command, raw_arg, resolved });
+            refs.push(Reference {
+                command,
+                raw_arg,
+                resolved,
+            });
         }
 
         i += name_len;
@@ -280,7 +343,6 @@ fn parse_references(content: &str, base_dir: &Path) -> Vec<Reference> {
     refs
 }
 
-/// Rejects an absolute or `..`-laden path as unresolved - otherwise project source could smuggle an out-of-project read/write target past every downstream consumer.
 pub(crate) fn resolve_within(base_dir: &Path, candidate: PathBuf) -> Option<PathBuf> {
     if !candidate.is_file() {
         return None;
@@ -322,20 +384,96 @@ fn resolve_bib(raw: &str, base_dir: &Path) -> Option<PathBuf> {
     None
 }
 
-fn resolve_graphic(raw: &str, base_dir: &Path) -> Option<PathBuf> {
+fn resolve_class(raw: &str, base_dir: &Path) -> Option<PathBuf> {
     let candidate = base_dir.join(raw);
     if let Some(resolved) = resolve_within(base_dir, candidate.clone()) {
         return Some(resolved);
     }
     if candidate.extension().is_none() {
+        let with_ext = base_dir.join(format!("{raw}.cls"));
+        if let Some(resolved) = resolve_within(base_dir, with_ext) {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
+fn resolve_package(raw: &str, base_dir: &Path) -> Option<PathBuf> {
+    let candidate = base_dir.join(raw);
+    if let Some(resolved) = resolve_within(base_dir, candidate.clone()) {
+        return Some(resolved);
+    }
+    if candidate.extension().is_none() {
+        let with_ext = base_dir.join(format!("{raw}.sty"));
+        if let Some(resolved) = resolve_within(base_dir, with_ext) {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
+fn resolve_graphic(raw: &str, base_dir: &Path, search_dirs: &[String]) -> Option<PathBuf> {
+    if let Some(resolved) = resolve_graphic_in(raw, base_dir) {
+        return Some(resolved);
+    }
+    for dir in search_dirs {
+        if let Some(resolved) = resolve_graphic_in(raw, &base_dir.join(dir)) {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
+fn resolve_graphic_in(raw: &str, dir: &Path) -> Option<PathBuf> {
+    let candidate = dir.join(raw);
+    if let Some(resolved) = resolve_within(dir, candidate.clone()) {
+        return Some(resolved);
+    }
+    if candidate.extension().is_none() {
         for ext in GRAPHIC_EXTENSIONS {
-            let with_ext = base_dir.join(format!("{raw}.{ext}"));
-            if let Some(resolved) = resolve_within(base_dir, with_ext) {
+            let with_ext = dir.join(format!("{raw}.{ext}"));
+            if let Some(resolved) = resolve_within(dir, with_ext) {
                 return Some(resolved);
             }
         }
     }
     None
+}
+
+fn find_graphicspath_dirs(root: &Path, base_dir: &Path) -> Vec<String> {
+    let Ok(root_content) = fs::read_to_string(root) else {
+        return Vec::new();
+    };
+    let stripped = strip_comments(&root_content);
+    let mut dirs = parse_graphicspath(&stripped);
+
+    let class_content = parse_references(&stripped, base_dir, &[])
+        .into_iter()
+        .find(|r| r.command == IncludeCommand::DocumentClass)
+        .and_then(|r| r.resolved)
+        .and_then(|path| fs::read_to_string(path).ok());
+    if let Some(class_content) = class_content {
+        dirs.extend(parse_graphicspath(&strip_comments(&class_content)));
+    }
+
+    dirs
+}
+
+fn parse_graphicspath(stripped: &str) -> Vec<String> {
+    let mut dirs = Vec::new();
+    let Some(start) = stripped.find("\\graphicspath") else {
+        return dirs;
+    };
+    let after_cmd = stripped[start + "\\graphicspath".len()..].trim_start();
+    let Some(mut after) = after_cmd.strip_prefix('{') else {
+        return dirs;
+    };
+    while let Some(rest) = after.strip_prefix('{') {
+        let Some(end) = rest.find('}') else { break };
+        dirs.push(rest[..end].trim().to_string());
+        after = &rest[end + 1..];
+    }
+    dirs
 }
 
 #[cfg(test)]
@@ -344,7 +482,8 @@ mod tests {
     use std::fs;
 
     fn temp_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("quire-project-{label}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("quire-project-{label}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -354,9 +493,18 @@ mod tests {
     fn strip_comments_handles_escaped_percent_but_not_real_comments() {
         let input = "Cost is 50\\% off\nreal comment % \\input{ignored}\nplain line";
         let stripped = strip_comments(input);
-        assert!(stripped.contains("Cost is 50\\% off"), "escaped percent must survive: {stripped:?}");
-        assert!(!stripped.contains("ignored"), "text after a real comment marker must be gone: {stripped:?}");
-        assert!(stripped.contains("real comment"), "text before the comment marker must survive: {stripped:?}");
+        assert!(
+            stripped.contains("Cost is 50\\% off"),
+            "escaped percent must survive: {stripped:?}"
+        );
+        assert!(
+            !stripped.contains("ignored"),
+            "text after a real comment marker must be gone: {stripped:?}"
+        );
+        assert!(
+            stripped.contains("real comment"),
+            "text before the comment marker must survive: {stripped:?}"
+        );
     }
 
     #[test]
@@ -368,7 +516,11 @@ mod tests {
         let graph = build_file_graph(&dir.join("a.tex"));
 
         let tex_paths: Vec<&Path> = graph.files.iter().map(|f| f.path.as_path()).collect();
-        assert_eq!(tex_paths.len(), 2, "each file visited exactly once: {tex_paths:?}");
+        assert_eq!(
+            tex_paths.len(),
+            2,
+            "each file visited exactly once: {tex_paths:?}"
+        );
         assert!(tex_paths.contains(&dir.join("a.tex").as_path()));
         assert!(tex_paths.contains(&dir.join("b.tex").as_path()));
 
@@ -382,7 +534,11 @@ mod tests {
         fs::write(dir.join("a.tex"), "\\bibliography{refs}").unwrap();
 
         let graph = build_file_graph(&dir.join("a.tex"));
-        let bib_files: Vec<&FileNode> = graph.files.iter().filter(|f| f.kind == FileKind::Bib).collect();
+        let bib_files: Vec<&FileNode> = graph
+            .files
+            .iter()
+            .filter(|f| f.kind == FileKind::Bib)
+            .collect();
         assert_eq!(bib_files.len(), 1, "{graph:?}");
         assert_eq!(bib_files[0].path, dir.join("refs.bib"));
 
@@ -397,8 +553,12 @@ mod tests {
         fs::write(dir.join("a.tex"), "\\bibliography{refs1,refs2}").unwrap();
 
         let graph = build_file_graph(&dir.join("a.tex"));
-        let bib_paths: HashSet<&Path> =
-            graph.files.iter().filter(|f| f.kind == FileKind::Bib).map(|f| f.path.as_path()).collect();
+        let bib_paths: HashSet<&Path> = graph
+            .files
+            .iter()
+            .filter(|f| f.kind == FileKind::Bib)
+            .map(|f| f.path.as_path())
+            .collect();
         assert_eq!(bib_paths.len(), 2, "{graph:?}");
         assert!(bib_paths.contains(dir.join("refs1.bib").as_path()));
         assert!(bib_paths.contains(dir.join("refs2.bib").as_path()));
@@ -413,7 +573,11 @@ mod tests {
         fs::write(dir.join("a.tex"), "\\addbibresource{refs.bib}").unwrap();
 
         let graph = build_file_graph(&dir.join("a.tex"));
-        let bib_files: Vec<&FileNode> = graph.files.iter().filter(|f| f.kind == FileKind::Bib).collect();
+        let bib_files: Vec<&FileNode> = graph
+            .files
+            .iter()
+            .filter(|f| f.kind == FileKind::Bib)
+            .collect();
         assert_eq!(bib_files.len(), 1, "{graph:?}");
 
         fs::remove_dir_all(&dir).unwrap();
@@ -425,7 +589,10 @@ mod tests {
         fs::write(dir.join("a.tex"), "\\bibliographystyle{plain}").unwrap();
 
         let graph = build_file_graph(&dir.join("a.tex"));
-        assert!(graph.files.iter().all(|f| f.kind != FileKind::Bib), "{graph:?}");
+        assert!(
+            graph.files.iter().all(|f| f.kind != FileKind::Bib),
+            "{graph:?}"
+        );
         assert!(graph.files[0].references.is_empty(), "{graph:?}");
 
         fs::remove_dir_all(&dir).unwrap();
@@ -441,10 +608,17 @@ mod tests {
         fs::write(dir.join("a.tex"), format!("\\input{{{outside_path}}}")).unwrap();
 
         let graph = build_file_graph(&dir.join("a.tex"));
-        assert_eq!(graph.files.len(), 1, "the outside file must not enter the graph: {graph:?}");
+        assert_eq!(
+            graph.files.len(),
+            1,
+            "the outside file must not enter the graph: {graph:?}"
+        );
         let refs = &graph.files[0].references;
         assert_eq!(refs.len(), 1);
-        assert!(refs[0].resolved.is_none(), "an absolute path outside the project must be unresolved");
+        assert!(
+            refs[0].resolved.is_none(),
+            "an absolute path outside the project must be unresolved"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
         fs::remove_dir_all(&outside).unwrap();
@@ -458,7 +632,11 @@ mod tests {
         fs::write(dir.join("project").join("a.tex"), "\\input{../outside}").unwrap();
 
         let graph = build_file_graph(&dir.join("project").join("a.tex"));
-        assert_eq!(graph.files.len(), 1, "the outside file must not enter the graph: {graph:?}");
+        assert_eq!(
+            graph.files.len(),
+            1,
+            "the outside file must not enter the graph: {graph:?}"
+        );
         assert!(graph.files[0].references[0].resolved.is_none());
 
         fs::remove_dir_all(&dir).unwrap();
@@ -482,13 +660,21 @@ mod tests {
         fs::write(dir.join("data").join("values.csv"), "1,2,3").unwrap();
 
         let tree = build_explorer_tree(&dir);
-        let names: Vec<String> =
-            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = tree
+            .iter()
+            .map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert!(names.contains(&"notes.md".to_string()), "{names:?}");
         assert!(names.contains(&"data".to_string()), "{names:?}");
 
-        let data_node = tree.iter().find(|n| n.kind == ExplorerKind::Directory).expect("data dir present");
-        let children = data_node.children.as_ref().expect("directories carry children");
+        let data_node = tree
+            .iter()
+            .find(|n| n.kind == ExplorerKind::Directory)
+            .expect("data dir present");
+        let children = data_node
+            .children
+            .as_ref()
+            .expect("directories carry children");
         assert_eq!(children.len(), 1);
         assert_eq!(children[0].path.file_name().unwrap(), "values.csv");
 
@@ -503,8 +689,10 @@ mod tests {
         fs::write(dir.join("beta.tex"), "").unwrap();
 
         let tree = build_explorer_tree(&dir);
-        let names: Vec<String> =
-            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = tree
+            .iter()
+            .map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, vec!["alpha-dir", "beta.tex", "zeta.tex"]);
 
         fs::remove_dir_all(&dir).unwrap();
@@ -518,8 +706,10 @@ mod tests {
         fs::write(dir.join("main.tex"), "").unwrap();
 
         let tree = build_explorer_tree(&dir);
-        let names: Vec<String> =
-            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = tree
+            .iter()
+            .map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, vec!["main.tex"], "{names:?}");
 
         fs::remove_dir_all(&dir).unwrap();
@@ -533,8 +723,10 @@ mod tests {
         std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
 
         let tree = build_explorer_tree(&dir);
-        let names: Vec<String> =
-            tree.iter().map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = tree
+            .iter()
+            .map(|n| n.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert!(names.contains(&"main.tex".to_string()), "{names:?}");
 
         fs::remove_dir_all(&dir).unwrap();
