@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+// Set (or not) by main.js before this window's process was spawned, based on real granted consent.
+const sentryEnabled = process.env.QUIRE_SENTRY_ENABLED === "1";
+// contextIsolation means the SDK can't auto-capture preload's own errors without its own init call here too.
+if (sentryEnabled) {
+  require("@sentry/electron/renderer").init();
+}
+
 const invoke = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
 contextBridge.exposeInMainWorld("quire", {
@@ -54,6 +61,9 @@ contextBridge.exposeInMainWorld("quireDesktop", {
   saveThemes: invoke("desktop:saveThemes"),
   exportTheme: invoke("desktop:exportTheme"),
   importTheme: invoke("desktop:importTheme"),
+  loadTelemetryConsent: invoke("desktop:loadTelemetryConsent"),
+  saveTelemetryConsent: invoke("desktop:saveTelemetryConsent"),
+  sentryEnabled,
   // Returns an unsubscribe function.
   onMenuCommand: (handler) => {
     const listener = (_event, id) => handler(id);

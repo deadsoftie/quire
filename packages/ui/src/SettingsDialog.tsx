@@ -32,6 +32,8 @@ interface SettingsDialogProps {
   themeEditorOpen: boolean;
   pdfInverted: boolean;
   onTogglePdfInverted: (value: boolean) => void;
+  crashReportingEnabled: boolean;
+  onToggleCrashReporting: (value: boolean) => void;
   onClose: () => void;
 }
 
@@ -59,6 +61,8 @@ export function SettingsDialog({
   themeEditorOpen,
   pdfInverted,
   onTogglePdfInverted,
+  crashReportingEnabled,
+  onToggleCrashReporting,
   onClose,
 }: SettingsDialogProps) {
   useEffect(() => {
@@ -97,6 +101,11 @@ export function SettingsDialog({
                 ? `Detected: ${systemTexStatus.engine === "xelatex" ? "XeLaTeX" : "pdfLaTeX"} (${systemTexStatus.version})`
                 : "No TeX Live or MiKTeX installation was found on your system."}
           </p>
+          <label className="settings-dialog__row">
+            <Toggle checked={crashReportingEnabled} onChange={onToggleCrashReporting} />
+            <span>Crash reporting</span>
+          </label>
+          <p className="settings-dialog__note">Sends crash data only, never document content. Takes effect after restart.</p>
 
           <span className="settings-dialog__section-title">View</span>
           <label className="settings-dialog__row">

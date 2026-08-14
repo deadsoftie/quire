@@ -3,6 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { StdioTransport, setSidecarPath } = require("@quire/client");
 const { autoUpdater } = require("electron-updater");
+const Sentry = require("@sentry/electron/main");
+const { SENTRY_DSN } = require("./sentryDsn");
 
 const DEV_SERVER_URL = "http://localhost:5173";
 const isMac = process.platform === "darwin";
@@ -254,11 +256,27 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
 }
 
 app.whenReady().then(() => {
+  const telemetryConsentFile = path.join(app.getPath("userData"), "telemetry-consent.json");
+
+  // Only installs Sentry's hooks at all once consent is granted - never "init always, gate the send."
+  if (SENTRY_DSN) {
+    let consent = {};
+    try {
+      consent = JSON.parse(fs.readFileSync(telemetryConsentFile, "utf8"));
+    } catch {
+      // no consent file yet, or it's corrupt - treated as nothing granted
+    }
+    if (consent.crashReporting === "granted") {
+      Sentry.init({ dsn: SENTRY_DSN });
+      // Read by preload.js (its own separate process) to decide whether to also init the renderer-side SDK.
+      process.env.QUIRE_SENTRY_ENABLED = "1";
+    }
+  }
+
   if (app.isPackaged) {
     // Both quire-sidecar spawn sites (packages/client's runOnce and ProjectWatcher) read this back
     // via getSidecarPath(); quire-core's bundle.rs reads QUIRE_BUNDLE_ROOT from its own environment,
-    // inherited automatically since child_process.spawn() passes the parent's process.env through
-    // by default - no extra plumbing needed on the Rust side beyond what Phase 0 already added.
+    // inherited automatically since child_process.spawn() passes the parent's process.env through.
     setSidecarPath(path.join(process.resourcesPath, "quire-sidecar"));
     process.env.QUIRE_BUNDLE_ROOT = path.join(process.resourcesPath, "bundles");
   }
@@ -398,6 +416,19 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:saveThemes", (_event, themes) => {
     fs.writeFileSync(themesFile, JSON.stringify({ version: 1, themes }));
+  });
+
+  // Shared by every consent-gated feature (crash reporting)
+  ipcMain.handle("desktop:loadTelemetryConsent", () => {
+    try {
+      return JSON.parse(fs.readFileSync(telemetryConsentFile, "utf8"));
+    } catch {
+      return {};
+    }
+  });
+
+  ipcMain.handle("desktop:saveTelemetryConsent", (_event, consent) => {
+    fs.writeFileSync(telemetryConsentFile, JSON.stringify(consent));
   });
 
   // Single-theme JSON, not the whole themes.json shape - lets a user share/receive one theme at

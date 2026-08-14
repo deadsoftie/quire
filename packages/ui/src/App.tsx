@@ -46,6 +46,8 @@ import { Sidebar } from "./Sidebar";
 import { basename } from "./paths";
 import { normalizeSession, type SessionState } from "./session";
 import { rewriteSingleUri, rewriteTabUris } from "./tabUriRewrite";
+import { TelemetryConsentPrompt } from "./TelemetryConsentPrompt";
+import { useTelemetryConsent } from "./telemetryConsent";
 import type { CursorPosition, CursorPositionStore } from "./StatusBar";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
@@ -157,6 +159,7 @@ function AppShell() {
   const [bundleVersionNotice, setBundleVersionNotice] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
   const [updateNoticeDismissed, setUpdateNoticeDismissed] = useState(false);
+  const [showCrashConsentPrompt, setShowCrashConsentPrompt] = useState(false);
   const [splitFraction, setSplitFraction] = useState(0.5);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [compileVersion, setCompileVersion] = useState(0);
@@ -181,6 +184,7 @@ function AppShell() {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [cursorStore] = useState(() => createCursorPositionStore());
+  const crashReportingConsent = useTelemetryConsent("crashReporting");
 
   const projectRef = useRef<Project | null>(null);
   // tabsRef is authoritative and updated outside React state; `tabs` state only exists to repaint the tab bar.
@@ -199,6 +203,8 @@ function AppShell() {
   const initializedRef = useRef(false);
   // Guards the restore effect against StrictMode's dev-only double-invocation.
   const restoreStartedRef = useRef(false);
+  // Guards against scheduling the crash-reporting consent prompt more than once per session.
+  const crashPromptScheduledRef = useRef(false);
 
   const scheduleSaveSession = useCallback(() => {
     if (saveSessionTimeoutRef.current !== undefined) window.clearTimeout(saveSessionTimeoutRef.current);
@@ -1018,6 +1024,11 @@ function AppShell() {
         if (event.result.status === "ok" || event.result.status === "packages-missing") {
           if (errorTimeoutRef.current !== undefined) window.clearTimeout(errorTimeoutRef.current);
           setSeamState("idle");
+          // Ask once, a few seconds after the user has already seen the app work - never mid-onboarding, never tied to an actual crash.
+          if (event.result.status === "ok" && !crashPromptScheduledRef.current) {
+            crashPromptScheduledRef.current = true;
+            window.setTimeout(() => setShowCrashConsentPrompt(true), 5000);
+          }
         } else {
           setSeamState("error");
           errorTimeoutRef.current = window.setTimeout(() => setSeamState("idle"), 800);
@@ -1338,6 +1349,8 @@ function AppShell() {
           themeEditorOpen={themeEditor !== null}
           pdfInverted={pdfInverted}
           onTogglePdfInverted={setPdfInverted}
+          crashReportingEnabled={crashReportingConsent.status === "granted"}
+          onToggleCrashReporting={(value) => (value ? crashReportingConsent.grant() : crashReportingConsent.decline())}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -1463,6 +1476,13 @@ function AppShell() {
                         installState={packageInstallState}
                         failedNames={failedPackageNames}
                         onInstall={installMissingPackages}
+                      />
+                    )}
+                    {showCrashConsentPrompt && crashReportingConsent.status === "unasked" && (
+                      <TelemetryConsentPrompt
+                        message="Help improve Quire by sending crash reports? Only crash data is sent, never document content."
+                        onGrant={crashReportingConsent.grant}
+                        onDecline={crashReportingConsent.decline}
                       />
                     )}
                   </>
