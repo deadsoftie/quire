@@ -6,12 +6,12 @@
     {
       "layers" : [
         {
-          "image-name" : "2 – Layer 2.svg",
-          "name" : "2 – Layer 2"
+          "image-name" : "2 – Layer.svg",
+          "name" : "2 – Layer"
         },
         {
-          "image-name" : "1 – Layer 2.svg",
-          "name" : "1 – Layer 2"
+          "image-name" : "1 – Layer.svg",
+          "name" : "1 – Layer"
         }
       ],
       "shadow" : {
