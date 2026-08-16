@@ -5,7 +5,10 @@
   "license": "MIT",
   "scripts": {
     "dev": "concurrently -k -s first \"pnpm --filter @quire/ui dev\" \"wait-on http://localhost:5173 && pnpm --filter @quire/desktop dev\"",
-    "package": "bash scripts/package.sh"
+    "package": "bash scripts/package.sh",
+    "sync-version": "node scripts/sync-version.mjs",
+    "postinstall": "node scripts/sync-version.mjs",
+    "version": "node scripts/sync-version.mjs && git add -A"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",
