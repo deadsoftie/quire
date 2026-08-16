@@ -3,4 +3,4 @@ resolver = "2"
 members = ["crates/quire-core", "crates/quire-sidecar"]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.0.1"

@@ -2,7 +2,7 @@
   "name": "@quire/desktop",
   "productName": "Quire",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A local-first LaTeX editor",
   "homepage": "https://github.com/deadsoftie/quire",
   "author": "deadsoftie <rahulnair1229@gmail.com>",
