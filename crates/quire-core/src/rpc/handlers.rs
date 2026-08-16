@@ -279,6 +279,9 @@ fn write_into_shadow(
         });
     }
     let target = shadow_dir.join(relative);
+    if fs::read(&target).is_ok_and(|existing| existing == content) {
+        return Ok(());
+    }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }

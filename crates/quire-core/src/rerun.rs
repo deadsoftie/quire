@@ -1,6 +1,8 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 
 use tectonic::config::PersistentConfig;
 use tectonic::driver::{OutputFormat, PassSetting, ProcessingSessionBuilder};
@@ -17,8 +19,30 @@ const CITATION_FINGERPRINT_FILE: &str = "quire-citations.txt";
 const PAGE_HASHES_FILE: &str = "quire-page-hashes.txt";
 const TEX_INPUT_NAME: &str = "texput.tex";
 
-/// A factory, not a plain `Box<dyn Bundle>`, since each pass consumes its own fresh bundle instance.
 pub type BundleFactory = dyn Fn() -> Result<Box<dyn Bundle>, CompileError>;
+
+#[derive(Clone)]
+struct SharedBundle(Rc<RefCell<Box<dyn Bundle>>>);
+
+impl IoProvider for SharedBundle {
+    fn input_open_name(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputHandle> {
+        self.0.borrow_mut().input_open_name(name, status)
+    }
+}
+
+impl Bundle for SharedBundle {
+    fn get_digest(&mut self) -> tectonic::Result<tectonic::digest::DigestData> {
+        self.0.borrow_mut().get_digest()
+    }
+
+    fn all_files(&self) -> Vec<String> {
+        self.0.borrow().all_files()
+    }
+}
 
 pub fn compile_latex_in_dir(source: &str, build_dir: &Path) -> Result<CompileOutput, CompileError> {
     compile_latex_in_dir_with_bundle(source, build_dir, &crate::bundle::resolve_bundle)
@@ -34,12 +58,17 @@ pub fn compile_latex_in_dir_with_bundle(
     let config = PersistentConfig::open(false)?;
     let format_cache_path = config.format_cache_path()?;
 
+    let shared = Rc::new(RefCell::new(bundle_factory()?));
+    let shared_factory = move || -> Result<Box<dyn Bundle>, CompileError> {
+        Ok(Box::new(SharedBundle(shared.clone())))
+    };
+
     let last_log = run_passes_with_rerun(
         build_dir,
-        || run_tex_pass(source, build_dir, &format_cache_path, bundle_factory),
-        || run_bibtex_pass(build_dir, &format_cache_path, bundle_factory),
+        || run_tex_pass(source, build_dir, &format_cache_path, &shared_factory),
+        || run_bibtex_pass(build_dir, &format_cache_path, &shared_factory),
     )?;
-    convert_xdv_to_pdf(build_dir, bundle_factory)?;
+    convert_xdv_to_pdf(build_dir, &shared_factory)?;
 
     let pdf = fs::read(build_dir.join("texput.pdf")).map_err(|_| CompileError {
         message: "LaTeX didn't report failure, but no PDF was created".to_string(),
@@ -47,10 +76,14 @@ pub fn compile_latex_in_dir_with_bundle(
     })?;
 
     let (page_count, changed_pages) = hash_and_diff_pages(build_dir, &pdf)?;
-    Ok(CompileOutput { pdf, page_count, changed_pages, log: last_log })
+    Ok(CompileOutput {
+        pdf,
+        page_count,
+        changed_pages,
+        log: last_log,
+    })
 }
 
-/// Engine-agnostic rerun loop shared by Tectonic and `system_tex`: run, diff `.aux`, rerun BibTeX on a fingerprint change, repeat until `.aux` settles.
 pub(crate) fn run_passes_with_rerun(
     build_dir: &Path,
     mut run_pass: impl FnMut() -> Result<String, CompileError>,
@@ -87,12 +120,15 @@ pub(crate) fn run_passes_with_rerun(
     Ok(last_log)
 }
 
-/// Shared page-hash-caching tail; identical regardless of which engine produced the final PDF.
-pub(crate) fn hash_and_diff_pages(build_dir: &Path, pdf: &[u8]) -> Result<(u32, Vec<u32>), CompileError> {
+pub(crate) fn hash_and_diff_pages(
+    build_dir: &Path,
+    pdf: &[u8],
+) -> Result<(u32, Vec<u32>), CompileError> {
     let hashes = crate::page_hash::hash_pages(pdf)?;
     let hashes_path = build_dir.join(PAGE_HASHES_FILE);
-    let previous_hashes: Option<Vec<String>> =
-        fs::read_to_string(&hashes_path).ok().map(|s| s.lines().map(str::to_string).collect());
+    let previous_hashes: Option<Vec<String>> = fs::read_to_string(&hashes_path)
+        .ok()
+        .map(|s| s.lines().map(str::to_string).collect());
     let changed_pages = crate::page_hash::diff_pages(previous_hashes.as_deref(), &hashes);
     fs::write(&hashes_path, hashes.join("\n"))?;
     Ok((hashes.len() as u32, changed_pages))
@@ -129,7 +165,14 @@ fn run_tex_pass(
     let log = String::from_utf8_lossy(&sess.get_stdout_content()).into_owned();
 
     if let Err(e) = result {
-        return Err(CompileError { message: e.to_string(), log: if log.trim().is_empty() { None } else { Some(log) } });
+        return Err(CompileError {
+            message: e.to_string(),
+            log: if log.trim().is_empty() {
+                None
+            } else {
+                Some(log)
+            },
+        });
     }
 
     Ok(log)
@@ -163,7 +206,11 @@ fn run_bibtex_pass(
         let log = String::from_utf8_lossy(&sess.get_stdout_content()).into_owned();
         return Err(CompileError {
             message: format!("BibTeX failed: {e}"),
-            log: if log.trim().is_empty() { None } else { Some(log) },
+            log: if log.trim().is_empty() {
+                None
+            } else {
+                Some(log)
+            },
         });
     }
 
@@ -195,7 +242,11 @@ impl IoProvider for XdvipdfmxIo {
         self.mem.output_open_stdout()
     }
 
-    fn input_open_name(&mut self, name: &str, status: &mut dyn StatusBackend) -> OpenResult<InputHandle> {
+    fn input_open_name(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputHandle> {
         match self.mem.input_open_name(name, status) {
             OpenResult::NotAvailable => {}
             other => return other,
@@ -219,7 +270,10 @@ impl DriverHooks for XdvipdfmxDriver {
     }
 }
 
-fn convert_xdv_to_pdf(build_dir: &Path, bundle_factory: &BundleFactory) -> Result<(), CompileError> {
+fn convert_xdv_to_pdf(
+    build_dir: &Path,
+    bundle_factory: &BundleFactory,
+) -> Result<(), CompileError> {
     let mut status = NoopStatusBackend::default();
     let xdv = fs::read(build_dir.join("texput.xdv"))?;
     let bundle = bundle_factory()?;
@@ -228,7 +282,12 @@ fn convert_xdv_to_pdf(build_dir: &Path, bundle_factory: &BundleFactory) -> Resul
     mem.create_entry("texput.xdv", xdv);
     let disk = FilesystemIo::new(Path::new("/"), false, true, HashSet::new());
     let project = FilesystemIo::new(build_dir, false, false, HashSet::new());
-    let mut driver = XdvipdfmxDriver(XdvipdfmxIo { mem, bundle, project, disk });
+    let mut driver = XdvipdfmxDriver(XdvipdfmxIo {
+        mem,
+        bundle,
+        project,
+        disk,
+    });
 
     {
         let mut launcher = CoreBridgeLauncher::new(&mut driver, &mut status);
@@ -285,7 +344,10 @@ mod tests {
     #[test]
     fn bibdata_alone_still_fingerprints() {
         let aux = "\\bibstyle{plain}\n\\bibdata{refs}\n";
-        assert_eq!(citation_fingerprint(aux), Some("\\bibdata{refs}".to_string()));
+        assert_eq!(
+            citation_fingerprint(aux),
+            Some("\\bibdata{refs}".to_string())
+        );
     }
 
     #[test]
