@@ -16,27 +16,6 @@
   text-align: center;
 }
 
-.welcome-screen__title {
-  margin: 0;
-}
-
-/* Debossed (pressed-into-the-surface) Quire mark: fill matches the screen's own background
-   exactly, so the shape itself stays invisible - only a dark shadow on the light-facing edge
-   and a light shadow on the opposite edge remain, carving its silhouette out of the surface.
-   Real SVG + direct `fill`, not a CSS mask-image - mask-mode defaults (luminance vs. alpha)
-   differ between the standard and -webkit- prefixed properties, which made the shape render
-   as fully transparent instead. */
-.welcome-screen__mark {
-  display: block;
-  width: 120px;
-  height: 120px;
-  filter: drop-shadow(-1.5px -1.5px 1.5px rgba(0, 0, 0, 0.55)) drop-shadow(1.5px 1.5px 1.5px rgba(255, 255, 255, 0.4));
-}
-
-.welcome-screen__mark path {
-  fill: var(--ink-900);
-}
-
 .welcome-screen__tagline {
   margin: 0;
   color: var(--type-mid);

@@ -16,6 +16,7 @@ interface StatusBarProps {
   cursorPosition: CursorPositionStore;
   /** `null` when no project is open - the dot only renders on a real `false`. */
   engineAvailable: boolean | null;
+  appVersion: string;
   /** Plain-English, ready to display as-is. `null` once dismissed or nothing to report. */
   bundleVersionNotice: string | null;
   onDismissBundleVersionNotice: () => void;
@@ -29,6 +30,7 @@ export function StatusBar({
   problemCount,
   cursorPosition,
   engineAvailable,
+  appVersion,
   bundleVersionNotice,
   onDismissBundleVersionNotice,
   updateReady,
@@ -86,6 +88,7 @@ export function StatusBar({
             <span className="status-bar__dot" />
           </span>
         )}
+        <span className="status-bar__item">v{appVersion}</span>
       </div>
     </footer>
   );

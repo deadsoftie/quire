@@ -2453,7 +2453,7 @@ dependencies = [
 
 [[package]]
 name = "quire-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "lopdf",
  "notify",
@@ -2470,7 +2470,7 @@ dependencies = [
 
 [[package]]
 name = "quire-sidecar"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "quire-core",
  "serde",

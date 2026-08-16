@@ -76,6 +76,8 @@ declare global {
       saveTelemetryConsent: (consent: TelemetryConsent) => Promise<void>;
       /** True if main.js already decided (at startup, from real granted consent) to initialize Sentry for this launch. */
       sentryEnabled: boolean;
+      /** The desktop app's package.json version, e.g. "1.0.0". */
+      appVersion: string;
     };
   }
 }

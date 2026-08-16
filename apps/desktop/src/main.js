@@ -9,28 +9,16 @@ const { SENTRY_DSN } = require("./sentryDsn");
 const DEV_SERVER_URL = "http://localhost:5173";
 const isMac = process.platform === "darwin";
 
-// Duplicated literal, not imported, same reasoning as App.tsx's SIDECAR_CALL_CANCELLED comment; needs real body content since an empty document fails to compile.
 const BLANK_PROJECT_SOURCE = "\\documentclass{article}\n\\begin{document}\nHello, world!\n\\end{document}\n";
 
-// Dev: relative to this checkout. Packaged: electron-builder's extraResources config copies
-// each of these next to process.resourcesPath under the same names used here (quire-sidecar,
-// templates/, bundles/, ui/) - every packaged-app resource is found the same way, a flat
-// directory next to the app, not asar-relative guessing.
 const TEMPLATES_DIR = app.isPackaged ? path.join(process.resourcesPath, "templates") : path.join(__dirname, "..", "..", "..", "templates");
 const TEMPLATE_IDS = ["article", "ieee", "acm", "beamer"];
 
-// Source design file (Icon Composer project) lives at repo root as QuireIcon.icon/; this is its exported
-// flat PNG. No packager (electron-builder/forge) is configured yet, so this only covers the dev-mode
-// window/taskbar/dock icon - a packaged build's .icns/.ico would need their own icon pipeline later.
 const APP_ICON_PATH = path.join(__dirname, "..", "assets", "icon.png");
 
 let client;
 let mainWindow;
 
-// Built-in theme ids/names, duplicated from packages/design/src/themes.ts's builtinThemes --
-// same reasoning as VIEW_MENU_CHECK_IDS below: no shared TS import can cross the CJS main-process
-// boundary. Custom (user-defined) themes aren't listed here since Electron's menu is built once at
-// startup; they remain reachable only via the command palette.
 const BUILTIN_THEMES = [
   { id: "quire-dark", name: "Quire Dark" },
   { id: "monokai", name: "Monokai" },
@@ -42,7 +30,6 @@ const BUILTIN_THEMES = [
   { id: "github-light", name: "GitHub Light" },
 ];
 
-// Every non-role menu item dispatches through this single channel by id, so a menu click, its accelerator, and the palette all run the same command.
 function sendMenuCommand(id) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("menu:command", id);
@@ -76,14 +63,12 @@ function buildMenu() {
     {
       label: "Edit",
       submenu: [
-        // Not `role: "undo"/"redo"` - CM6 manages its own history, so the native role would be a silent no-op with focus in the editor.
         { label: "Undo", accelerator: "CmdOrCtrl+Z", click: () => sendMenuCommand("editor.undo") },
         { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", click: () => sendMenuCommand("editor.redo") },
         { type: "separator" },
         { label: "Find", accelerator: "CmdOrCtrl+F", click: () => sendMenuCommand("editor.find") },
         { label: "Find and Replace", accelerator: "CmdOrCtrl+Alt+F", click: () => sendMenuCommand("editor.find-replace") },
         { type: "separator" },
-        // Cut/copy/paste/select-all DO work correctly via native roles - CM6 integrates with browser clipboard events for these.
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
@@ -95,7 +80,6 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
-        // Parity with the command palette - checkbox state is kept in sync by updateViewMenuChecks, since Electron menus don't reactively bind on their own.
         { id: "view.file-tree", label: "Show Explorer", type: "checkbox", accelerator: "CmdOrCtrl+1", click: () => sendMenuCommand("panel.file-tree") },
         { id: "view.search", label: "Show Search", type: "checkbox", accelerator: "CmdOrCtrl+Shift+F", click: () => sendMenuCommand("panel.search") },
         { id: "view.outline", label: "Show Outline", type: "checkbox", accelerator: "CmdOrCtrl+2", click: () => sendMenuCommand("panel.outline") },
@@ -133,7 +117,6 @@ function buildMenu() {
   return Menu.buildFromTemplate(template);
 }
 
-// Keys match exactly what App.tsx's reportViewState effect sends - deliberate duplication, no shared TS import possible here.
 const VIEW_MENU_CHECK_IDS = {
   "file-tree": "view.file-tree",
   search: "view.search",
@@ -155,8 +138,6 @@ function updateViewMenuChecks(state) {
     const item = menu.getMenuItemById(id);
     if (item) item.checked = Boolean(state[key]);
   }
-  // Radio items, not booleans - only matches a built-in theme id; a custom active theme leaves
-  // the whole group unchecked, which is fine since custom themes aren't listed in this menu.
   for (const theme of BUILTIN_THEMES) {
     const item = menu.getMenuItemById(`view.theme.${theme.id}`);
     if (item) item.checked = state.themeId === theme.id;
@@ -167,9 +148,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    // Matches --ink-900 (dark theme default) to avoid a white flash before first paint.
     backgroundColor: "#16181d",
-    // Windows/Linux taskbar icon; macOS's Dock icon is set separately below via app.dock.setIcon.
     icon: APP_ICON_PATH,
     ...(isMac ? { titleBarStyle: "hidden", trafficLightPosition: { x: 12, y: 10 } } : {}),
     webPreferences: {
@@ -181,8 +160,6 @@ function createWindow() {
   });
 
   if (app.isPackaged) {
-    // packages/ui/dist copied here by electron-builder's extraResources config - see the
-    // TEMPLATES_DIR comment above for why this is a flat resources-relative path, not asar-relative.
     mainWindow.loadFile(path.join(process.resourcesPath, "ui", "index.html"));
   } else {
     mainWindow.loadURL(DEV_SERVER_URL);
@@ -192,9 +169,7 @@ function createWindow() {
   });
 }
 
-// `templateId` is renderer-supplied IPC input, validated against TEMPLATE_IDS so a compromised renderer can't read arbitrary paths.
 function scaffoldProject(dirPath, templateId) {
-  // Dotfiles ignored - a freshly created Finder folder already has a .DS_Store, not meaningfully "not empty".
   const visibleEntries = fs.readdirSync(dirPath).filter((name) => !name.startsWith("."));
   if (visibleEntries.length > 0) {
     throw new Error("That folder isn't empty. Choose a new or empty folder for a new project.");
@@ -210,7 +185,6 @@ function scaffoldProject(dirPath, templateId) {
   fs.writeFileSync(path.join(dirPath, "main.tex"), source);
 }
 
-// `sourceFiles` paths come from a real openProject() response, already trusted, unlike scaffoldProject's templateId. `dirtyText` set means an open tab's live text is used instead of stale disk content.
 async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }) {
   const projectName = path.basename(projectDir);
   const documentsDir = app.getPath("documents");
@@ -231,7 +205,6 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
   });
   if (result.canceled || !result.filePath) return null;
 
-  // ESM-only package ("archiver" >=8 dropped its old CJS factory-function API) - dynamic import from this CJS file.
   const { ZipArchive } = await import("archiver");
 
   await new Promise((resolve, reject) => {
@@ -255,28 +228,25 @@ async function exportProject({ projectDir, pdfPath, includeSource, sourceFiles }
   return result.filePath;
 }
 
-app.whenReady().then(() => {
-  const telemetryConsentFile = path.join(app.getPath("userData"), "telemetry-consent.json");
+const telemetryConsentFile = path.join(app.getPath("userData"), "telemetry-consent.json");
 
-  // Only installs Sentry's hooks at all once consent is granted - never "init always, gate the send."
-  if (SENTRY_DSN) {
-    let consent = {};
-    try {
-      consent = JSON.parse(fs.readFileSync(telemetryConsentFile, "utf8"));
-    } catch {
-      // no consent file yet, or it's corrupt - treated as nothing granted
-    }
-    if (consent.crashReporting === "granted") {
-      Sentry.init({ dsn: SENTRY_DSN });
-      // Read by preload.js (its own separate process) to decide whether to also init the renderer-side SDK.
-      process.env.QUIRE_SENTRY_ENABLED = "1";
-    }
+if (SENTRY_DSN) {
+  let consent = {};
+  try {
+    consent = JSON.parse(fs.readFileSync(telemetryConsentFile, "utf8"));
+  } catch {
+    // no consent file yet, or it's corrupt - treated as nothing granted
   }
+  if (consent.crashReporting === "granted") {
+    Sentry.init({ dsn: SENTRY_DSN });
+    process.env.QUIRE_SENTRY_ENABLED = "1";
+  }
+}
 
+process.env.QUIRE_APP_VERSION = app.getVersion();
+
+app.whenReady().then(() => {
   if (app.isPackaged) {
-    // Both quire-sidecar spawn sites (packages/client's runOnce and ProjectWatcher) read this back
-    // via getSidecarPath(); quire-core's bundle.rs reads QUIRE_BUNDLE_ROOT from its own environment,
-    // inherited automatically since child_process.spawn() passes the parent's process.env through.
     setSidecarPath(path.join(process.resourcesPath, "quire-sidecar"));
     process.env.QUIRE_BUNDLE_ROOT = path.join(process.resourcesPath, "bundles");
   }
@@ -285,7 +255,6 @@ app.whenReady().then(() => {
   const sessionFile = path.join(app.getPath("userData"), "session.json");
   const themesFile = path.join(app.getPath("userData"), "themes.json");
 
-  // On macOS the app can outlive the window past window-all-closed; isDestroyed() guards a late event.
   client.onEvent((event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("core-event", event);
@@ -328,7 +297,6 @@ app.whenReady().then(() => {
     return result.filePaths[0];
   });
 
-  // "createDirectory" adds the native "New Folder" affordance, letting one dialog pick or create+name a folder.
   ipcMain.handle("desktop:chooseNewProjectFolder", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -348,9 +316,6 @@ app.whenReady().then(() => {
     return result.filePath;
   });
 
-  // Recoverable delete (OS trash/Recycle Bin), not a permanent fs.rm - deliberately the only
-  // delete affordance the Explorer offers. No quire-core involvement: OS trash has no
-  // cross-platform equivalent (D5, iPad), same reasoning as pasteImage staying Electron-only.
   ipcMain.handle("desktop:trashEntry", (_event, targetPath) => shell.trashItem(targetPath));
 
   ipcMain.handle("desktop:revealInFileManager", (_event, targetPath) => shell.showItemInFolder(targetPath));
@@ -364,7 +329,6 @@ app.whenReady().then(() => {
     return result.filePaths[0];
   });
 
-  // Mirrors TabBar.tsx's own Save/Discard/Cancel confirmation, for the ⌘W/Close Folder paths that don't go through that component.
   ipcMain.handle("desktop:confirmDiscard", async (_event, message) => {
     const result = await dialog.showMessageBox(mainWindow, {
       type: "warning",
@@ -382,7 +346,6 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:readPdfFile", (_event, pdfPath) => new Uint8Array(fs.readFileSync(pdfPath)));
 
-  // Writes a pasted image's raw bytes into <projectDir>/figures/; returns the project-relative path for \includegraphics.
   ipcMain.handle("desktop:pasteImage", (_event, projectDir, bytes, extension) => {
     const figuresDir = path.join(projectDir, "figures");
     fs.mkdirSync(figuresDir, { recursive: true });
@@ -403,8 +366,6 @@ app.whenReady().then(() => {
     fs.writeFileSync(sessionFile, JSON.stringify(session));
   });
 
-  // Renderer validates/normalizes each entry (see normalizeCustomThemes in theme.ts) - this
-  // layer just needs to not crash on a missing or corrupt file, same as loadSession above.
   ipcMain.handle("desktop:loadThemes", () => {
     try {
       const parsed = JSON.parse(fs.readFileSync(themesFile, "utf8"));
@@ -418,7 +379,6 @@ app.whenReady().then(() => {
     fs.writeFileSync(themesFile, JSON.stringify({ version: 1, themes }));
   });
 
-  // Shared by every consent-gated feature (crash reporting)
   ipcMain.handle("desktop:loadTelemetryConsent", () => {
     try {
       return JSON.parse(fs.readFileSync(telemetryConsentFile, "utf8"));
@@ -431,9 +391,6 @@ app.whenReady().then(() => {
     fs.writeFileSync(telemetryConsentFile, JSON.stringify(consent));
   });
 
-  // Single-theme JSON, not the whole themes.json shape - lets a user share/receive one theme at
-  // a time. `content` is written verbatim (renderer already serialized it); returns the raw text
-  // on import, unvalidated - renderer runs it through normalizeCustomThemes before use.
   ipcMain.handle("desktop:exportTheme", async (_event, defaultFileName, content) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: path.join(app.getPath("documents"), `${defaultFileName}.json`),
@@ -457,13 +414,11 @@ app.whenReady().then(() => {
     }
   });
 
-  // BrowserWindow's `icon` option doesn't drive the Dock in dev mode (only a packaged .app's Info.plist does).
   if (isMac) app.dock.setIcon(APP_ICON_PATH);
 
   Menu.setApplicationMenu(buildMenu());
   createWindow();
 
-  // Dev builds have no publish feed to check against and would just error - only run in a packaged app.
   if (app.isPackaged) {
     autoUpdater.on("update-downloaded", () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -473,7 +428,6 @@ app.whenReady().then(() => {
     autoUpdater.on("error", (err) => {
       console.error("Auto-update check failed:", err);
     });
-    // checkForUpdates() rather than checkForUpdatesAndNotify() - the update surfaces inside StatusBar, not a native OS dialog.
     autoUpdater.checkForUpdates();
   }
 });
