@@ -1,22 +1,24 @@
 # Quire
 
-A local-first LaTeX editor: a Rust compile/index core (`quire-core`, exposed to the
-desktop shell over JSON-RPC via `quire-sidecar`) driving an Electron + React frontend
-(`apps/desktop`, `packages/ui`).
-
 Quire is open source, built as a tool for research and education - free to use, study,
 and modify for coursework, papers, and teaching material. See [License](#license) below.
+
+![Quire editor](docs/screenshots/main-ss.png)
 
 ## Repository layout
 
 ```
-apps/desktop/     Electron shell (main process, menus, native dialogs)
-packages/ui/      React editor UI (CodeMirror 6, PDF preview, command palette)
-packages/client/  Sidecar transport + typed RPC client, shared by ui and desktop
-packages/design/  Shared design tokens / primitives
-crates/quire-core/    Compile pipeline, project indexing, diagnostics, RPC handlers
-crates/quire-sidecar/ Thin JSON-RPC process wrapping quire-core for the desktop shell
-bundles/          LaTeX package bundle manifest + generator (see bundles/README.md)
+quire/
+├── apps/
+│   └── desktop/          Electron shell (main process, menus, native dialogs)
+├── packages/
+│   ├── ui/               React editor UI (CodeMirror 6, PDF preview, command palette)
+│   ├── client/           Sidecar transport + typed RPC client, shared by ui and desktop
+│   └── design/           Shared design tokens / primitives
+├── crates/
+│   ├── quire-core/       Compile pipeline, project indexing, diagnostics, RPC handlers
+│   └── quire-sidecar/    Thin JSON-RPC process wrapping quire-core for the desktop shell
+└── bundles/              LaTeX package bundle manifest + generator (see bundles/README.md)
 ```
 
 ## Prerequisites
