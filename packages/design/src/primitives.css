@@ -16,6 +16,43 @@ body {
   font-size: var(--ui-size);
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-600) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--ink-600);
+  border-radius: var(--radius);
+  border: 2px solid var(--ink-900);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-700);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 :focus-visible {
   outline: 2px solid var(--nonrepro);
   outline-offset: 2px;

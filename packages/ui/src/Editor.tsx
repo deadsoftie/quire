@@ -131,6 +131,22 @@ const baseEditorTheme = EditorView.theme(
     ".cm-scroller": {
       overflow: "auto",
     },
+    ".cm-scroller::-webkit-scrollbar": {
+      width: "10px",
+      height: "10px",
+    },
+    ".cm-scroller::-webkit-scrollbar-track": {
+      background: "transparent",
+    },
+    ".cm-scroller::-webkit-scrollbar-thumb": {
+      backgroundColor: "var(--ink-600)",
+      borderRadius: "var(--radius)",
+      border: "2px solid var(--ink-900)",
+      backgroundClip: "padding-box",
+    },
+    ".cm-scroller::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: "var(--ink-700)",
+    },
     ".cm-content": {
       fontFamily: "var(--editor-font)",
       fontSize: "var(--editor-size)",
