@@ -157,8 +157,11 @@ const baseEditorTheme = EditorView.theme(
       color: "var(--type-lo)",
       border: "none",
     },
+    // Semi-transparent, not the solid --ink-800: drawSelection() renders .cm-selectionBackground at a
+    // negative z-index so it sits behind line content, relying on the active-line background staying
+    // translucent enough to still blend the selection tint through rather than fully occlude it.
     ".cm-activeLine": {
-      backgroundColor: "var(--ink-800)",
+      backgroundColor: "var(--ink-800-dim)",
     },
     ".cm-activeLineGutter": {
       backgroundColor: "var(--ink-800)",
