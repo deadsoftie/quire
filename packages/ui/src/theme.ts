@@ -106,6 +106,7 @@ export function applyTheme(theme: ThemeDefinition) {
   const { colors } = theme;
   root.style.setProperty("--ink-900", colors.ink900);
   root.style.setProperty("--ink-800", colors.ink800);
+  root.style.setProperty("--ink-800-dim", `${colors.ink800}33`);
   root.style.setProperty("--ink-700", colors.ink700);
   root.style.setProperty("--ink-600", colors.ink600);
   root.style.setProperty("--type-hi", colors.typeHi);

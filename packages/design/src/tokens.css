@@ -2,6 +2,7 @@
 [data-theme="dark"] {
   --ink-900: #16181d;
   --ink-800: #1c1f26;
+  --ink-800-dim: #1c1f2633;
   --ink-700: #252932;
   --ink-600: #333944;
 
@@ -30,6 +31,7 @@
 [data-theme="light"] {
   --ink-900: #f7f8fa;
   --ink-800: #f0f2f5;
+  --ink-800-dim: #f0f2f533;
   --ink-700: #e6e9ee;
   --ink-600: #dde1e7;
 
